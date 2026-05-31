@@ -345,7 +345,7 @@ $btnRun.Add_Click({
 # CHECK DE ACTUALIZACIONES (GitHub JSON)
 # URL del version.json en tu GitHub Gist o repo:
 # ============================================================
-$UPDATE_CHECK_URL = "https://raw.githubusercontent.com/TU_USUARIO/OptimizarPC/main/version.json"
+$UPDATE_CHECK_URL = "https://raw.githubusercontent.com/tDallagio/PC-optimizer/refs/heads/main/version.json"
 $script:updateReleaseUrl = ""
 
 function Check-ForUpdates {
