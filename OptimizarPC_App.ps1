@@ -15,7 +15,7 @@ $buildNumber = [int]$_osObj.BuildNumber
 $IS_WIN11    = $buildNumber -ge 22000
 $diskType  = if($HAS_SSD){"SSD"}else{"HDD"}
 $SYSDRIVE  = $env:SystemDrive
-$VERSION   = "4.0"
+$VERSION   = "4.1"
 $PROFILE_PATH = "$env:USERPROFILE\.OptimizarPC\profile.json"
 
 # Cargar XAML desde archivo externo
