@@ -48,6 +48,13 @@ $btnClearLog=Get-Ctrl "btnClearLog"; $btnExportLog=Get-Ctrl "btnExportLog"; $mai
 $btnPresetGaming=Get-Ctrl "btnPresetGaming"; $btnPresetProd=Get-Ctrl "btnPresetProd"
 $btnPresetSafe=Get-Ctrl "btnPresetSafe"; $btnSaveProfile=Get-Ctrl "btnSaveProfile"
 $badgeUpdate=Get-Ctrl "badgeUpdate"; $lblUpdateBadge=Get-Ctrl "lblUpdateBadge"
+$btnBenchmark=Get-Ctrl "btnBenchmark"; $lblBenchStatus=Get-Ctrl "lblBenchStatus"
+$lblWriteSpeed=Get-Ctrl "lblWriteSpeed"; $lblReadSpeed=Get-Ctrl "lblReadSpeed"
+$lblWriteCompare=Get-Ctrl "lblWriteCompare"; $lblReadCompare=Get-Ctrl "lblReadCompare"
+$btnDeepClean=Get-Ctrl "btnDeepClean"; $lblDeepCleanStatus=Get-Ctrl "lblDeepCleanStatus"
+$pbCPU=Get-Ctrl "pbCPU"; $lblCPUPct=Get-Ctrl "lblCPUPct"
+$pbRAM=Get-Ctrl "pbRAM"; $lblRAMVal=Get-Ctrl "lblRAMVal"
+$pbDisk=Get-Ctrl "pbDisk"; $lblDiskPct=Get-Ctrl "lblDiskPct"
 
 $checks = @{
     TempUser=Get-Ctrl "chkTempUser"; TempSys=Get-Ctrl "chkTempSys"
@@ -345,7 +352,7 @@ $btnRun.Add_Click({
 # CHECK DE ACTUALIZACIONES (GitHub JSON)
 # URL del version.json en tu GitHub Gist o repo:
 # ============================================================
-$UPDATE_CHECK_URL = "https://raw.githubusercontent.com/tDallagio/PC-optimizer/refs/heads/main/version.json"
+$UPDATE_CHECK_URL = "https://raw.githubusercontent.com/TU_USUARIO/OptimizarPC/main/version.json"
 $script:updateReleaseUrl = ""
 
 function Check-ForUpdates {
@@ -370,6 +377,175 @@ $badgeUpdate.Add_MouseLeftButtonUp({
     if ($script:updateReleaseUrl) {
         Start-Process $script:updateReleaseUrl
     }
+})
+
+
+# ============================================================
+# BENCHMARK RAPIDO DE DISCO
+# ============================================================
+$script:benchWritePre = 0; $script:benchReadPre = 0
+
+$btnBenchmark.Add_Click({
+    $btnBenchmark.IsEnabled = $false
+    $lblBenchStatus.Text    = "Midiendo escritura..."
+    Flush-UI
+    try {
+        $testFile  = "$env:TEMP\OptimizarPC_bench_$(Get-Random).tmp"
+        $sizeMB    = 100
+        $chunkData = New-Object byte[] (1MB)
+        [System.Random]::new().NextBytes($chunkData)
+
+        # ---- ESCRITURA (WriteThrough: bypasa cache del SO) ----
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $fs = [System.IO.FileStream]::new(
+                  $testFile,
+                  [System.IO.FileMode]::Create,
+                  [System.IO.FileAccess]::Write,
+                  [System.IO.FileShare]::None,
+                  (1MB),
+                  [System.IO.FileOptions]::WriteThrough)
+        for ($i = 0; $i -lt $sizeMB; $i++) { $fs.Write($chunkData, 0, $chunkData.Length) }
+        $fs.Flush(); $fs.Close(); $fs.Dispose()
+        $sw.Stop()
+        $writeMBs = [math]::Round($sizeMB / $sw.Elapsed.TotalSeconds, 1)
+
+        $lblBenchStatus.Text = "Midiendo lectura..."
+        Flush-UI
+
+        # ---- LECTURA (SequentialScan) ----
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        $fs = [System.IO.FileStream]::new(
+                  $testFile,
+                  [System.IO.FileMode]::Open,
+                  [System.IO.FileAccess]::Read,
+                  [System.IO.FileShare]::Read,
+                  (1MB),
+                  [System.IO.FileOptions]::SequentialScan)
+        $buf = New-Object byte[] (1MB)
+        while ($fs.Read($buf, 0, $buf.Length) -gt 0) {}
+        $fs.Close(); $fs.Dispose()
+        $sw.Stop()
+        $readMBs = [math]::Round($sizeMB / $sw.Elapsed.TotalSeconds, 1)
+
+        Remove-Item $testFile -Force -EA SilentlyContinue
+
+        $lblWriteSpeed.Text = "$writeMBs"
+        $lblReadSpeed.Text  = "$readMBs"
+
+        if ($script:benchWritePre -eq 0) {
+            $script:benchWritePre = $writeMBs
+            $script:benchReadPre  = $readMBs
+            $lblWriteCompare.Text = "(referencia guardada)"
+            $lblReadCompare.Text  = "(referencia guardada)"
+            $lblBenchStatus.Text  = "Referencia guardada - optimiza y vuelve a ejecutar para comparar"
+        } else {
+            $wDiff = [math]::Round($writeMBs - $script:benchWritePre, 1)
+            $rDiff = [math]::Round($readMBs  - $script:benchReadPre,  1)
+            $wSign = if($wDiff -ge 0){"+"}else{""}
+            $rSign = if($rDiff -ge 0){"+"}else{""}
+            $lblWriteCompare.Text = "$wSign$wDiff MB/s vs antes ($($script:benchWritePre))"
+            $lblReadCompare.Text  = "$rSign$rDiff MB/s vs antes ($($script:benchReadPre))"
+            $lblWriteCompare.Foreground = New-Object Windows.Media.SolidColorBrush(
+                [Windows.Media.ColorConverter]::ConvertFromString($(if($wDiff -ge 0){"#22C55E"}else{"#EF4444"})))
+            $lblReadCompare.Foreground  = New-Object Windows.Media.SolidColorBrush(
+                [Windows.Media.ColorConverter]::ConvertFromString($(if($rDiff -ge 0){"#22C55E"}else{"#EF4444"})))
+            $script:benchWritePre = $writeMBs
+            $script:benchReadPre  = $readMBs
+            $lblBenchStatus.Text  = "Comparacion completada"
+        }
+    } catch {
+        $lblBenchStatus.Text = "Error: $_"
+    }
+    $btnBenchmark.IsEnabled = $true
+    Flush-UI
+})
+
+# ============================================================
+# LIMPIEZA PROFUNDA DE CACHE
+# ============================================================
+$btnDeepClean.Add_Click({
+    $r = [Windows.MessageBox]::Show(
+        "El Explorador de Windows se detendra y reiniciara automaticamente.`nLa pantalla puede parpadear 2-3 segundos.`n`nContinuar?",
+        "OptimizarPC v$VERSION",
+        [Windows.MessageBoxButton]::YesNo,
+        [Windows.MessageBoxImage]::Warning)
+    if ($r -ne [Windows.MessageBoxResult]::Yes) { return }
+
+    $btnDeepClean.IsEnabled  = $false
+    $lblDeepCleanStatus.Text = "Deteniendo Explorer..."
+    Flush-UI
+    try {
+        Stop-Process -Name explorer -Force -EA SilentlyContinue
+        Start-Sleep -Milliseconds 1500
+
+        # IconCache.db (ubicacion clasica)
+        Remove-Item "$env:LOCALAPPDATA\IconCache.db" -Force -EA SilentlyContinue
+
+        # iconcache_*.db y thumbcache_*.db (Win10/11 modernos)
+        $cacheDir   = "$env:LOCALAPPDATA\Microsoft\Windows\Explorer"
+        $cacheFiles = Get-ChildItem -Path $cacheDir -Include "iconcache_*.db","thumbcache_*.db" -Force -EA SilentlyContinue
+        $count = 0
+        foreach ($f in $cacheFiles) { Remove-Item $f.FullName -Force -EA SilentlyContinue; $count++ }
+
+        Start-Process explorer
+        $lblDeepCleanStatus.Text = "Listo - IconCache.db + $count archivos de cache eliminados"
+    } catch {
+        $lblDeepCleanStatus.Text = "Error: $_"
+        if (-not (Get-Process explorer -EA SilentlyContinue)) { Start-Process explorer }
+    }
+    $btnDeepClean.IsEnabled = $true
+    Flush-UI
+})
+
+# ============================================================
+# MONITOR EN TIEMPO REAL  (DispatcherTimer - tick cada 1 s)
+# ============================================================
+$script:monitorTotalRAMMB = $totalRAM * 1024   # total RAM del sistema en MB (entero)
+
+try {
+    $script:pcCPU     = New-Object System.Diagnostics.PerformanceCounter("Processor",   "% Processor Time", "_Total")
+    $script:pcRAMFree = New-Object System.Diagnostics.PerformanceCounter("Memory",       "Available MBytes")
+    $script:pcDisk    = New-Object System.Diagnostics.PerformanceCounter("PhysicalDisk", "% Disk Time",      "_Total")
+    $script:pcCPU.NextValue()     | Out-Null   # primer valor es siempre 0 - descartar
+    $script:pcDisk.NextValue()    | Out-Null
+    $script:pcRAMFree.NextValue() | Out-Null
+} catch {}
+
+# Brushes pre-definidos y congelados: evita allocations por GC en cada tick
+$brMon = @{
+    Green  = [Windows.Media.SolidColorBrush]([Windows.Media.ColorConverter]::ConvertFromString("#22C55E"))
+    Yellow = [Windows.Media.SolidColorBrush]([Windows.Media.ColorConverter]::ConvertFromString("#F59E0B"))
+    Red    = [Windows.Media.SolidColorBrush]([Windows.Media.ColorConverter]::ConvertFromString("#EF4444"))
+    Blue   = [Windows.Media.SolidColorBrush]([Windows.Media.ColorConverter]::ConvertFromString("#00C8FF"))
+}
+try { foreach ($b in $brMon.Values) { $b.Freeze() } } catch {}
+
+$script:monitorTimer = New-Object System.Windows.Threading.DispatcherTimer
+$script:monitorTimer.Interval = [TimeSpan]::FromSeconds(1)
+$script:monitorTimer.Add_Tick({
+    try {
+        $cpu  = [math]::Min(100, [math]::Round($script:pcCPU.NextValue(),     0))
+        $disk = [math]::Min(100, [math]::Round($script:pcDisk.NextValue(),    0))
+        $free = [math]::Round($script:pcRAMFree.NextValue(), 0)
+        $used = [math]::Max(0, $script:monitorTotalRAMMB - $free)
+        $ramPct = [math]::Min(100,[math]::Round($used / [math]::Max(1,$script:monitorTotalRAMMB) * 100, 0))
+        $usedGB = [math]::Round($used / 1024, 1)
+        $totGB  = $script:monitorTotalRAMMB / 1024
+
+        $pbCPU.Value  = $cpu;    $lblCPUPct.Text = "$cpu%"
+        $pbRAM.Value  = $ramPct; $lblRAMVal.Text = "$usedGB / $totGB GB"
+        $pbDisk.Value = $disk;   $lblDiskPct.Text = "$disk%"
+
+        $pbCPU.Foreground  = if($cpu    -gt 85){$brMon.Red}elseif($cpu    -gt 60){$brMon.Yellow}else{$brMon.Green}
+        $pbRAM.Foreground  = if($ramPct -gt 85){$brMon.Red}elseif($ramPct -gt 70){$brMon.Yellow}else{$brMon.Blue}
+        $pbDisk.Foreground = if($disk   -gt 85){$brMon.Red}elseif($disk   -gt 60){$brMon.Yellow}else{$brMon.Green}
+    } catch {}
+})
+$script:monitorTimer.Start()
+
+$window.Add_Closing({
+    $script:monitorTimer.Stop()
+    try { $script:pcCPU.Dispose(); $script:pcRAMFree.Dispose(); $script:pcDisk.Dispose() } catch {}
 })
 
 $window.ShowDialog()|Out-Null
