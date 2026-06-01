@@ -1,2 +1,2 @@
 # PC-optimizer
-Script de optimizacion Windows
+App de optimizacion Windows
