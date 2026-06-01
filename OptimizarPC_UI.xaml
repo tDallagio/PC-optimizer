@@ -281,6 +281,67 @@
         </Grid>
       </TabItem>
 
+      <!-- TAB HERRAMIENTAS -->
+      <TabItem Header="Herramientas">
+        <ScrollViewer Margin="20,16" VerticalScrollBarVisibility="Auto"><StackPanel>
+
+          <TextBlock Text="BENCHMARK RAPIDO DE DISCO" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
+          <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16" Margin="0,0,0,16">
+            <StackPanel>
+              <TextBlock Text="Mide velocidad de escritura y lectura secuencial con un archivo de 100 MB. Ejecuta antes y despues de optimizar para ver la mejora." FontSize="12" Foreground="#888888" TextWrapping="Wrap" Margin="0,0,0,10"/>
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                <Button x:Name="btnBenchmark" Content="Ejecutar Benchmark" Style="{StaticResource BtnMain}" Padding="18,8"/>
+                <Border Background="#1A1A1A" CornerRadius="4" Padding="10,5" Margin="12,0,0,0" VerticalAlignment="Center">
+                  <TextBlock x:Name="lblBenchStatus" Text="Listo" FontSize="11" Foreground="#555555"/>
+                </Border>
+              </StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="#111111" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16,14">
+                  <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="ESCRITURA" FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                      <TextBlock x:Name="lblWriteSpeed" Text="--" FontSize="30" FontWeight="Bold" Foreground="#00C8FF"/>
+                      <TextBlock Text=" MB/s" FontSize="13" Foreground="#555555" VerticalAlignment="Bottom" Margin="2,0,0,5"/>
+                    </StackPanel>
+                    <TextBlock x:Name="lblWriteCompare" Text="" FontSize="11" Foreground="#22C55E" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Background="#111111" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16,14">
+                  <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="LECTURA" FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                      <TextBlock x:Name="lblReadSpeed" Text="--" FontSize="30" FontWeight="Bold" Foreground="#00C8FF"/>
+                      <TextBlock Text=" MB/s" FontSize="13" Foreground="#555555" VerticalAlignment="Bottom" Margin="2,0,0,5"/>
+                    </StackPanel>
+                    <TextBlock x:Name="lblReadCompare" Text="" FontSize="11" Foreground="#22C55E" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Text="LIMPIEZA PROFUNDA DE CACHE" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
+          <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16" Margin="0,0,0,16">
+            <StackPanel>
+              <TextBlock Text="Elimina IconCache.db, iconcache_*.db y thumbcache_*.db del Explorador de Windows." FontSize="12" Foreground="#888888" TextWrapping="Wrap" Margin="0,0,0,6"/>
+              <Border Background="#1A1000" CornerRadius="5" BorderBrush="#3A2500" BorderThickness="1" Padding="10,8" Margin="0,0,0,12">
+                <TextBlock Text="&#x26A0;  El Explorador se detendra y reiniciara automaticamente. La pantalla puede parpadear 2-3 segundos." FontSize="11" Foreground="#F59E0B" TextWrapping="Wrap"/>
+              </Border>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="btnDeepClean" Content="Limpiar Cache Profunda" Style="{StaticResource BtnMain}" Padding="18,8"/>
+                <Border Background="#1A1A1A" CornerRadius="4" Padding="10,5" Margin="12,0,0,0" VerticalAlignment="Center">
+                  <TextBlock x:Name="lblDeepCleanStatus" Text="Listo" FontSize="11" Foreground="#555555"/>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+        </StackPanel></ScrollViewer>
+      </TabItem>
+
       <!-- TAB INFO -->
       <TabItem Header="Info del sistema">
         <ScrollViewer Margin="20,16" VerticalScrollBarVisibility="Auto"><StackPanel>
@@ -305,6 +366,30 @@
               <TextBlock Grid.Row="5" Grid.Column="1" x:Name="infoType" FontSize="12" Foreground="#CCCCCC" Margin="0,4"/>
             </Grid>
           </Border>
+          <TextBlock Text="MONITOR EN TIEMPO REAL" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
+          <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16,14" Margin="0,0,0,12">
+            <StackPanel>
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="52"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="CPU" FontSize="12" Foreground="#555555" VerticalAlignment="Center"/>
+                <ProgressBar Grid.Column="1" x:Name="pbCPU" Value="0" Maximum="100" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="2" x:Name="lblCPUPct" Text="0%" FontSize="11" Foreground="#00C8FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+              </Grid>
+              <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="52"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="RAM" FontSize="12" Foreground="#555555" VerticalAlignment="Center"/>
+                <ProgressBar Grid.Column="1" x:Name="pbRAM" Value="0" Maximum="100" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="2" x:Name="lblRAMVal" Text="-- / -- GB" FontSize="11" Foreground="#00C8FF" Margin="8,0,0,0" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+              </Grid>
+              <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="52"/><ColumnDefinition Width="*"/><ColumnDefinition Width="44"/></Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Disco" FontSize="12" Foreground="#555555" VerticalAlignment="Center"/>
+                <ProgressBar Grid.Column="1" x:Name="pbDisk" Value="0" Maximum="100" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="2" x:Name="lblDiskPct" Text="0%" FontSize="11" Foreground="#00C8FF" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
           <TextBlock Text="ESPACIO EN DISCO" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
           <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16">
             <ItemsControl x:Name="diskPanel"/>
