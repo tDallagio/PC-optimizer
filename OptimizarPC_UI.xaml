@@ -94,6 +94,36 @@
         </Border>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="BtnToggleOn" TargetType="Button">
+      <Setter Property="Background" Value="#2A1212"/><Setter Property="Foreground" Value="#EF4444"/>
+      <Setter Property="FontSize" Value="10"/><Setter Property="Padding" Value="8,4"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#3D1A1A"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#3D1A1A"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+    <Style x:Key="BtnToggleOff" TargetType="Button">
+      <Setter Property="Background" Value="#122A12"/><Setter Property="Foreground" Value="#22C55E"/>
+      <Setter Property="FontSize" Value="10"/><Setter Property="Padding" Value="8,4"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#1A3D1A"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#1A3D1A"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
   </Window.Resources>
 
   <Grid>
@@ -218,7 +248,10 @@
               <CheckBox x:Name="chkMemory"     Content="Optimizar memoria"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">LargeSystemCache=0 y DisablePagingExecutive=1. Prioriza RAM para aplicaciones activas.</ToolTip></CheckBox.ToolTip></CheckBox>
               <CheckBox x:Name="chkVisual"     Content="Efectos visuales min." IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Desactiva animaciones y efectos visuales de Windows para liberar CPU y GPU.</ToolTip></CheckBox.ToolTip></CheckBox>
               <CheckBox x:Name="chkMouseAccel" Content="Mouse accel OFF"      IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Desactiva aceleracion del mouse (MouseSpeed=0). Mejora precision en juegos.</ToolTip></CheckBox.ToolTip></CheckBox>
-              <CheckBox x:Name="chkStartup"    Content="Punto restauracion"   IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Crea punto de restauracion antes de aplicar cambios. Permite revertir si algo falla.</ToolTip></CheckBox.ToolTip></CheckBox>
+              <CheckBox x:Name="chkStartup"      Content="Punto restauracion"   IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Crea punto de restauracion antes de aplicar cambios. Permite revertir si algo falla.</ToolTip></CheckBox.ToolTip></CheckBox>
+              <CheckBox x:Name="chkFastStartup"  Content="Fast Startup OFF"     IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Deshabilita el inicio rapido de Windows (HiberbootEnabled=0 + powercfg). Evita problemas con dual-boot, drivers y actualizaciones. Recomendado si usas Linux o tienes drivers inestables.</ToolTip></CheckBox.ToolTip></CheckBox>
+              <CheckBox x:Name="chkPageFile"     Content="Optimizar PageFile"   IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Ajusta el PageFile a min/max fijo segun tu RAM para evitar fragmentacion. Si hay un disco secundario disponible, ofrece moverlo alli para liberar el disco del sistema.</ToolTip></CheckBox.ToolTip></CheckBox>
+              <CheckBox x:Name="chkTrimDesfrag"  Content="TRIM / Desfrag"       IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">SSD: verifica y fuerza el schedule de TRIM semanal (Optimize-Volume). HDD: programa desfragmentacion semanal automatica. Se adapta al tipo de disco detectado.</ToolTip></CheckBox.ToolTip></CheckBox>
             </WrapPanel>
           </Border>
 
@@ -236,12 +269,39 @@
 
           <TextBlock Text="RED Y CONECTIVIDAD" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
           <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="14,12" Margin="0,0,0,14">
-            <WrapPanel>
-              <CheckBox x:Name="chkNagle"    Content="Nagle OFF"        IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Desactiva Algoritmo de Nagle (TcpAckFrequency=1, TCPNoDelay=1). Reduce latencia en juegos online.</ToolTip></CheckBox.ToolTip></CheckBox>
-              <CheckBox x:Name="chkTCP"      Content="TCP/IP gaming"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Optimiza parametros TCP/IP via netsh: autotuning, RSS, FastOpen. Mejora latencia y throughput.</ToolTip></CheckBox.ToolTip></CheckBox>
-              <CheckBox x:Name="chkDNS"      Content="DNS Cloudflare"   IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Cambia DNS a Cloudflare (1.1.1.1 / 1.0.0.1). Mas rapido y privado que el DNS del ISP.</ToolTip></CheckBox.ToolTip></CheckBox>
-              <CheckBox x:Name="chkDNSFlush" Content="Flush DNS"        IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Limpia la cache DNS local. Fuerza resolver nombres desde cero con los nuevos servidores.</ToolTip></CheckBox.ToolTip></CheckBox>
-            </WrapPanel>
+            <StackPanel>
+              <WrapPanel>
+                <CheckBox x:Name="chkNagle"    Content="Nagle OFF"        IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Desactiva Algoritmo de Nagle (TcpAckFrequency=1, TCPNoDelay=1). Reduce latencia en juegos online.</ToolTip></CheckBox.ToolTip></CheckBox>
+                <CheckBox x:Name="chkTCP"      Content="TCP/IP gaming"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Optimiza parametros TCP/IP via netsh: autotuning, RSS, FastOpen. Mejora latencia y throughput.</ToolTip></CheckBox.ToolTip></CheckBox>
+                <CheckBox x:Name="chkDNSFlush" Content="Flush DNS"        IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Limpia la cache DNS local. Fuerza resolver nombres desde cero con los nuevos servidores.</ToolTip></CheckBox.ToolTip></CheckBox>
+                <CheckBox x:Name="chkDisableIPv6" Content="Deshabilitar IPv6" IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Desactiva IPv6 en todos los adaptadores activos via Disable-NetAdapterBinding. Reduce latencia en redes que no usan IPv6. No afecta IPv4.</ToolTip></CheckBox.ToolTip></CheckBox>
+              </WrapPanel>
+              <!-- Selector de DNS -->
+              <Border Background="#111111" CornerRadius="6" BorderBrush="#2A2A2A" BorderThickness="1" Padding="12,9" Margin="0,6,0,0">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <CheckBox x:Name="chkDNS" Grid.Column="0" Content="Servidor DNS:" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center">
+                    <CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Cambia el DNS de todos los adaptadores activos al proveedor seleccionado. Mas rapido y privado que el DNS del ISP.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <ComboBox x:Name="cboDNSProvider" Grid.Column="1"
+                            Background="#1E1E1E" Foreground="#CCCCCC" BorderBrush="#3A3A3A"
+                            FontSize="12" Height="26" VerticalContentAlignment="Center"
+                            HorizontalAlignment="Left" Width="220"
+                            SelectedIndex="0">
+                    <ComboBoxItem Content="Cloudflare  —  1.1.1.1 / 1.0.0.1"/>
+                    <ComboBoxItem Content="Google      —  8.8.8.8 / 8.8.4.4"/>
+                    <ComboBoxItem Content="Quad9       —  9.9.9.9 / 149.112.112.112"/>
+                    <ComboBoxItem Content="AdGuard     —  94.140.14.14 / 94.140.15.15"/>
+                  </ComboBox>
+                  <TextBlock Grid.Column="2" x:Name="lblDNSHint" Text="Cloudflare  1.1.1.1 / 1.0.0.1"
+                             FontSize="10" Foreground="#555555" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                </Grid>
+              </Border>
+            </StackPanel>
           </Border>
 
           <TextBlock Text="SERVICIOS INNECESARIOS" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
@@ -253,6 +313,7 @@
               <CheckBox x:Name="chkSvcSysMain" Content="SysMain/Superfetch"  IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Deshabilita SysMain. Se aplica automaticamente solo si se detecto SSD. En HDD puede reducir rendimiento.</ToolTip></CheckBox.ToolTip></CheckBox>
               <CheckBox x:Name="chkSvcMaps"    Content="Maps / Geo"          IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Deshabilita MapsBroker y Geolocation. Innecesarios en PCs de escritorio y gaming.</ToolTip></CheckBox.ToolTip></CheckBox>
               <CheckBox x:Name="chkSvcFax"     Content="Fax / Remote Reg"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Deshabilita Fax y Remote Registry. Innecesarios y pueden ser vectores de ataque.</ToolTip></CheckBox.ToolTip></CheckBox>
+              <CheckBox x:Name="chkSvcWSearch" Content="Windows Search (SSD)" IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="#1A1A1A" Foreground="#CCCCCC" FontSize="11">Deshabilita el servicio WSearch (indexado de archivos). Reduce escrituras innecesarias en SSD y consumo de CPU/RAM en segundo plano. No afecta la busqueda manual, solo la indexacion automatica.</ToolTip></CheckBox.ToolTip></CheckBox>
             </WrapPanel>
           </Border>
         </StackPanel></ScrollViewer>
@@ -278,6 +339,58 @@
                            Padding="12" IsDocumentEnabled="True"/>
             </ScrollViewer>
           </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- TAB ARRANQUE -->
+      <TabItem Header="Arranque">
+        <Grid Margin="20,16">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+
+          <TextBlock Grid.Row="0" FontSize="12" Foreground="#888888" TextWrapping="Wrap" Margin="0,0,0,12"
+            Text="Programas que se inician con Windows (HKCU, HKLM y carpeta Startup). Deshabilitar no borra el programa, solo evita que arranque automaticamente."/>
+
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button x:Name="btnRefreshStartup" Content="Actualizar lista" Style="{StaticResource BtnSec}" Padding="14,6" Margin="0,0,8,0"/>
+            <Border Background="#1A1A1A" CornerRadius="4" Padding="10,5" Margin="4,0,0,0" VerticalAlignment="Center">
+              <TextBlock x:Name="lblStartupStatus" Text="Cargando..." FontSize="11" Foreground="#555555"/>
+            </Border>
+          </StackPanel>
+
+          <Border Grid.Row="2" Background="#0A0A0A" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <Border Grid.Row="0" Background="#161616" CornerRadius="8,8,0,0" Padding="12,8" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="80"/>
+                    <ColumnDefinition Width="180"/>
+                    <ColumnDefinition Width="75"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="95"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="ESTADO"  FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="1" Text="NOMBRE"  FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="2" Text="ORIGEN"  FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="3" Text="RUTA"    FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="8,0,0,0"/>
+                  <TextBlock Grid.Column="4" Text="ACCION"  FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center"/>
+                </Grid>
+              </Border>
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="icStartup" Padding="0,4"/>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+
+          <TextBlock Grid.Row="3" x:Name="lblStartupCount" Text="" FontSize="11" Foreground="#555555" Margin="0,8,0,0"/>
         </Grid>
       </TabItem>
 
@@ -339,10 +452,45 @@
             </StackPanel>
           </Border>
 
+          <TextBlock Text="LIBERADOR DE RAM" FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,8"/>
+          <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16" Margin="0,0,0,8">
+            <StackPanel>
+              <TextBlock FontSize="12" Foreground="#888888" TextWrapping="Wrap" Margin="0,0,0,12"
+                Text="Comprime los Working Sets de todos los procesos accesibles y vacia la Standby List del kernel. Util en equipos con poca RAM disponible."/>
+              <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="#111111" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="12,12">
+                  <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="TOTAL" FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="lblRAMTotal" Text="-- GB" FontSize="20" FontWeight="Bold" Foreground="#CCCCCC" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Background="#111111" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="12,12">
+                  <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="EN USO" FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="lblRAMUsed" Text="-- GB" FontSize="20" FontWeight="Bold" Foreground="#EF4444" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="4" Background="#111111" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="12,12">
+                  <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="LIBRE" FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock x:Name="lblRAMFree" Text="-- GB" FontSize="20" FontWeight="Bold" Foreground="#22C55E" HorizontalAlignment="Center"/>
+                  </StackPanel>
+                </Border>
+              </Grid>
+              <StackPanel Orientation="Horizontal">
+                <Button x:Name="btnFreeRAM" Content="Liberar RAM ahora" Style="{StaticResource BtnMain}" Padding="18,8"/>
+                <Border Background="#1A1A1A" CornerRadius="4" Padding="10,5" Margin="12,0,0,0" VerticalAlignment="Center">
+                  <TextBlock x:Name="lblRAMFreeStatus" Text="Listo" FontSize="11" Foreground="#555555"/>
+                </Border>
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
         </StackPanel></ScrollViewer>
       </TabItem>
-
-      <!-- TAB INFO -->
       <TabItem Header="Info del sistema">
         <ScrollViewer Margin="20,16" VerticalScrollBarVisibility="Auto"><StackPanel>
           <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1" Padding="16" Margin="0,0,0,12">
