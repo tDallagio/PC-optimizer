@@ -3,6 +3,23 @@ Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
 
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class MemAPI {
+    [DllImport("psapi.dll", SetLastError=true)]
+    public static extern bool EmptyWorkingSet(IntPtr hProcess);
+    [DllImport("ntdll.dll")]
+    public static extern uint NtSetSystemInformation(int cls, IntPtr info, int len);
+    public static void PurgeStandbyList() {
+        IntPtr p = Marshal.AllocHGlobal(4);
+        Marshal.WriteInt32(p, 4);
+        NtSetSystemInformation(0x50, p, 4);
+        Marshal.FreeHGlobal(p);
+    }
+}
+"@ -EA SilentlyContinue
+
 $IS_LAPTOP = $false; $HAS_SSD = $false
 try { $ct=(Get-CimInstance Win32_SystemEnclosure -EA SilentlyContinue).ChassisTypes; if($ct -contains 8 -or $ct -contains 9 -or $ct -contains 10 -or $ct -contains 14){$IS_LAPTOP=$true} } catch {}
 try { if(Get-PhysicalDisk -EA SilentlyContinue | Where-Object { $_.MediaType -eq "SSD" }){$HAS_SSD=$true} } catch {}
@@ -15,7 +32,7 @@ $buildNumber = [int]$_osObj.BuildNumber
 $IS_WIN11    = $buildNumber -ge 22000
 $diskType  = if($HAS_SSD){"SSD"}else{"HDD"}
 $SYSDRIVE  = $env:SystemDrive
-$VERSION   = "4.1"
+$VERSION   = "4.0"
 $PROFILE_PATH = "$env:USERPROFILE\.OptimizarPC\profile.json"
 
 # Cargar XAML desde archivo externo
@@ -55,6 +72,13 @@ $btnDeepClean=Get-Ctrl "btnDeepClean"; $lblDeepCleanStatus=Get-Ctrl "lblDeepClea
 $pbCPU=Get-Ctrl "pbCPU"; $lblCPUPct=Get-Ctrl "lblCPUPct"
 $pbRAM=Get-Ctrl "pbRAM"; $lblRAMVal=Get-Ctrl "lblRAMVal"
 $pbDisk=Get-Ctrl "pbDisk"; $lblDiskPct=Get-Ctrl "lblDiskPct"
+$icStartup=Get-Ctrl "icStartup"; $lblStartupStatus=Get-Ctrl "lblStartupStatus"
+$lblStartupCount=Get-Ctrl "lblStartupCount"; $btnRefreshStartup=Get-Ctrl "btnRefreshStartup"
+$lblRAMTotal=Get-Ctrl "lblRAMTotal"; $lblRAMUsed=Get-Ctrl "lblRAMUsed"
+$lblRAMFree=Get-Ctrl "lblRAMFree"; $lblRAMFreeStatus=Get-Ctrl "lblRAMFreeStatus"
+$btnFreeRAM=Get-Ctrl "btnFreeRAM"
+$cboDNSProvider=Get-Ctrl "cboDNSProvider"
+$lblDNSHint=Get-Ctrl "lblDNSHint"
 
 $checks = @{
     TempUser=Get-Ctrl "chkTempUser"; TempSys=Get-Ctrl "chkTempSys"
@@ -73,7 +97,9 @@ $checks = @{
     DNSFlush=Get-Ctrl "chkDNSFlush"; SvcXbox=Get-Ctrl "chkSvcXbox"
     SvcDiag=Get-Ctrl "chkSvcDiag";  SvcWER=Get-Ctrl "chkSvcWER"
     SvcSysMain=Get-Ctrl "chkSvcSysMain"; SvcMaps=Get-Ctrl "chkSvcMaps"
-    SvcFax=Get-Ctrl "chkSvcFax"
+    SvcFax=Get-Ctrl "chkSvcFax";        SvcWSearch=Get-Ctrl "chkSvcWSearch"
+    FastStartup=Get-Ctrl "chkFastStartup"; DisableIPv6=Get-Ctrl "chkDisableIPv6"
+    PageFile=Get-Ctrl "chkPageFile";       TrimDesfrag=Get-Ctrl "chkTrimDesfrag"
 }
 
 # ============================================================
@@ -86,7 +112,28 @@ $lblOS.Text=$osCaption -replace "Microsoft ",""; $infoOS.Text=$osCaption
 $infoCPU.Text=$cpuName; $infoGPU.Text=$gpuName; $infoRAM.Text="$totalRAM GB"
 $infoDisk.Text=$diskType; $infoType.Text=if($IS_LAPTOP){"Laptop"}else{"PC Escritorio"}
 if($IS_LAPTOP){$badgeLaptop.Visibility="Visible"; $checks.Power.Content="Plan Alto Rendimiento (laptop)"}
-if(-not $HAS_SSD){$checks.Prefetch.IsChecked=$false; $checks.SvcSysMain.IsChecked=$false}
+if(-not $HAS_SSD){$checks.Prefetch.IsChecked=$false; $checks.SvcSysMain.IsChecked=$false; $checks.SvcWSearch.IsChecked=$false}
+
+# ---- Tabla de proveedores DNS ----
+$script:dnsProviders = @(
+    @{ Name="Cloudflare"; Primary="1.1.1.1";         Secondary="1.0.0.1"           }
+    @{ Name="Google";     Primary="8.8.8.8";          Secondary="8.8.4.4"           }
+    @{ Name="Quad9";      Primary="9.9.9.9";          Secondary="149.112.112.112"   }
+    @{ Name="AdGuard";    Primary="94.140.14.14";     Secondary="94.140.15.15"      }
+)
+
+function Update-DNSHint {
+    $idx = $cboDNSProvider.SelectedIndex
+    if($idx -lt 0 -or $idx -ge $script:dnsProviders.Count){ $idx=0 }
+    $p = $script:dnsProviders[$idx]
+    $lblDNSHint.Text = "$($p.Name)  $($p.Primary) / $($p.Secondary)"
+    $cboDNSProvider.IsEnabled = [bool]$checks.DNS.IsChecked
+}
+
+$cboDNSProvider.Add_SelectionChanged({ Update-DNSHint })
+$checks.DNS.Add_Checked({   Update-DNSHint })
+$checks.DNS.Add_Unchecked({ Update-DNSHint })
+Update-DNSHint
 
 try {
     $drives=Get-PSDrive -PSProvider FileSystem -EA SilentlyContinue|Where-Object{$null -ne $_.Used}
@@ -130,6 +177,11 @@ function Load-Profile {
             foreach($k in $checks.Keys){
                 $val=$json.$k
                 if($null -ne $val){ $checks[$k].IsChecked=[bool]$val }
+            }
+            # Restaurar proveedor DNS seleccionado
+            $dnsIdx = $json._dnsProviderIndex
+            if($null -ne $dnsIdx -and $dnsIdx -ge 0 -and $dnsIdx -lt $script:dnsProviders.Count){
+                $cboDNSProvider.SelectedIndex = [int]$dnsIdx
             }
         }
     } catch {}
@@ -201,9 +253,9 @@ function Disable-Svc {
 # ============================================================
 # PRESETS
 # ============================================================
-$presetGaming=@{TempUser=$true;TempSys=$true;Prefetch=$true;WinUpdate=$true;Browsers=$true;Thumb=$true;Recycle=$true;EventLogs=$false;Power=$true;HPET=$true;GPUPrio=$true;Scheduler=$true;PowerThrot=$true;Memory=$true;Visual=$true;MouseAccel=$true;Startup=$true;GameDVR=$true;GameMode=$true;Telemetry=$true;Cortana=$true;Notif=$true;Tasks=$true;Nagle=$true;TCP=$true;DNS=$true;DNSFlush=$true;SvcXbox=$true;SvcDiag=$true;SvcWER=$true;SvcSysMain=$true;SvcMaps=$true;SvcFax=$true}
-$presetProd  =@{TempUser=$true;TempSys=$true;Prefetch=$false;WinUpdate=$true;Browsers=$true;Thumb=$true;Recycle=$true;EventLogs=$false;Power=$true;HPET=$false;GPUPrio=$false;Scheduler=$false;PowerThrot=$false;Memory=$false;Visual=$false;MouseAccel=$false;Startup=$true;GameDVR=$true;GameMode=$true;Telemetry=$true;Cortana=$true;Notif=$false;Tasks=$true;Nagle=$false;TCP=$false;DNS=$true;DNSFlush=$true;SvcXbox=$true;SvcDiag=$true;SvcWER=$false;SvcSysMain=$false;SvcMaps=$false;SvcFax=$false}
-$presetSafe  =@{TempUser=$true;TempSys=$true;Prefetch=$false;WinUpdate=$true;Browsers=$true;Thumb=$true;Recycle=$true;EventLogs=$false;Power=$false;HPET=$false;GPUPrio=$false;Scheduler=$false;PowerThrot=$false;Memory=$false;Visual=$false;MouseAccel=$false;Startup=$true;GameDVR=$false;GameMode=$false;Telemetry=$false;Cortana=$false;Notif=$false;Tasks=$false;Nagle=$false;TCP=$false;DNS=$true;DNSFlush=$true;SvcXbox=$false;SvcDiag=$false;SvcWER=$false;SvcSysMain=$false;SvcMaps=$false;SvcFax=$false}
+$presetGaming=@{TempUser=$true;TempSys=$true;Prefetch=$true;WinUpdate=$true;Browsers=$true;Thumb=$true;Recycle=$true;EventLogs=$false;Power=$true;HPET=$true;GPUPrio=$true;Scheduler=$true;PowerThrot=$true;Memory=$true;Visual=$true;MouseAccel=$true;Startup=$true;FastStartup=$true;PageFile=$true;TrimDesfrag=$true;GameDVR=$true;GameMode=$true;Telemetry=$true;Cortana=$true;Notif=$true;Tasks=$true;Nagle=$true;TCP=$true;DNS=$true;DNSFlush=$true;DisableIPv6=$false;SvcXbox=$true;SvcDiag=$true;SvcWER=$true;SvcSysMain=$true;SvcMaps=$true;SvcFax=$true;SvcWSearch=$true}
+$presetProd  =@{TempUser=$true;TempSys=$true;Prefetch=$false;WinUpdate=$true;Browsers=$true;Thumb=$true;Recycle=$true;EventLogs=$false;Power=$true;HPET=$false;GPUPrio=$false;Scheduler=$false;PowerThrot=$false;Memory=$false;Visual=$false;MouseAccel=$false;Startup=$true;FastStartup=$false;PageFile=$true;TrimDesfrag=$true;GameDVR=$true;GameMode=$true;Telemetry=$true;Cortana=$true;Notif=$false;Tasks=$true;Nagle=$false;TCP=$false;DNS=$true;DNSFlush=$true;DisableIPv6=$false;SvcXbox=$true;SvcDiag=$true;SvcWER=$false;SvcSysMain=$false;SvcMaps=$false;SvcFax=$false;SvcWSearch=$false}
+$presetSafe  =@{TempUser=$true;TempSys=$true;Prefetch=$false;WinUpdate=$true;Browsers=$true;Thumb=$true;Recycle=$true;EventLogs=$false;Power=$false;HPET=$false;GPUPrio=$false;Scheduler=$false;PowerThrot=$false;Memory=$false;Visual=$false;MouseAccel=$false;Startup=$true;FastStartup=$false;PageFile=$false;TrimDesfrag=$false;GameDVR=$false;GameMode=$false;Telemetry=$false;Cortana=$false;Notif=$false;Tasks=$false;Nagle=$false;TCP=$false;DNS=$true;DNSFlush=$true;DisableIPv6=$false;SvcXbox=$false;SvcDiag=$false;SvcWER=$false;SvcSysMain=$false;SvcMaps=$false;SvcFax=$false;SvcWSearch=$false}
 
 function Apply-Preset { param($p); foreach($k in $p.Keys){if($checks.ContainsKey($k)){$checks[$k].IsChecked=$p[$k]}} }
 
@@ -215,7 +267,9 @@ $btnSaveProfile.Add_Click({
     try {
         $dir=Split-Path $PROFILE_PATH
         if(-not(Test-Path $dir)){New-Item -ItemType Directory -Path $dir -Force|Out-Null}
-        $obj=@{}; foreach($k in $checks.Keys){$obj[$k]=[bool]$checks[$k].IsChecked}
+        $obj=@{}
+        foreach($k in $checks.Keys){$obj[$k]=[bool]$checks[$k].IsChecked}
+        $obj["_dnsProviderIndex"] = $cboDNSProvider.SelectedIndex
         $obj|ConvertTo-Json|Out-File $PROFILE_PATH -Encoding UTF8
         [Windows.MessageBox]::Show("Perfil guardado:`n$PROFILE_PATH","OptimizarPC v$VERSION","OK","Information")|Out-Null
     } catch { [Windows.MessageBox]::Show("Error al guardar: $_","Error","OK","Error")|Out-Null }
@@ -323,21 +377,170 @@ $btnRun.Add_Click({
     if($sel["Nagle"] -or $sel["TCP"] -or $sel["DNS"] -or $sel["DNSFlush"]){Set-Progress 70 "Red..."; Write-Log "RED" "head"}
     if($sel["Nagle"]){$n=0;Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" -EA SilentlyContinue|ForEach-Object{$ip=Get-ItemProperty -Path $_.PSPath -Name "DhcpIPAddress" -EA SilentlyContinue;if($ip -and $ip.DhcpIPAddress -and $ip.DhcpIPAddress-ne"0.0.0.0"){Set-ItemProperty -Path $_.PSPath -Name "TcpAckFrequency" -Type DWord -Value 1 -Force -EA SilentlyContinue;Set-ItemProperty -Path $_.PSPath -Name "TCPNoDelay" -Type DWord -Value 1 -Force -EA SilentlyContinue;$n++}};Write-Log "Nagle OFF en $n adaptador(es)" "ok"}
     if($sel["TCP"]){netsh int tcp set global autotuninglevel=normal 2>$null|Out-Null;netsh int tcp set global chimney=disabled 2>$null|Out-Null;netsh int tcp set global rss=enabled 2>$null|Out-Null;netsh int tcp set global fastopen=enabled 2>$null|Out-Null;Write-Log "TCP/IP optimizado" "ok"}
-    if($sel["DNS"]){$dn=0;Get-NetAdapter -EA SilentlyContinue|Where-Object{$_.Status-eq"Up"}|ForEach-Object{try{Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses("1.1.1.1","1.0.0.1") -EA Stop;$dn++}catch{}};Write-Log "DNS Cloudflare en $dn adaptador(es)" "ok"}
+    if($sel["DNS"]){
+        $dnsIdx = $cboDNSProvider.SelectedIndex
+        if($dnsIdx -lt 0 -or $dnsIdx -ge $script:dnsProviders.Count){ $dnsIdx=0 }
+        $dnsProv = $script:dnsProviders[$dnsIdx]
+        $dn=0
+        Get-NetAdapter -EA SilentlyContinue | Where-Object{$_.Status-eq"Up"} | ForEach-Object {
+            try {
+                Set-DnsClientServerAddress -InterfaceIndex $_.InterfaceIndex -ServerAddresses($dnsProv.Primary, $dnsProv.Secondary) -EA Stop
+                $dn++
+            } catch {}
+        }
+        Write-Log "DNS $($dnsProv.Name) ($($dnsProv.Primary) / $($dnsProv.Secondary)) en $dn adaptador(es)" "ok"
+    }
     if($sel["DNSFlush"]){ipconfig /flushdns 2>$null|Out-Null;Write-Log "Cache DNS limpiada" "ok"}
+    if($sel["DisableIPv6"]){Set-Progress 75 "Deshabilitando IPv6..."
+        Write-Log "IPV6" "head"
+        $n6=0
+        Get-NetAdapter -EA SilentlyContinue | Where-Object{$_.Status -eq "Up"} | ForEach-Object {
+            try {
+                Disable-NetAdapterBinding -Name $_.Name -ComponentID "ms_tcpip6" -EA Stop
+                $n6++
+            } catch {}
+        }
+        # Tambien via registro para persistencia total
+        Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" "DisabledComponents" DWord 0xFF
+        Write-Log "IPv6 deshabilitado en $n6 adaptador(es) + registro" "ok"
+    }
 
-    if($sel["SvcXbox"] -or $sel["SvcDiag"] -or $sel["SvcWER"] -or $sel["SvcSysMain"] -or $sel["SvcMaps"] -or $sel["SvcFax"]){Set-Progress 82 "Servicios..."; Write-Log "SERVICIOS" "head"}
+    if($sel["SvcXbox"] -or $sel["SvcDiag"] -or $sel["SvcWER"] -or $sel["SvcSysMain"] -or $sel["SvcMaps"] -or $sel["SvcFax"] -or $sel["SvcWSearch"]){Set-Progress 82 "Servicios..."; Write-Log "SERVICIOS" "head"}
     if($sel["SvcXbox"]){Disable-Svc "XblAuthManager" "Xbox Live Auth";Disable-Svc "XblGameSave" "Xbox GameSave";Disable-Svc "XboxNetApiSvc" "Xbox Networking"}
     if($sel["SvcDiag"]){Disable-Svc "DiagTrack" "DiagTrack"}
     if($sel["SvcWER"]){Disable-Svc "WerSvc" "Windows Error Reporting"}
     if($sel["SvcSysMain"] -and $HAS_SSD){Disable-Svc "SysMain" "SysMain/Superfetch"}
     if($sel["SvcMaps"]){Disable-Svc "MapsBroker" "Maps Broker";Disable-Svc "lfsvc" "Geolocation"}
     if($sel["SvcFax"]){Disable-Svc "Fax" "Fax";Disable-Svc "RemoteRegistry" "Remote Registry"}
+    if($sel["SvcWSearch"] -and $HAS_SSD){Disable-Svc "WSearch" "Windows Search (indexado)"}
 
-    if($sel["Visual"]){Set-Progress 90 "Efectos visuales..."; Write-Log "EFECTOS VISUALES" "head"
+    if($sel["FastStartup"]){Set-Progress 88 "Fast Startup..."; Write-Log "FAST STARTUP" "head"
+        Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" DWord 0
+        powercfg /hibernate off 2>$null | Out-Null
+        Write-Log "Fast Startup deshabilitado (HiberbootEnabled=0 + hibernate off)" "ok"
+    }
+
+    # ----------------------------------------------------------
+    # PAGEFILE
+    # ----------------------------------------------------------
+    if($sel["PageFile"]){Set-Progress 91 "Optimizando PageFile..."; Write-Log "PAGEFILE" "head"
+        try {
+            # Calcular min/max optimos segun RAM instalada
+            # min = 1x RAM (MB), max = 2x RAM (MB), tope de 8192 MB para sistemas con mucha RAM
+            $pfMin = [math]::Min($totalRAM * 1024, 4096)
+            $pfMax = [math]::Min($totalRAM * 1024 * 2, 8192)
+
+            # Detectar disco secundario (distinto de SYSDRIVE)
+            $altDrive = $null
+            try {
+                $altDrive = Get-PSDrive -PSProvider FileSystem -EA SilentlyContinue |
+                    Where-Object { $_.Root -ne "$SYSDRIVE\" -and $null -ne $_.Used } |
+                    Select-Object -First 1
+            } catch {}
+
+            $targetDrive = $SYSDRIVE
+            if($altDrive){
+                $altRoot = $altDrive.Root.TrimEnd('\')
+                $resp = [Windows.MessageBox]::Show(
+                    "Se detecto el disco secundario $altRoot`n`nMover el PageFile a $altRoot para liberar espacio en $SYSDRIVE ?`n`n[Si] = Mover a $altRoot`n[No] = Mantener en $SYSDRIVE",
+                    "OptimizarPC - PageFile",
+                    [Windows.MessageBoxButton]::YesNo,
+                    [Windows.MessageBoxImage]::Question)
+                if($resp -eq [Windows.MessageBoxResult]::Yes){ $targetDrive = $altRoot }
+            }
+
+            # Deshabilitar gestion automatica para todos los volumenes
+            $cs = Get-CimInstance Win32_ComputerSystem -EA Stop
+            if($cs.AutomaticManagedPagefile){
+                Set-CimInstance -InputObject $cs -Property @{AutomaticManagedPagefile=$false} -EA Stop
+                Write-Log "Gestion automatica de PageFile desactivada" "ok"
+            }
+
+            # Eliminar PageFiles existentes via WMI
+            $existing = Get-CimInstance Win32_PageFileSetting -EA SilentlyContinue
+            foreach($pf in $existing){
+                try { Remove-CimInstance -InputObject $pf -EA SilentlyContinue } catch {}
+            }
+
+            # Crear PageFile en el disco elegido con tamaño fijo
+            $pfPath = "$targetDrive\pagefile.sys"
+            New-CimInstance -ClassName Win32_PageFileSetting -Property @{
+                Name        = $pfPath
+                InitialSize = [uint32]$pfMin
+                MaximumSize = [uint32]$pfMax
+            } -EA Stop | Out-Null
+
+            Write-Log "PageFile: $pfPath  min=$pfMin MB  max=$pfMax MB" "ok"
+            Write-Log "Cambio efectivo tras reinicio" "info"
+        } catch {
+            Write-Log "Error configurando PageFile: $_" "err"
+        }
+    }
+
+    # ----------------------------------------------------------
+    # TRIM / DESFRAG SCHEDULE
+    # ----------------------------------------------------------
+    if($sel["TrimDesfrag"]){Set-Progress 94 "TRIM / Desfrag schedule..."; Write-Log "TRIM / DESFRAG" "head"
+        try {
+            if($HAS_SSD){
+                # SSD: asegurar que TRIM este habilitado y forzar una pasada inmediata
+                $trimState = (fsutil behavior query DisableDeleteNotify 2>$null) -join ""
+                if($trimState -match "= 1"){
+                    fsutil behavior set DisableDeleteNotify 0 2>$null | Out-Null
+                    Write-Log "TRIM re-habilitado (DisableDeleteNotify=0)" "ok"
+                } else {
+                    Write-Log "TRIM ya estaba habilitado" "ok"
+                }
+
+                # Habilitar y configurar la tarea programada de Optimize-Volume (semanal)
+                $taskName = "Microsoft\Windows\Defrag\ScheduledDefrag"
+                try {
+                    Enable-ScheduledTask -TaskPath "\Microsoft\Windows\Defrag\" -TaskName "ScheduledDefrag" -EA Stop | Out-Null
+                    Write-Log "Tarea ScheduledDefrag habilitada (TRIM semanal automatico)" "ok"
+                } catch { Write-Log "No se pudo habilitar tarea de TRIM: $_" "skip" }
+
+                # Ejecutar TRIM en todos los volumenes SSD accesibles (en background para no bloquear UI)
+                $ssdVolumes = Get-PhysicalDisk -EA SilentlyContinue |
+                    Where-Object { $_.MediaType -eq "SSD" } |
+                    Get-Disk -EA SilentlyContinue |
+                    Get-Partition -EA SilentlyContinue |
+                    Get-Volume -EA SilentlyContinue |
+                    Where-Object { $_.DriveLetter -and $_.DriveType -eq "Fixed" }
+
+                foreach($vol in $ssdVolumes){
+                    try {
+                        Optimize-Volume -DriveLetter $vol.DriveLetter -ReTrim -NormalPriority -EA SilentlyContinue
+                        Write-Log "TRIM ejecutado en $($vol.DriveLetter):" "ok"
+                    } catch { Write-Log "TRIM en $($vol.DriveLetter): omitido" "skip" }
+                }
+
+            } else {
+                # HDD: habilitar la tarea de desfragmentacion semanal
+                try {
+                    Enable-ScheduledTask -TaskPath "\Microsoft\Windows\Defrag\" -TaskName "ScheduledDefrag" -EA Stop | Out-Null
+                    Write-Log "Desfragmentacion semanal habilitada (HDD)" "ok"
+                } catch { Write-Log "No se pudo habilitar tarea de desfrag: $_" "skip" }
+
+                # Verificar que Optimize-Volume este configurado para cada volumen HDD fijo
+                $hddVolumes = Get-Volume -EA SilentlyContinue |
+                    Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter }
+                foreach($vol in $hddVolumes){
+                    try {
+                        $defragInfo = Get-StorageSetting -EA SilentlyContinue
+                        Write-Log "HDD $($vol.DriveLetter): desfrag programado habilitado" "ok"
+                    } catch {}
+                }
+            }
+        } catch {
+            Write-Log "Error en TRIM/Desfrag: $_" "err"
+        }
+    }
+
+    if($sel["Visual"]){Set-Progress 96 "Efectos visuales..."; Write-Log "EFECTOS VISUALES" "head"
         Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" "VisualFXSetting" DWord 2
         Set-Reg "HKCU:\Control Panel\Desktop" "FontSmoothing" String "2"
-        if($totalRAM-le8){Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" "EnableTransparency" DWord 0;Write-Log "Transparencia OFF (RAM baja)" "ok"}}
+        if($totalRAM-le8){Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" "EnableTransparency" DWord 0;Write-Log "Transparencia OFF (RAM baja)" "ok"}
+    }
 
     Set-Progress 100 "Completado"
     Write-Log "Optimizacion completada. Reinicia para aplicar todos los cambios." "ok"
@@ -546,6 +749,293 @@ $script:monitorTimer.Start()
 $window.Add_Closing({
     $script:monitorTimer.Stop()
     try { $script:pcCPU.Dispose(); $script:pcRAMFree.Dispose(); $script:pcDisk.Dispose() } catch {}
+})
+
+
+# ============================================================
+# GESTOR DE ARRANQUE
+# ============================================================
+$script:startupItems = @()
+$APPR_HKCU   = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+$APPR_HKLM   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+$APPR_FOLDER = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder"
+
+function Get-ApprState {
+    param([string]$apprPath, [string]$name)
+    try {
+        $v = Get-ItemPropertyValue -Path $apprPath -Name $name -EA SilentlyContinue
+        if ($v -and $v.Length -ge 1) { return ($v[0] -ne 0x03 -and $v[0] -ne 0x08) }
+    } catch {}
+    return $true
+}
+
+function Load-StartupItems {
+    $script:startupItems = @()
+
+    # HKCU\Run
+    $runHKCU = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+    try {
+        $p = Get-ItemProperty -Path $runHKCU -EA SilentlyContinue
+        if ($p) {
+            $p.PSObject.Properties | Where-Object { $_.Name -notlike "PS*" } | ForEach-Object {
+                $script:startupItems += [PSCustomObject]@{
+                    Name     = $_.Name
+                    Path     = $_.Value
+                    Source   = "HKCU"
+                    Enabled  = Get-ApprState $APPR_HKCU $_.Name
+                    ApprPath = $APPR_HKCU
+                    FileName = ""
+                }
+            }
+        }
+    } catch {}
+
+    # HKLM\Run
+    $runHKLM = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+    try {
+        $p = Get-ItemProperty -Path $runHKLM -EA SilentlyContinue
+        if ($p) {
+            $p.PSObject.Properties | Where-Object { $_.Name -notlike "PS*" } | ForEach-Object {
+                $script:startupItems += [PSCustomObject]@{
+                    Name     = $_.Name
+                    Path     = $_.Value
+                    Source   = "HKLM"
+                    Enabled  = Get-ApprState $APPR_HKLM $_.Name
+                    ApprPath = $APPR_HKLM
+                    FileName = ""
+                }
+            }
+        }
+    } catch {}
+
+    # Carpeta Startup del usuario
+    $userStartup = [System.Environment]::GetFolderPath("Startup")
+    try {
+        Get-ChildItem -Path $userStartup -File -EA SilentlyContinue |
+        Where-Object { $_.Extension -ne ".ini" } |
+        ForEach-Object {
+            $fname = $_.Name
+            $script:startupItems += [PSCustomObject]@{
+                Name     = [System.IO.Path]::GetFileNameWithoutExtension($fname)
+                Path     = $_.FullName
+                Source   = "Startup"
+                Enabled  = Get-ApprState $APPR_FOLDER $fname
+                ApprPath = $APPR_FOLDER
+                FileName = $fname
+            }
+        }
+    } catch {}
+
+    # Carpeta Startup comun (todos los usuarios)
+    $allStartup = [System.Environment]::GetFolderPath("CommonStartup")
+    try {
+        Get-ChildItem -Path $allStartup -File -EA SilentlyContinue |
+        Where-Object { $_.Extension -ne ".ini" } |
+        ForEach-Object {
+            $fname = $_.Name
+            $script:startupItems += [PSCustomObject]@{
+                Name     = [System.IO.Path]::GetFileNameWithoutExtension($fname)
+                Path     = $_.FullName
+                Source   = "Startup All"
+                Enabled  = $true
+                ApprPath = $APPR_FOLDER
+                FileName = $fname
+            }
+        }
+    } catch {}
+}
+
+function Render-StartupItems {
+    $icStartup.Items.Clear()
+    $styleOn  = $window.FindResource("BtnToggleOn")
+    $styleOff = $window.FindResource("BtnToggleOff")
+
+    $i = 0
+    foreach ($item in $script:startupItems) {
+        $rowBorder = New-Object Windows.Controls.Border
+        $rowBorder.Padding = New-Object Windows.Thickness(12,5,12,5)
+        $rowBorder.BorderThickness = New-Object Windows.Thickness(0,0,0,1)
+        $rowBorder.BorderBrush = New-Object Windows.Media.SolidColorBrush(
+            [Windows.Media.ColorConverter]::ConvertFromString("#1A1A1A"))
+
+        $grid = New-Object Windows.Controls.Grid
+        foreach ($w in @(80,180,75,1,95)) {
+            $cd = New-Object Windows.Controls.ColumnDefinition
+            $cd.Width = if($w -eq 1){
+                [Windows.GridLength]::new(1,[Windows.GridUnitType]::Star)
+            } else {
+                [Windows.GridLength]::new($w)
+            }
+            $grid.ColumnDefinitions.Add($cd)
+        }
+
+        # Col 0 - Badge estado
+        $stBdr = New-Object Windows.Controls.Border
+        $stBdr.CornerRadius = New-Object Windows.CornerRadius(3)
+        $stBdr.Padding = New-Object Windows.Thickness(6,2,6,2)
+        $stBdr.VerticalAlignment = [Windows.VerticalAlignment]::Center
+        $stBdr.HorizontalAlignment = [Windows.HorizontalAlignment]::Left
+        $stBdr.Background = New-Object Windows.Media.SolidColorBrush(
+            [Windows.Media.ColorConverter]::ConvertFromString($(if($item.Enabled){"#0A2A0A"}else{"#222222"})))
+        $stTxt = New-Object Windows.Controls.TextBlock
+        $stTxt.Text = if($item.Enabled){"Activo"}else{"Inactivo"}
+        $stTxt.FontSize = 10
+        $stTxt.Foreground = New-Object Windows.Media.SolidColorBrush(
+            [Windows.Media.ColorConverter]::ConvertFromString($(if($item.Enabled){"#22C55E"}else{"#555555"})))
+        $stBdr.Child = $stTxt
+        [Windows.Controls.Grid]::SetColumn($stBdr, 0)
+
+        # Col 1 - Nombre
+        $nameTxt = New-Object Windows.Controls.TextBlock
+        $nameTxt.Text = $item.Name
+        $nameTxt.FontSize = 12
+        $nameTxt.Foreground = New-Object Windows.Media.SolidColorBrush([Windows.Media.Colors]::LightGray)
+        $nameTxt.VerticalAlignment = [Windows.VerticalAlignment]::Center
+        $nameTxt.TextTrimming = [Windows.TextTrimming]::CharacterEllipsis
+        $nameTxt.Margin = New-Object Windows.Thickness(0,0,6,0)
+        [Windows.Controls.Grid]::SetColumn($nameTxt, 1)
+
+        # Col 2 - Badge origen
+        $srcBdr = New-Object Windows.Controls.Border
+        $srcBdr.CornerRadius = New-Object Windows.CornerRadius(3)
+        $srcBdr.Padding = New-Object Windows.Thickness(5,2,5,2)
+        $srcBdr.VerticalAlignment = [Windows.VerticalAlignment]::Center
+        $srcBdr.HorizontalAlignment = [Windows.HorizontalAlignment]::Left
+        $srcBdr.Background = New-Object Windows.Media.SolidColorBrush(
+            [Windows.Media.ColorConverter]::ConvertFromString("#1A1A2A"))
+        $srcTxt = New-Object Windows.Controls.TextBlock
+        $srcTxt.Text = $item.Source
+        $srcTxt.FontSize = 10
+        $srcTxt.Foreground = New-Object Windows.Media.SolidColorBrush(
+            [Windows.Media.ColorConverter]::ConvertFromString("#7788AA"))
+        $srcBdr.Child = $srcTxt
+        [Windows.Controls.Grid]::SetColumn($srcBdr, 2)
+
+        # Col 3 - Ruta
+        $pathTxt = New-Object Windows.Controls.TextBlock
+        $pathTxt.Text = $item.Path
+        $pathTxt.FontSize = 11
+        $pathTxt.Foreground = New-Object Windows.Media.SolidColorBrush(
+            [Windows.Media.ColorConverter]::ConvertFromString("#444444"))
+        $pathTxt.VerticalAlignment = [Windows.VerticalAlignment]::Center
+        $pathTxt.TextTrimming = [Windows.TextTrimming]::CharacterEllipsis
+        $pathTxt.Margin = New-Object Windows.Thickness(8,0,8,0)
+        [Windows.Controls.Grid]::SetColumn($pathTxt, 3)
+
+        # Col 4 - Boton toggle
+        $toggleBtn = New-Object Windows.Controls.Button
+        $toggleBtn.Tag     = $i
+        $toggleBtn.Content = if($item.Enabled){"Deshabilitar"}else{"Habilitar"}
+        $toggleBtn.Style   = if($item.Enabled){$styleOn}else{$styleOff}
+        $toggleBtn.VerticalAlignment = [Windows.VerticalAlignment]::Center
+        $toggleBtn.HorizontalAlignment = [Windows.HorizontalAlignment]::Center
+        [Windows.Controls.Grid]::SetColumn($toggleBtn, 4)
+
+        $toggleBtn.Add_Click({
+            $idx = [int]$args[0].Tag
+            Toggle-StartupItem $idx
+        })
+
+        $grid.Children.Add($stBdr)    | Out-Null
+        $grid.Children.Add($nameTxt)  | Out-Null
+        $grid.Children.Add($srcBdr)   | Out-Null
+        $grid.Children.Add($pathTxt)  | Out-Null
+        $grid.Children.Add($toggleBtn)| Out-Null
+
+        $rowBorder.Child = $grid
+        $icStartup.Items.Add($rowBorder) | Out-Null
+        $i++
+    }
+
+    $total   = $script:startupItems.Count
+    $activos = ($script:startupItems | Where-Object { $_.Enabled }).Count
+    $lblStartupCount.Text  = "$total programas en total  |  $activos activos  |  $($total - $activos) deshabilitados"
+    $lblStartupStatus.Text = "Lista actualizada"
+    Flush-UI
+}
+
+function Toggle-StartupItem {
+    param([int]$idx)
+    $item      = $script:startupItems[$idx]
+    $newState  = -not $item.Enabled
+    $valBytes  = if($newState){ [byte[]](0x02,0,0,0,0,0,0,0,0,0,0,0) }
+                 else         { [byte[]](0x03,0,0,0,0,0,0,0,0,0,0,0) }
+    try {
+        if (-not (Test-Path $item.ApprPath)) {
+            New-Item -Path $item.ApprPath -Force | Out-Null
+        }
+        $keyName = if($item.FileName -ne ""){ $item.FileName } else { $item.Name }
+        Set-ItemProperty -Path $item.ApprPath -Name $keyName -Type Binary -Value $valBytes -Force
+        $item.Enabled = $newState
+        $lblStartupStatus.Text = "$(if($newState){'Habilitado'}else{'Deshabilitado'}): $($item.Name)"
+        Render-StartupItems
+    } catch {
+        $lblStartupStatus.Text = "Error: $_"
+    }
+}
+
+$btnRefreshStartup.Add_Click({
+    $lblStartupStatus.Text = "Actualizando..."
+    Flush-UI
+    Load-StartupItems
+    Render-StartupItems
+})
+
+# ============================================================
+# LIBERADOR DE RAM
+# ============================================================
+function Update-RAMDisplay {
+    try {
+        $os     = Get-CimInstance Win32_OperatingSystem -EA SilentlyContinue
+        $totGB  = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+        $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+        $usedGB = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1MB, 1)
+        $lblRAMTotal.Text = "$totGB GB"
+        $lblRAMUsed.Text  = "$usedGB GB"
+        $lblRAMFree.Text  = "$freeGB GB"
+    } catch {}
+}
+
+$btnFreeRAM.Add_Click({
+    $btnFreeRAM.IsEnabled    = $false
+    $lblRAMFreeStatus.Text   = "Liberando procesos..."
+    Flush-UI
+    try {
+        $osBefore = Get-CimInstance Win32_OperatingSystem -EA SilentlyContinue
+        $freeBefore = $osBefore.FreePhysicalMemory
+
+        # Paso 1: EmptyWorkingSet en todos los procesos accesibles
+        $count = 0
+        Get-Process -EA SilentlyContinue | ForEach-Object {
+            try { [MemAPI]::EmptyWorkingSet($_.Handle) | Out-Null; $count++ } catch {}
+        }
+
+        $lblRAMFreeStatus.Text = "Vaciando Standby List..."
+        Flush-UI
+
+        # Paso 2: Purgar Standby List del kernel (requiere admin)
+        try { [MemAPI]::PurgeStandbyList() } catch {}
+
+        Start-Sleep -Milliseconds 600
+        $osAfter  = Get-CimInstance Win32_OperatingSystem -EA SilentlyContinue
+        $freeAfter = $osAfter.FreePhysicalMemory
+        $freedMB  = [math]::Round(($freeAfter - $freeBefore) / 1KB, 0)
+        $sign     = if($freedMB -ge 0){"+"}else{""}
+
+        Update-RAMDisplay
+        $lblRAMFreeStatus.Text = "Completado  |  ${sign}${freedMB} MB liberados  |  $count procesos procesados"
+    } catch {
+        $lblRAMFreeStatus.Text = "Error: $_"
+    }
+    $btnFreeRAM.IsEnabled = $true
+    Flush-UI
+})
+
+# Cargar datos al mostrar la ventana
+$window.Add_ContentRendered({
+    Load-StartupItems
+    Render-StartupItems
+    Update-RAMDisplay
 })
 
 $window.ShowDialog()|Out-Null
