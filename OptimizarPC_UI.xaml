@@ -94,6 +94,22 @@
         </Border>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
+    <Style x:Key="BtnDanger" TargetType="Button">
+      <Setter Property="Background" Value="#2A0A0A"/><Setter Property="Foreground" Value="#EF4444"/>
+      <Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Padding" Value="16,7"/><Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="#4A1A1A"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#3D1212"/><Setter Property="BorderBrush" Value="#EF4444"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#161616"/><Setter Property="Foreground" Value="#444444"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
     <Style x:Key="BtnToggleOn" TargetType="Button">
       <Setter Property="Background" Value="#2A1212"/><Setter Property="Foreground" Value="#EF4444"/>
       <Setter Property="FontSize" Value="10"/><Setter Property="Padding" Value="8,4"/>
@@ -544,6 +560,109 @@
           </Border>
         </StackPanel></ScrollViewer>
       </TabItem>
+      <!-- TAB HISTORIAL -->
+      <TabItem Header="Historial">
+        <Grid Margin="20,16">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+          </Grid.RowDefinitions>
+
+          <!-- Descripcion -->
+          <TextBlock Grid.Row="0" FontSize="12" Foreground="#888888" TextWrapping="Wrap" Margin="0,0,0,12"
+            Text="Cada vez que ejecutas una optimizacion se guarda un punto de restauracion completo. Podes revertir cualquier sesion anterior de forma individual."/>
+
+          <!-- Barra de acciones -->
+          <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal">
+              <Button x:Name="btnRefreshHistory" Content="Actualizar" Style="{StaticResource BtnSec}" Padding="14,6" Margin="0,0,8,0"/>
+              <Button x:Name="btnOpenBackupFolder" Content="Abrir carpeta" Style="{StaticResource BtnSec}" Padding="14,6" Margin="0,0,16,0"/>
+              <Border Background="#1A1A1A" CornerRadius="4" Padding="10,5" VerticalAlignment="Center">
+                <TextBlock x:Name="lblHistoryStatus" Text="Cargando..." FontSize="11" Foreground="#555555"/>
+              </Border>
+            </StackPanel>
+            <Button x:Name="btnRevertLast" Grid.Column="1"
+                    Content="Revertir ultima sesion"
+                    Style="{StaticResource BtnDanger}" Padding="16,6">
+              <Button.ToolTip>
+                <ToolTip Background="#1A1A1A" BorderBrush="#EF4444" Foreground="#CCCCCC" FontSize="11">
+                  Revierte automaticamente la sesion mas reciente guardada.
+                </ToolTip>
+              </Button.ToolTip>
+            </Button>
+          </Grid>
+
+          <!-- Lista de sesiones -->
+          <Border Grid.Row="2" Background="#0A0A0A" CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="1">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+              </Grid.RowDefinitions>
+              <!-- Cabecera columnas -->
+              <Border Grid.Row="0" Background="#161616" CornerRadius="8,8,0,0"
+                      Padding="14,8" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="150"/>
+                    <ColumnDefinition Width="90"/>
+                    <ColumnDefinition Width="70"/>
+                    <ColumnDefinition Width="75"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="110"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="FECHA"    FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="1" Text="PRESET"   FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="2" Text="ACCIONES" FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="3" Text="LIBERADO"  FontSize="10" FontWeight="SemiBold" Foreground="#555555"/>
+                  <TextBlock Grid.Column="4" Text="ESTADO"   FontSize="10" FontWeight="SemiBold" Foreground="#555555" Margin="8,0,0,0"/>
+                  <TextBlock Grid.Column="5" Text="ACCION"   FontSize="10" FontWeight="SemiBold" Foreground="#555555" HorizontalAlignment="Center"/>
+                </Grid>
+              </Border>
+              <!-- Filas dinamicas -->
+              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="icHistory" Padding="0,4"/>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+
+          <!-- Footer con log de restauracion -->
+          <Border Grid.Row="3" Background="#0F0F0F" CornerRadius="8"
+                  BorderBrush="#2A2A2A" BorderThickness="1" Margin="0,10,0,0">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="80"/>
+              </Grid.RowDefinitions>
+              <Border Grid.Row="0" Background="#161616" CornerRadius="8,8,0,0"
+                      Padding="12,6" BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="LOG DE RESTAURACION" FontSize="10" FontWeight="SemiBold"
+                             Foreground="#555555" VerticalAlignment="Center"/>
+                  <Border x:Name="badgeRestoreStatus" Background="#1A1A1A" CornerRadius="4"
+                          Padding="8,2" Margin="12,0,0,0">
+                    <TextBlock x:Name="lblRestoreLog" Text="Sin actividad"
+                               FontSize="10" Foreground="#555555"/>
+                  </Border>
+                </StackPanel>
+              </Border>
+              <ScrollViewer Grid.Row="1" x:Name="restoreLogScroll" VerticalScrollBarVisibility="Auto">
+                <RichTextBox x:Name="rtbRestoreLog" Background="Transparent"
+                             FontFamily="Consolas" FontSize="11" BorderThickness="0"
+                             IsReadOnly="True" Padding="12,8" IsDocumentEnabled="True"/>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+
+        </Grid>
+      </TabItem>
+
     </TabControl>
 
     <!-- PROGRESO -->
