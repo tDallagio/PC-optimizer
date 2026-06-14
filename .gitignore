@@ -1,0 +1,6 @@
+# Binarios compilados
+dist/
+installer/Output/
+
+# Archivos locales de Claude Code
+.claude/
