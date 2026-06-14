@@ -51,7 +51,7 @@
 
 - [x] **F2.2 [AUDIT A3]** Race condition monitor timer vs Dispose — en `Add_Closing` se hace `.Dispose()` mientras el tick puede estar en `NextValue()`. Fix: llamar `$script:monitorTimer.Stop()` ANTES de los `.Dispose()` + flag `$script:shuttingDown` que el tick chequee al inicio.
 
-- [ ] **F2.3 [AUDIT C3]** Mejorar proteccion de licencia — salt hardcodeado `OptPC40_LicSalt_v1` es trivialmente crackeable. BAJA PRIORIDAD REAL: optimizacion prematura sin usuarios. Fix futuro: firma asimetrica RSA/ECDSA. NO priorizar para v1.0.
+- [x] **F2.3 [AUDIT C3]** Mejorar proteccion de licencia — firma asimetrica RSA-2048. Clave publica embebida en el exe; clave privada solo en Gen-License.ps1 + _private_key.xml (fuera del repo).
 
 - [x] **F2.4 [AUDIT A1]** Fusionar los dos `$mainTabs.Add_SelectionChanged` (lineas ~4165 y ~4378) en un unico handler. Actualmente WPF los acumula y ambos corren en cada cambio de tab.
 
@@ -124,10 +124,10 @@
 |------|-------|-------|-----------|
 | F0 — Prerequisitos y bugs criticos | 12 | 12 | 0 |
 | F1 — Lanzamiento | 9 | 9 | 0 |
-| F2 — Post-launch | 20 | 19 | 1 |
-| **TOTAL** | **41** | **40** | **1** |
+| F2 — Post-launch | 20 | 20 | 0 |
+| **TOTAL** | **41** | **41** | **0** |
 
-**FASE 1 COMPLETA. Proximo a implementar:** F2.3 (Mejorar proteccion de licencia — BAJA PRIORIDAD).
+**TODAS LAS FASES COMPLETAS.**
 
 ---
 

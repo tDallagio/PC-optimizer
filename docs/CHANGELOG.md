@@ -5,6 +5,61 @@
 
 ---
 
+## F2.3 — Proteccion de licencia con firma asimetrica RSA-2048
+
+**Archivos modificados**
+- `OptimizarPC_App.ps1` — Modulo 12A reemplazado, handler de activacion actualizado
+- `OptimizarPC_UI.xaml` — label y TextBox del tab Licencia actualizados
+- `.gitignore` — excluye `_private_key.xml`
+
+**Archivos nuevos**
+- `Gen-License.ps1` — herramienta interna para emitir licencias con la clave privada
+
+**Problema**
+`$script:LICENSE_SALT = "OptPC40_LicSalt_v1"` y `$script:TECH_LICENSE_SALT = "OptPC40_TechLic_v1"` estaban embebidos como strings legibles en el PS1. Cualquiera que extrajera el codigo del exe podia computar `SHA256(HWID + salt)` y generar claves validas para cualquier equipo.
+
+**Solucion**
+- Se genera un par de claves RSA-2048 con `RSACryptoServiceProvider`.
+- La **clave publica** queda embebida en `$script:LICENSE_PUBLIC_KEY_XML` (en el exe).
+- La **clave privada** vive unicamente en `_private_key.xml` (fuera del repo, `.gitignore`).
+- `Gen-License.ps1` lee la clave privada y firma el mensaje correspondiente al tier.
+
+**Mensajes firmados**
+- Pro: `"WINBOOST-PRO-<HWID>"` — firma distinta para cada hardware
+- Tecnico: `"WINBOOST-TECH"` — firma fija, multi-PC
+
+**Funciones reemplazadas**
+- `Get-ExpectedKey` → eliminada (era para el emisor, ahora esta en Gen-License.ps1)
+- `Get-ExpectedTechKey` → eliminada (idem)
+- `Test-LicenseKey` → ahora llama `Test-LicenseSignature` con RSA
+- `Test-TechLicenseKey` → ahora llama `Test-LicenseSignature` con RSA
+- Nueva: `Test-LicenseSignature` — `RSACryptoServiceProvider.VerifyHash` con SHA256
+
+**Formato de clave**
+- Antes: `XXXX-XXXX-XXXX-XXXX` (19 chars, SHA256 truncado)
+- Ahora Pro: Base64 de 256 bytes (firma RSA-2048, ~344 chars, pegar desde email)
+- Ahora Tech: `TECH-<Base64>` (~349 chars)
+
+**XAML**
+- Label actualizado: "Pega tu clave de activacion (la recibiras por email al comprar)"
+- `CharacterCasing="Upper"` removido del TextBox (Base64 es case-sensitive)
+- `MaxLength="19"` removido (firma es mucho mas larga)
+- `FontSize` del TextBox reducido de 13 a 11 para que quepa la firma
+
+**Gen-License.ps1**
+```powershell
+# Generar licencia Pro
+.\Gen-License.ps1 -HardwareID "A1B2C3D4E5F60718"
+
+# Generar licencia Tecnico
+.\Gen-License.ps1 -Tech
+
+# Rotar el par de claves RSA
+.\Gen-License.ps1 -GenerateKeys
+```
+
+---
+
 ## F2.20 — Afinidad de CPU automatica en Game Focus Mode
 
 **Archivo modificado**

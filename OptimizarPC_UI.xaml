@@ -2419,7 +2419,7 @@
           <Border Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}"
                   BorderThickness="1" Padding="16" Margin="0,0,0,16">
             <StackPanel>
-              <TextBlock Text="Ingresa tu clave de activacion (formato XXXX-XXXX-XXXX-XXXX):"
+              <TextBlock Text="Pega tu clave de activacion (la recibiras por email al comprar):"
                          FontSize="12" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,10"/>
               <Grid Margin="0,0,0,10">
                 <Grid.ColumnDefinitions>
@@ -2428,9 +2428,8 @@
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="txtLicenseKey"
                          Style="{StaticResource TxtDark}"
-                         FontFamily="Consolas" FontSize="13"
-                         Padding="12,9" MaxLength="19"
-                         CharacterCasing="Upper"
+                         FontFamily="Consolas" FontSize="11"
+                         Padding="12,9"
                          VerticalContentAlignment="Center"/>
                 <Button x:Name="btnActivateLicense" Grid.Column="1"
                         Content="Activar" Style="{StaticResource BtnMain}"

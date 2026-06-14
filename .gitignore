@@ -4,3 +4,6 @@ installer/Output/
 
 # Archivos locales de Claude Code
 .claude/
+
+# Clave privada RSA para emision de licencias (nunca al repo)
+_private_key.xml

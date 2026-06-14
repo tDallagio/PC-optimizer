@@ -8986,9 +8986,9 @@ function Compare-Snapshots {
 # MODULO 12A - MOTOR DE HARDWARE ID Y LICENCIA
 # ============================================================
 
-$script:LICENSE_SALT      = "OptPC40_LicSalt_v1"
+# Clave publica RSA-2048. La privada la tiene solo el emisor (Gen-License.ps1).
+$script:LICENSE_PUBLIC_KEY_XML = '<RSAKeyValue><Modulus>1i89Gsv9L78TshLJGAhCSlvzoCKa2t5zk18kpC4gvzENP0yn6K8TLhCCRTaLAIO/ivRIpPX6UBPvkx1DAft+CqOXBc7L+hycDNIp7NYvebBoVCIFhwfLvjQloAniRIRe4bonEJffJul1y5jKUeErjSP3+PUgnPBO4mA2OfLcqFRyuLKllAuLsAdNE8j9ZyRJUFhQFnGnaANN8vVow9zA8AK+dWTO2s2k8WG32v3idxjlIqksnOZeqqGkXldyGA4z9UnLEr1PfEzItZoaic2xqPYEPB390ynfYXvaHHy2sV0U88rfarh4K2mRsBlQP/kjtXG7uxPH2wvYj0paslBE5Q==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>'
 $script:LICENSE_PATH      = "$env:USERPROFILE\.OptimizarPC\license.key"
-$script:TECH_LICENSE_SALT = "OptPC40_TechLic_v1"
 $script:TECH_LICENSE_PATH = "$env:USERPROFILE\.OptimizarPC\tech_license.key"
 
 # ------------------------------------------------------------
@@ -9023,71 +9023,56 @@ function Get-HardwareID {
 }
 
 # ------------------------------------------------------------
-# Get-ExpectedKey
-# Genera la clave de activacion esperada para un HardwareID
-# dado. Uso: emitir claves para entregar al cliente.
-# Retorna formato XXXX-XXXX-XXXX-XXXX (16 hex, 4 grupos).
+# Test-LicenseSignature (F2.3)
+# Verifica que SignatureBase64 sea una firma RSA-2048/SHA256
+# valida sobre Message usando la clave publica embebida.
+# Retorna $true si la firma es correcta.
 # ------------------------------------------------------------
-function Get-ExpectedKey {
-    param([string]$HardwareID)
-
-    $raw  = $HardwareID + $script:LICENSE_SALT
-    $sha  = [System.Security.Cryptography.SHA256]::Create()
-    $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($raw))
-    $sha.Dispose()
-    $hex  = [System.BitConverter]::ToString($hash).Replace("-", "").Substring(0, 16).ToUpper()
-    return "$($hex.Substring(0,4))-$($hex.Substring(4,4))-$($hex.Substring(8,4))-$($hex.Substring(12,4))"
-}
-
-# ------------------------------------------------------------
-# Test-LicenseKey
-# Valida que la clave tenga formato XXXX-XXXX-XXXX-XXXX y
-# coincida con la clave esperada para el hardware actual.
-# Validacion completamente offline.
-# Retorna $true si es valida, $false en cualquier otro caso.
-# ------------------------------------------------------------
-function Test-LicenseKey {
-    param([string]$Key)
-
-    if ([string]::IsNullOrWhiteSpace($Key)) { return $false }
-    if ($Key -notmatch '^[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$') {
-        return $false
-    }
+function Test-LicenseSignature {
+    param([string]$Message, [string]$SignatureBase64)
     try {
-        $hwid     = Get-HardwareID
-        $expected = Get-ExpectedKey -HardwareID $hwid
-        return ($Key.ToUpper() -eq $expected)
+        $rsa = New-Object System.Security.Cryptography.RSACryptoServiceProvider
+        $rsa.FromXmlString($script:LICENSE_PUBLIC_KEY_XML)
+        $sha    = [System.Security.Cryptography.SHA256]::Create()
+        $hash   = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Message))
+        $sha.Dispose()
+        $sig    = [System.Convert]::FromBase64String($SignatureBase64)
+        $result = $rsa.VerifyHash($hash, "SHA256", $sig)
+        $rsa.Dispose()
+        return $result
     } catch { return $false }
 }
 
 # ------------------------------------------------------------
-# Get-ExpectedTechKey
-# Clave Tech: SHA256 del TECH_SALT solamente (sin hardware ID).
-# La misma clave funciona en cualquier equipo — tier multi-PC.
+# Test-LicenseKey (F2.3)
+# Valida que Key sea una firma RSA Base64 sobre
+# "WINBOOST-PRO-<HWID>" con la clave publica embebida.
+# Retorna $true si la firma es correcta para este hardware.
 # ------------------------------------------------------------
-function Get-ExpectedTechKey {
-    $sha  = [System.Security.Cryptography.SHA256]::Create()
-    $hash = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($script:TECH_LICENSE_SALT))
-    $sha.Dispose()
-    $hex = [System.BitConverter]::ToString($hash).Replace("-", "").Substring(0, 16).ToUpper()
-    return "$($hex.Substring(0,4))-$($hex.Substring(4,4))-$($hex.Substring(8,4))-$($hex.Substring(12,4))"
+function Test-LicenseKey {
+    param([string]$Key)
+    if ([string]::IsNullOrWhiteSpace($Key)) { return $false }
+    try { [System.Convert]::FromBase64String($Key) | Out-Null } catch { return $false }
+    try {
+        $hwid = Get-HardwareID
+        return (Test-LicenseSignature -Message "WINBOOST-PRO-$hwid" -SignatureBase64 $Key)
+    } catch { return $false }
 }
 
 # ------------------------------------------------------------
-# Test-TechLicenseKey
-# Valida formato TECH-XXXX-XXXX-XXXX-XXXX (prefijo TECH-).
-# La parte tras el prefijo se compara con Get-ExpectedTechKey.
+# Test-TechLicenseKey (F2.3)
+# Valida que Key empiece con TECH- y que la parte Base64
+# sea una firma RSA sobre "WINBOOST-TECH" (sin hardware ID).
+# Retorna $true si la firma es correcta.
 # ------------------------------------------------------------
 function Test-TechLicenseKey {
     param([string]$Key)
     if ([string]::IsNullOrWhiteSpace($Key)) { return $false }
-    if ($Key -notmatch '^TECH-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}$') {
-        return $false
-    }
+    if ($Key -notmatch '^TECH-') { return $false }
+    $sig = $Key.Substring(5)
+    try { [System.Convert]::FromBase64String($sig) | Out-Null } catch { return $false }
     try {
-        $stripped = $Key.Substring(5)  # quitar "TECH-"
-        $expected = Get-ExpectedTechKey
-        return ($stripped.ToUpper() -eq $expected)
+        return (Test-LicenseSignature -Message "WINBOOST-TECH" -SignatureBase64 $sig)
     } catch { return $false }
 }
 
@@ -9322,14 +9307,14 @@ $btnCopyHWID.Add_Click({
 })
 
 $btnActivateLicense.Add_Click({
-    $key = $txtLicenseKey.Text.Trim().ToUpper()
+    $key = $txtLicenseKey.Text.Trim()
     if ([string]::IsNullOrWhiteSpace($key)) {
-        $lblActivationResult.Text       = "Ingresa una clave de activacion."
+        $lblActivationResult.Text       = "Pega tu clave de activacion."
         $lblActivationResult.Foreground = $script:brLicPro
         Flush-UI
         return
     }
-    # --- Tier Tecnico (TECH-XXXX-XXXX-XXXX-XXXX, multi-PC) ---
+    # --- Tier Tecnico (TECH-<Base64>, multi-PC) ---
     if ($key -match '^TECH-') {
         if (Test-TechLicenseKey -Key $key) {
             $dir = Split-Path $script:TECH_LICENSE_PATH
@@ -9342,13 +9327,13 @@ $btnActivateLicense.Add_Click({
             $lblActivationResult.Text       = "Licencia Tecnico activada. Valida en cualquier equipo."
             $lblActivationResult.Foreground = $script:brLicOk
         } else {
-            $lblActivationResult.Text       = "Clave Tecnico invalida. Formato: TECH-XXXX-XXXX-XXXX-XXXX"
+            $lblActivationResult.Text       = "Clave Tecnico invalida. Asegurate de pegarla exactamente como la recibiste."
             $lblActivationResult.Foreground = $script:brLicErr
         }
         Flush-UI
         return
     }
-    # --- Tier Pro (XXXX-XXXX-XXXX-XXXX, hardware-bound) ---
+    # --- Tier Pro (firma RSA Base64, hardware-bound) ---
     if (Test-LicenseKey -Key $key) {
         $dir = Split-Path $script:LICENSE_PATH
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
@@ -9359,7 +9344,7 @@ $btnActivateLicense.Add_Click({
         $lblActivationResult.Text       = "Activacion exitosa. Bienvenido a WinBoost PRO."
         $lblActivationResult.Foreground = $script:brLicOk
     } else {
-        $lblActivationResult.Text       = "Clave invalida. Pro: XXXX-XXXX-XXXX-XXXX  |  Tecnico: TECH-XXXX-XXXX-XXXX-XXXX"
+        $lblActivationResult.Text       = "Clave invalida o generada para otro equipo. Pega la clave exactamente como la recibiste."
         $lblActivationResult.Foreground = $script:brLicErr
     }
     Flush-UI
