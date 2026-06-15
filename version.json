@@ -1,7 +1,7 @@
 {
   "version": "4.0",
   "releaseUrl": "https://github.com/tDallagio/OptimizarPC/releases/latest",
-  "downloadUrl": "",
-  "sha256": "",
-  "changelog": "Version inicial"
+  "downloadUrl": "https://github.com/tDallagio/PC-optimizer/releases/tag/v4.0",
+  "sha256": "AC56FC4B3B2BA05F4744D76D64BB7F85CDDC0E461B05D4958373A7C91795DA69",
+  "changelog": "v4.0 - Lanzamiento inicial: optimizacion completa, modo gaming, licencias Pro y Tecnico."
 }
