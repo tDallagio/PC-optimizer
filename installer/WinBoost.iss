@@ -32,6 +32,9 @@ SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
+CloseApplications=yes
+RestartApplications=no
+UsePreviousAppDir=yes
 
 ; Icono del instalador (opcional - descomenta si tenes WinBoost.ico)
 ; SetupIconFile=..\WinBoost.ico

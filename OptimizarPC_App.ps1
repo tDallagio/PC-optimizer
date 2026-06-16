@@ -3125,7 +3125,7 @@ $btnRun.Add_Click({
 # URL del version.json en tu GitHub Gist o repo.
 # Campos esperados: version, releaseUrl, downloadUrl, sha256, changelog
 # ============================================================
-$UPDATE_CHECK_URL        = "https://raw.githubusercontent.com/tDallagio/OptimizarPC/main/version.json"
+$UPDATE_CHECK_URL        = "https://raw.githubusercontent.com/tDallagio/PC-optimizer/main/version.json"
 $script:updateReleaseUrl = ""
 $script:updateMeta       = $null
 
@@ -5500,6 +5500,51 @@ function Get-ExtendedSystemInfo {
     return $info
 }
 
+function Parse-PnpUtilOutput {
+    param([string[]]$Lines)
+    $packages = [System.Collections.Generic.List[object]]::new()
+    $current  = $null
+    foreach($line in $Lines){
+        $line = $line.Trim()
+        if([string]::IsNullOrWhiteSpace($line)){
+            if($current -ne $null){ $packages.Add($current); $current = $null }
+            continue
+        }
+        if($line -match '^Published Name\s*:\s*(.+)$'){
+            $current = [PSCustomObject]@{
+                PublishedName   = $Matches[1].Trim()
+                OriginalName    = ""
+                ProviderName    = ""
+                ClassName       = ""
+                DriverDate      = ""
+                DriverVersion   = ""
+                SignerName      = ""
+            }
+        } elseif($current -ne $null) {
+            if   ($line -match '^Original Name\s*:\s*(.+)$')  { $current.OriginalName  = $Matches[1].Trim() }
+            elseif($line -match '^Provider Name\s*:\s*(.+)$') { $current.ProviderName  = $Matches[1].Trim() }
+            elseif($line -match '^Class Name\s*:\s*(.+)$')    { $current.ClassName     = $Matches[1].Trim() }
+            elseif($line -match '^Driver Date\s*:\s*(.+)$')   { $current.DriverDate    = $Matches[1].Trim() }
+            elseif($line -match '^Driver Version\s*:\s*(.+)$'){ $current.DriverVersion = $Matches[1].Trim() }
+            elseif($line -match '^Signer Name\s*:\s*(.+)$')   { $current.SignerName    = $Matches[1].Trim() }
+        }
+    }
+    if($current -ne $null){ $packages.Add($current) }
+    return $packages
+}
+
+function Get-ObsoleteDriverPackages {
+    param([object[]]$Packages)
+    $grouped  = $Packages | Group-Object OriginalName
+    $obsolete = [System.Collections.Generic.List[object]]::new()
+    foreach($grp in $grouped){
+        if($grp.Count -lt 2){ continue }
+        $sorted = $grp.Group | Sort-Object DriverVersion -Descending
+        for($oi=1; $oi -lt $sorted.Count; $oi++){ $obsolete.Add($sorted[$oi]) }
+    }
+    return $obsolete
+}
+
 function Build-TuningTab {
     try {
         # ---- Crear TabItem y agregarlo a mainTabs ----
@@ -5562,7 +5607,7 @@ function Build-TuningTab {
         $script:cboPrio = New-Object Windows.Controls.ComboBox
         $script:cboPrio.FontSize  = 12
         $script:cboPrio.Margin    = New-Object Windows.Thickness(0,0,8,0)
-        $script:cboPrio.Style     = $window.FindResource("ComboBoxStyle1")
+        $script:cboPrio.Style     = $window.FindResource("ComboDark")
         foreach($opt in $prioOptions){
             $item = New-Object Windows.Controls.ComboBoxItem
             $item.Content = $opt.Label
@@ -5646,7 +5691,7 @@ function Build-TuningTab {
 
         $hagsRow = New-Object Windows.Controls.Grid
         $hcA = New-Object Windows.Controls.ColumnDefinition; $hcA.Width = [Windows.GridLength]::new(1,[Windows.GridUnitType]::Star)
-        $hcB = New-Object Windows.Controls.ColumnDefinition; $hcB.Width = [Windows.GridLength]::new([Windows.GridLength]::Auto)
+        $hcB = New-Object Windows.Controls.ColumnDefinition; $hcB.Width = [Windows.GridLength]::Auto
         $hagsRow.ColumnDefinitions.Add($hcA) | Out-Null
         $hagsRow.ColumnDefinitions.Add($hcB) | Out-Null
 
@@ -5912,64 +5957,18 @@ function Build-TuningTab {
         $c5.Panel.Children.Add($script:lblDriverStatus) | Out-Null
 
         # Lista de drivers obsoletos
-        $drvListScroll = New-Object Windows.Controls.ScrollViewer
-        $drvListScroll.MaxHeight = 240
-        $drvListScroll.VerticalScrollBarVisibility = [Windows.Controls.ScrollBarVisibility]::Auto
-        $drvListScroll.Visibility = [Windows.Visibility]::Collapsed
+        $script:drvListScroll = New-Object Windows.Controls.ScrollViewer
+        $script:drvListScroll.MaxHeight = 240
+        $script:drvListScroll.VerticalScrollBarVisibility = [Windows.Controls.ScrollBarVisibility]::Auto
+        $script:drvListScroll.Visibility = [Windows.Visibility]::Collapsed
 
         $script:icDrivers = New-Object Windows.Controls.ItemsControl
         $script:icDrivers.Margin = New-Object Windows.Thickness(0)
-        $drvListScroll.Content   = $script:icDrivers
-        $c5.Panel.Children.Add($drvListScroll) | Out-Null
+        $script:drvListScroll.Content   = $script:icDrivers
+        $c5.Panel.Children.Add($script:drvListScroll) | Out-Null
 
         $script:driverPackages   = @()
         $script:driverBackupDone = $false
-
-        # Funcion de parseo de pnputil
-        function Parse-PnpUtilOutput {
-            param([string[]]$Lines)
-            $packages = [System.Collections.Generic.List[object]]::new()
-            $current  = $null
-            foreach($line in $Lines){
-                $line = $line.Trim()
-                if([string]::IsNullOrWhiteSpace($line)){
-                    if($current -ne $null){ $packages.Add($current); $current = $null }
-                    continue
-                }
-                if($line -match '^Published Name\s*:\s*(.+)$'){
-                    $current = [PSCustomObject]@{
-                        PublishedName   = $Matches[1].Trim()
-                        OriginalName    = ""
-                        ProviderName    = ""
-                        ClassName       = ""
-                        DriverDate      = ""
-                        DriverVersion   = ""
-                        SignerName      = ""
-                    }
-                } elseif($current -ne $null) {
-                    if   ($line -match '^Original Name\s*:\s*(.+)$')  { $current.OriginalName  = $Matches[1].Trim() }
-                    elseif($line -match '^Provider Name\s*:\s*(.+)$') { $current.ProviderName  = $Matches[1].Trim() }
-                    elseif($line -match '^Class Name\s*:\s*(.+)$')    { $current.ClassName     = $Matches[1].Trim() }
-                    elseif($line -match '^Driver Date\s*:\s*(.+)$')   { $current.DriverDate    = $Matches[1].Trim() }
-                    elseif($line -match '^Driver Version\s*:\s*(.+)$'){ $current.DriverVersion = $Matches[1].Trim() }
-                    elseif($line -match '^Signer Name\s*:\s*(.+)$')   { $current.SignerName    = $Matches[1].Trim() }
-                }
-            }
-            if($current -ne $null){ $packages.Add($current) }
-            return $packages
-        }
-
-        function Get-ObsoleteDriverPackages {
-            param([object[]]$Packages)
-            $grouped  = $Packages | Group-Object OriginalName
-            $obsolete = [System.Collections.Generic.List[object]]::new()
-            foreach($grp in $grouped){
-                if($grp.Count -lt 2){ continue }
-                $sorted = $grp.Group | Sort-Object DriverVersion -Descending
-                for($oi=1; $oi -lt $sorted.Count; $oi++){ $obsolete.Add($sorted[$oi]) }
-            }
-            return $obsolete
-        }
 
         $script:btnScanDrivers.Add_Click({
             $script:btnScanDrivers.IsEnabled    = $false
@@ -5977,7 +5976,7 @@ function Build-TuningTab {
             $script:lblDriverStatus.Text        = "Ejecutando pnputil /enum-drivers..."
             $script:lblDriverStatus.Foreground  = New-Brush "#888888"
             $script:icDrivers.Items.Clear()
-            $drvListScroll.Visibility           = [Windows.Visibility]::Collapsed
+            $script:drvListScroll.Visibility           = [Windows.Visibility]::Collapsed
             Flush-UI
 
             $script:drvScanJob = Start-Job -ScriptBlock {
@@ -6003,7 +6002,7 @@ function Build-TuningTab {
                         $script:lblDriverStatus.Text       = "No se encontraron drivers obsoletos en el Driver Store."
                         $script:lblDriverStatus.Foreground = New-Brush "#22C55E"
                         $script:btnDriverBackup.IsEnabled  = $false
-                        $drvListScroll.Visibility          = [Windows.Visibility]::Collapsed
+                        $script:drvListScroll.Visibility          = [Windows.Visibility]::Collapsed
                     } else {
                         foreach($pkg in $script:driverPackages){
                             $rowBdr = New-Object Windows.Controls.Border
@@ -6013,7 +6012,7 @@ function Build-TuningTab {
                             $rowBdr.CornerRadius    = New-Object Windows.CornerRadius(4)
 
                             $rowGrid = New-Object Windows.Controls.Grid
-                            $rgA = New-Object Windows.Controls.ColumnDefinition; $rgA.Width = [Windows.GridLength]::new([Windows.GridLength]::Auto)
+                            $rgA = New-Object Windows.Controls.ColumnDefinition; $rgA.Width = [Windows.GridLength]::Auto
                             $rgB = New-Object Windows.Controls.ColumnDefinition; $rgB.Width = [Windows.GridLength]::new(1,[Windows.GridUnitType]::Star)
                             $rgC = New-Object Windows.Controls.ColumnDefinition; $rgC.Width = [Windows.GridLength]::new(100)
                             $rgD = New-Object Windows.Controls.ColumnDefinition; $rgD.Width = [Windows.GridLength]::new(90)
@@ -6060,7 +6059,7 @@ function Build-TuningTab {
                         $script:lblDriverStatus.Text       = "$($script:driverPackages.Count) driver(s) obsoleto(s) encontrado(s). Haz backup antes de eliminar."
                         $script:lblDriverStatus.Foreground = New-Brush "#F59E0B"
                         $script:btnDriverBackup.IsEnabled  = $true
-                        $drvListScroll.Visibility          = [Windows.Visibility]::Visible
+                        $script:drvListScroll.Visibility          = [Windows.Visibility]::Visible
                     }
                 } catch {
                     $script:lblDriverStatus.Text       = "Error al escanear: $_"
@@ -6592,7 +6591,7 @@ $window.Add_ContentRendered({
 
         # Fila checkbox + descripcion
         $gameChkRow = New-Object Windows.Controls.Grid
-        $gcA = New-Object Windows.Controls.ColumnDefinition; $gcA.Width = [Windows.GridLength]::new([Windows.GridLength]::Auto)
+        $gcA = New-Object Windows.Controls.ColumnDefinition; $gcA.Width = [Windows.GridLength]::Auto
         $gcB = New-Object Windows.Controls.ColumnDefinition; $gcB.Width = [Windows.GridLength]::new(1,[Windows.GridUnitType]::Star)
         $gameChkRow.ColumnDefinitions.Add($gcA) | Out-Null
         $gameChkRow.ColumnDefinitions.Add($gcB) | Out-Null
@@ -10016,8 +10015,9 @@ function Start-UpdateDownload {
 # copia el nuevo archivo sobre el actual y relanza la app.
 # ------------------------------------------------------------
 function Apply-Update {
-    param([string]$NewFile)
+    param([string]$NewFile)   # ahora es el instalador WinBoost_Setup_*.exe descargado
 
+    # Detectar si corremos como exe compilado (no en modo desarrollo via PS1)
     $currentExe = ""
     try { $currentExe = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName } catch {}
 
@@ -10026,44 +10026,60 @@ function Apply-Update {
               $currentExe -notlike "*pwsh*" -and
               $currentExe -like "*.exe")
 
-    $target = ""
-    if ($isExe) {
-        $target = $currentExe
-    } elseif ($PSCommandPath) {
-        $target = $PSCommandPath
-    } else {
-        $target = $currentExe
+    if (-not $isExe) {
+        # Modo desarrollo (PS1): no ejecutar el instalador. Abrir el release en el navegador.
+        [Windows.MessageBox]::Show(
+            "Actualizacion descargada. En modo desarrollo no se aplica automaticamente. Se abrira la pagina del release.",
+            "WinBoost - Actualizacion",
+            [Windows.MessageBoxButton]::OK,
+            [Windows.MessageBoxImage]::Information) | Out-Null
+        if ($script:updateMeta -and $script:updateMeta.ReleaseUrl) { Start-Process $script:updateMeta.ReleaseUrl }
+        return
     }
 
+    $relaunchTarget = $currentExe
     $procId  = [System.Diagnostics.Process]::GetCurrentProcess().Id
     $swapDir = "$env:TEMP\OptimizarPC_update"
+    if (-not (Test-Path $swapDir)) { New-Item -ItemType Directory -Path $swapDir | Out-Null }
     $swapPs1 = Join-Path $swapDir "do_update.ps1"
 
-    $srcEsc = $NewFile -replace "'","''"
-    $dstEsc = $target  -replace "'","''"
+    $srcEsc      = $NewFile        -replace "'","''"
+    $relaunchEsc = $relaunchTarget -replace "'","''"
 
+    # Helper: espera a que el proceso actual cierre, corre el instalador en
+    # silencio y relanza la app instalada. El instalador hereda la elevacion
+    # del proceso actual (ya corre como admin), por eso NO se usa -Verb RunAs.
     $swapLines = @(
-        "`$src  = '$srcEsc'",
-        "`$dst  = '$dstEsc'",
-        "`$pid_ = $procId",
-        "for (`$i = 0; `$i -lt 20; `$i++) {",
-        "    if (-not (Get-Process -Id `$pid_ -EA SilentlyContinue)) { break }",
+        "`$installer = '$srcEsc'",
+        "`$relaunch  = '$relaunchEsc'",
+        "`$procId_   = $procId",
+        "for (`$i = 0; `$i -lt 30; `$i++) {",
+        "    if (-not (Get-Process -Id `$procId_ -ErrorAction SilentlyContinue)) { break }",
         "    Start-Sleep -Seconds 1",
         "}",
         "Start-Sleep -Seconds 1",
-        "try { Copy-Item `$src `$dst -Force -EA Stop } catch {",
-        "    `$errMsg = `$_.Exception.Message",
+        "`$ec = -1",
+        "try {",
+        "    `$proc = Start-Process -FilePath `$installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/NOCANCEL' -Wait -PassThru -ErrorAction Stop",
+        "    `$ec = `$proc.ExitCode",
+        "} catch {",
         "    Add-Type -AssemblyName System.Windows.Forms",
-        "    [System.Windows.Forms.MessageBox]::Show('Error al aplicar la actualizacion: ' + `$errMsg, 'WinBoost Update', 'OK', 'Error') | Out-Null",
+        "    [System.Windows.Forms.MessageBox]::Show('Error al ejecutar el instalador: ' + `$_.Exception.Message, 'WinBoost Update', 'OK', 'Error') | Out-Null",
         "    exit 1",
         "}",
-        "Start-Process `$dst"
+        "if (`$ec -ne 0) {",
+        "    Add-Type -AssemblyName System.Windows.Forms",
+        "    [System.Windows.Forms.MessageBox]::Show('El instalador termino con codigo ' + `$ec + '. Actualiza manualmente desde GitHub.', 'WinBoost Update', 'OK', 'Warning') | Out-Null",
+        "    exit 1",
+        "}",
+        "Start-Sleep -Seconds 1",
+        "if (Test-Path `$relaunch) { Start-Process `$relaunch }"
     )
     ($swapLines -join [System.Environment]::NewLine) | Out-File $swapPs1 -Encoding UTF8 -Force
 
     Start-Process powershell -ArgumentList "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$swapPs1`""
 
-    Set-Progress 100 "Reiniciando en un momento..."
+    Set-Progress 100 "Cerrando para instalar la actualizacion..."
     Flush-UI
 
     $script:applyTimer          = New-Object Windows.Threading.DispatcherTimer
