@@ -7,3 +7,6 @@ installer/Output/
 
 # Clave privada RSA para emision de licencias (nunca al repo)
 _private_key.xml
+
+# Prompts de trabajo para Claude Code (material interno)
+prompt_*.txt
