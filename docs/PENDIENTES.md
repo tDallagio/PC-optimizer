@@ -65,7 +65,7 @@
 
 - [x] **F2.9 [AUDIT A2]** Inconsistencia Get-Service vs CIM en servicios — `Get-Service` no expone bien "Automatic (Delayed Start)". Fix: leer StartMode via CIM + detectar delayed-start via `HKLM:\SYSTEM\CCS\Services\<name>\DelayedAutoStart`.
 
-- [x] **F2.10 [AUDIT B-varios]** Pulidos menores: (a) `Apply-Update` sin notificacion si `Copy-Item` falla. (b) Mensajes de error crudos `"Error: $_"` en labels UI. (c) `version.json` apunta a `TU_USUARIO` placeholder. (d) Falta `.Owner = $window` antes de `ShowDialog` en modales.
+- [x] **F2.10 [AUDIT B-varios]** Pulidos menores: (a) `Apply-Update` sin notificacion si `Copy-Item` falla (actualizado v4.1: el modelo Copy-Item fue reemplazado por instalador silencioso; ver CHANGELOG). (b) Mensajes de error crudos `"Error: $_"` en labels UI. (c) `version.json` apunta a `TU_USUARIO` placeholder. (d) Falta `.Owner = $window` antes de `ShowDialog` en modales.
 
 ### UX (de la auditoria)
 

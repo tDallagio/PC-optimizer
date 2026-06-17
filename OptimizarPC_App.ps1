@@ -76,7 +76,7 @@ $buildNumber = [int]$_osObj.BuildNumber
 $IS_WIN11    = $buildNumber -ge 22000
 $diskType  = if($HAS_SSD){"SSD"}else{"HDD"}
 $SYSDRIVE  = $env:SystemDrive
-$VERSION      = "4.0"
+$VERSION      = "4.1"
 $PROFILE_PATH = "$env:USERPROFILE\.OptimizarPC\profile.json"
 $BACKUP_ROOT  = "$env:USERPROFILE\.OptimizarPC\backups"
 $SETTINGS_PATH = "$env:USERPROFILE\.OptimizarPC\settings.json"
@@ -275,6 +275,7 @@ $btnChangeBackupPath  = Get-Ctrl "btnChangeBackupPath"
 $cboBackupRetention   = Get-Ctrl "cboBackupRetention"
 $lblBackupCount       = Get-Ctrl "lblBackupCount"
 $btnOpenBackups       = Get-Ctrl "btnOpenBackups"
+$lblVersion           = Get-Ctrl "lblVersion"
 $lblVersionAbout      = Get-Ctrl "lblVersionAbout"
 $btnCheckUpdatesSettings = Get-Ctrl "btnCheckUpdatesSettings"
 $lblStatsSessions     = Get-Ctrl "lblStatsSessions"
@@ -6167,6 +6168,10 @@ function Build-TuningTab {
 # ============================================================
 # Cargar datos al mostrar la ventana
 $window.Add_ContentRendered({
+    $window.Title         = "WinBoost v$VERSION"
+    $lblVersion.Text      = "v$VERSION"
+    $lblVersionAbout.Text = "v$VERSION"
+    Flush-UI
     try { Load-Settings    } catch {}
     try { Apply-Settings   } catch {}
     try { Test-TrialStatus } catch {}
@@ -9994,17 +9999,54 @@ function Start-UpdateDownload {
         Flush-UI
 
         $expectedHash = $script:updateMeta.Sha256
-        if ($expectedHash) {
-            $actualHash = (Get-FileHash $script:dlTmpFile -Algorithm SHA256).Hash.ToUpper()
-            if ($actualHash -ne $expectedHash) {
-                Set-Progress 0 "Error: hash invalido. El archivo puede estar corrupto."
-                return
-            }
+        $dlFile       = $script:dlTmpFile
+
+        if (-not (Test-Path $dlFile)) {
+            [Windows.MessageBox]::Show(
+                "La actualizacion se descargo pero el archivo no esta disponible. Es posible que el antivirus lo haya puesto en cuarentena. Se abrira la pagina del release para descargarla manualmente.",
+                "WinBoost - Actualizacion",
+                [Windows.MessageBoxButton]::OK,
+                [Windows.MessageBoxImage]::Warning) | Out-Null
+            if ($script:updateMeta -and $script:updateMeta.ReleaseUrl) { Start-Process $script:updateMeta.ReleaseUrl }
+            Set-Progress 0 "Actualizacion cancelada."
+            return
+        }
+        if ([string]::IsNullOrWhiteSpace($expectedHash)) {
+            [Windows.MessageBox]::Show(
+                "No se puede verificar la integridad de la actualizacion porque falta el hash. Por seguridad no se instalara. Descargala manualmente desde GitHub.",
+                "WinBoost - Actualizacion",
+                [Windows.MessageBoxButton]::OK,
+                [Windows.MessageBoxImage]::Warning) | Out-Null
+            if ($script:updateMeta -and $script:updateMeta.ReleaseUrl) { Start-Process $script:updateMeta.ReleaseUrl }
+            Set-Progress 0 "Actualizacion cancelada."
+            return
+        }
+        $actualHash = ""
+        try {
+            $actualHash = (Get-FileHash -Path $dlFile -Algorithm SHA256 -ErrorAction Stop).Hash
+        } catch {
+            [Windows.MessageBox]::Show(
+                "No se pudo leer el archivo descargado para verificarlo (posible cuarentena del antivirus). Se abrira la pagina del release.",
+                "WinBoost - Actualizacion",
+                [Windows.MessageBoxButton]::OK,
+                [Windows.MessageBoxImage]::Warning) | Out-Null
+            if ($script:updateMeta -and $script:updateMeta.ReleaseUrl) { Start-Process $script:updateMeta.ReleaseUrl }
+            Set-Progress 0 "Actualizacion cancelada."
+            return
+        }
+        if ($actualHash.Trim() -ne $expectedHash.Trim()) {
+            [Windows.MessageBox]::Show(
+                "La verificacion de la actualizacion fallo: el archivo no coincide con el esperado. Por seguridad no se instalara.",
+                "WinBoost - Actualizacion",
+                [Windows.MessageBoxButton]::OK,
+                [Windows.MessageBoxImage]::Error) | Out-Null
+            Set-Progress 0 "Error: verificacion de integridad fallida."
+            return
         }
 
         Set-Progress 100 "Aplicando actualizacion..."
         Flush-UI
-        Apply-Update -NewFile $script:dlTmpFile
+        Apply-Update -NewFile $dlFile
     })
     $script:dlTimer.Start()
 }

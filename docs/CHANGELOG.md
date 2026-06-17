@@ -5,6 +5,58 @@
 
 ---
 
+## Auto-updater v4.1 — Camino B (instalador silencioso) + verificacion de integridad
+
+**Archivos modificados**
+- `OptimizarPC_App.ps1` — `$UPDATE_CHECK_URL`, `Start-UpdateDownload`, `Apply-Update`,
+  inyeccion de version en la GUI
+- `OptimizarPC_UI.xaml` — Title de la ventana, `lblVersion`, `lblVersionAbout`
+- `installer/WinBoost.iss` — seccion [Run] y [Setup]
+- `version.json` — version, downloadUrl, sha256
+
+**Repo y URLs**
+- `$UPDATE_CHECK_URL` y `releaseUrl` apuntaban al repo viejo `OptimizarPC`; corregidos
+  a `PC-optimizer` (el repo real del release).
+- `downloadUrl` apuntaba a la pagina del tag (`/releases/tag/v4.0`), que devuelve HTML,
+  no el binario; corregido al asset directo (`/releases/download/v4.1/WinBoost_Setup_4.1.exe`).
+
+**Modelo de actualizacion: portable -> instalador**
+- El modelo anterior copiaba un exe portable encima del exe en ejecucion, incompatible
+  con la distribucion por instalador Inno Setup.
+- `Apply-Update` reescrito: un helper (`do_update.ps1` en `%TEMP%\OptimizarPC_update`)
+  espera a que cierre el proceso, ejecuta el instalador con
+  `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL`, chequea ExitCode y relanza la app.
+  El instalador actualiza exe + XAML + accesos directos de forma atomica (mata el bug de
+  XAML desincronizado del modelo portable). El instalador hereda la elevacion del proceso
+  (sin segundo UAC).
+- Guard de modo desarrollo: si no corre como exe compilado, no ejecuta el instalador;
+  abre la pagina del release en el navegador.
+
+**Verificacion de integridad (hardening)**
+- Se elimino el bypass donde un `sha256` vacio salteaba la verificacion (`if ($expectedHash)`):
+  ahora un hash ausente ABORTA la instalacion en vez de saltearla.
+- `Start-UpdateDownload` valida que el archivo descargado exista (Test-Path) y calcula el
+  hash en try/catch. Ante archivo ausente/ilegible (cuarentena de antivirus) o mismatch de
+  hash, no instala y avisa; en el caso de cuarentena hace fallback a la pagina del release.
+
+**Fix error 740 en el instalador (`WinBoost.iss`)**
+- La entrada [Run] postinstall lanzaba `WinBoost.exe` (manifest requireAdmin) via
+  CreateProcess, que no puede elevar -> error 740. Solucion: flags `shellexec`
+  (usa ShellExecute, respeta la elevacion) y `skipifsilent` (no autolanzar en el update
+  silencioso, donde el relanzamiento lo hace el helper).
+- [Setup]: `CloseApplications=yes`, `RestartApplications=no`, `UsePreviousAppDir=yes`.
+
+**Version en la GUI derivada de `$VERSION`**
+- El Title de la ventana y los labels `lblVersion` (sidebar) y `lblVersionAbout` (About)
+  tenian "v4.0" hardcodeado en el XAML. Se vaciaron en el XAML y ahora se inyectan en
+  runtime desde `$VERSION` en `Add_ContentRendered` (y `lblVersionAbout` tambien en
+  `Render-SettingsUI`, que es lazy). Fuente unica de version: `$VERSION`.
+
+**version.json**
+- `version: "4.1"`, `downloadUrl` al asset v4.1, `sha256` real del instalador.
+
+---
+
 ## F2.3 — Proteccion de licencia con firma asimetrica RSA-2048
 
 **Archivos modificados**

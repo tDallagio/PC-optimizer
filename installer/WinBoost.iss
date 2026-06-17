@@ -9,7 +9,7 @@
 ; ----------------------------------------------------------------
 
 #define AppName      "WinBoost"
-#define AppVersion   "4.0"
+#define AppVersion   "4.1"
 #define AppPublisher "WinBoost"
 #define AppExeName   "WinBoost.exe"
 #define AppXamlName  "OptimizarPC_UI.xaml"
@@ -65,7 +65,7 @@ Name: "desktopicon"; Description: "Crear acceso directo en el escritorio"; \
 [Run]
 Filename: "{app}\{#AppExeName}"; \
     Description: "Ejecutar {#AppName} ahora"; \
-    Flags: nowait postinstall
+    Flags: nowait postinstall shellexec skipifsilent
 
 [UninstallRun]
 ; Nada especial al desinstalar

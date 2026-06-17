@@ -1,8 +1,8 @@
-# WinBoost v4.0
+# WinBoost v4.1
 
 ## Archivos del proyecto
-- `OptimizarPC_App.ps1` — lógica principal (7100+ líneas)
-- `OptimizarPC_UI.xaml` — interfaz WPF separada (2100+ líneas)
+- `OptimizarPC_App.ps1` — lógica principal (10400+ líneas)
+- `OptimizarPC_UI.xaml` — interfaz WPF separada (2550+ líneas)
 - `version.json` — check de updates en GitHub
 - `EJECUTAR_COMO_ADMIN.bat` — launcher para desarrollo
 - `Build.ps1` — compilar a exe + firma
@@ -41,7 +41,8 @@
 - `Flush-UI` despues de cualquier update de UI
 - Logica en PS1, visual en XAML
 - Controles UI: `$var = Get-Ctrl "xName"` — nunca `FindName` directo
-- Al modificar un archivo, devolver el archivo completo
+- Al modificar un archivo, guardar los cambios directamente en su ruta. No imprimir el contenido del archivo en el chat.
+- TODO cambio de codigo (feature, fix o mantenimiento) se registra en CHANGELOG.md, no solo los items del roadmap (F-numerados). Un cambio sin entrada en CHANGELOG.md esta incompleto.
 - Antes de entregar PS1: verificar balance de llaves con script Python, resultado debe ser 0
 - Antes de entregar XAML: parsear con `xml.etree.ElementTree`, debe ser valido
 
@@ -51,7 +52,7 @@
 - Log:                  `Write-Log "mensaje" "tipo"` — tipos: `ok/err/skip/head/info`
 - Progreso:             `Set-Progress [0-100] "mensaje"`
 - Flush UI:             `Flush-UI`
-- Navegacion sidebar:   `Set-ActiveNav [0-8]`
+- Navegacion sidebar:   `Set-ActiveNav [0-9]`
 - Backup automatico:    `Save-RegBackup` integrado en `Set-Reg` / `Save-SvcBackup` integrado en `Disable-Svc`
 - Nuevo modulo:         definir funciones → registrar controles con `Get-Ctrl` → agregar eventos → init en `Add_ContentRendered`
 
@@ -71,6 +72,7 @@
 - 6 = Bloatware
 - 7 = Ajustes
 - 8 = Licencia
+- 9 = Tuning Avanzado
 
 ## Variables globales — no redefinir
 - `$IS_LAPTOP`, `$HAS_SSD`, `$totalRAM`, `$VERSION`, `$SYSDRIVE`
