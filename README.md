@@ -1,6 +1,26 @@
-# WinBoost v4.0
+# WinBoost
 
-Optimizador de rendimiento para Windows 10/11 con interfaz WPF, sistema de backup/restore, licencias y modo CLI.
+Optimizador de rendimiento para Windows 10/11 con interfaz WPF: limpieza, tweaks con
+backup y restauracion por sesion, score de salud verificable, sistema de licencias y
+modo CLI.
+
+**[Descargar la ultima version](https://github.com/tDallagio/PC-optimizer/releases/latest)** · Windows 10 / 11 · Requiere ejecutar como Administrador
+
+---
+
+## Instalacion
+
+1. Descarga el instalador desde la [pagina de releases](https://github.com/tDallagio/PC-optimizer/releases/latest) (`WinBoost_Setup_x.x.exe`).
+2. Ejecutalo y segui el asistente. La app se instala en `Program Files` y crea accesos directos.
+3. Al abrir, WinBoost solicita permisos de administrador (necesarios para aplicar tweaks del sistema).
+
+WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
+
+> **Nota sobre antivirus:** el ejecutable se compila con `ps2exe`, lo que puede
+> generar un falso positivo en Windows Defender / SmartScreen (patron de script
+> empaquetado). No es malware. Se esta trabajando en la firma con un certificado de
+> code signing para eliminarlo. Si Defender lo bloquea, podes restaurarlo desde el
+> historial de proteccion.
 
 ---
 
@@ -49,13 +69,14 @@ Optimizador de rendimiento para Windows 10/11 con interfaz WPF, sistema de backu
 - Log JSON con historial de los ultimos 30 runs
 
 ### Game Focus Mode
-- Deteccion automatica de proceso fullscreen cada 5s
+- Deteccion automatica de proceso fullscreen cada 5s (39 juegos conocidos)
 - Eleva prioridad, silencia notificaciones, restaura al salir del juego
 - Afinidad de CPU opcional: restringe el proceso a nucleos fisicos (sin SMT)
-- 39 juegos conocidos en la lista de deteccion
 
-### Tuning avanzado (tab oculto)
-- Win32PrioritySeparation: 3 valores honestos con descripcion del efecto real
+### Tuning avanzado
+- Win32PrioritySeparation expuesto solo en esta seccion, con los unicos valores cuyo
+  efecto es real y cada trade-off explicado honestamente. WinBoost no ofrece valores
+  placebo: los ajustes sin efecto medible fueron removidos tras una auditoria interna.
 - HAGS (Hardware-Accelerated GPU Scheduling): activar/desactivar con alerta de reinicio
 - Politica termica: activa/pasiva via powercfg
 - Informacion detallada de CPU, RAM, GPU y HAGS
@@ -66,11 +87,11 @@ Optimizador de rendimiento para Windows 10/11 con interfaz WPF, sistema de backu
 - Se guarda en Documentos y abre en el navegador automaticamente
 
 ### Sistema de licencias
-- Free: limpieza y diagnostico basico
-- Pro ($25): todos los tweaks, backups, bloatware, mantenimiento automatico
-- Tecnico ($45): igual que Pro + modo CLI + multi-PC (sin atadura de hardware)
+- **Free:** limpieza y diagnostico basico
+- **Pro:** todos los tweaks, backups, bloatware, mantenimiento automatico
+- **Tecnico:** Pro + modo CLI + multi-PC
 - Trial de 14 dias con banner de estado en el footer
-- Activacion por clave HWID-bound (Pro) o salt-only (Tecnico)
+- Activacion por clave con firma RSA-2048 (Pro atada a hardware, Tecnico multi-PC)
 
 ### Modo CLI / silencioso
 ```
@@ -80,10 +101,11 @@ WinBoost.exe -Silent -Preset Prod
 ```
 Genera log en `%USERPROFILE%\.OptimizarPC\logs\` y notifica via toast al terminar.
 
-### Auto-updater
-- Chequea `version.json` en GitHub al iniciar
-- Descarga async con barra de progreso
-- Script helper `do_update.ps1` reemplaza el exe y relanza automaticamente
+### Auto-actualizacion
+- Chequea `version.json` en GitHub al iniciar y avisa si hay una version mas nueva
+- Descarga el instalador con barra de progreso y verificacion de integridad SHA256
+- Aplica la actualizacion ejecutando el instalador en modo silencioso y relanza la app
+- Si la verificacion falla o el antivirus interfiere, abre la pagina del release como respaldo
 
 ---
 
@@ -91,49 +113,47 @@ Genera log en `%USERPROFILE%\.OptimizarPC\logs\` y notifica via toast al termina
 
 - Windows 10 / 11
 - PowerShell 5.1
-- Ejecutar como Administrador
+- Permisos de administrador
 
 ---
 
-## Uso en desarrollo
-
-1. Clonar el repositorio
-2. Ejecutar `EJECUTAR_COMO_ADMIN.bat` como administrador
-
----
-
-## Compilar a .exe
+## Desarrollo
 
 ```powershell
-.\Build.ps1          # compilar + firmar con cert autofirmado
-.\Build.ps1 -SkipSign  # solo compilar
+# Ejecutar desde fuente (sin compilar)
+.\EJECUTAR_COMO_ADMIN.bat   # como administrador
+
+# Compilar a .exe
+.\Build.ps1                 # compilar + firmar con cert autofirmado
+.\Build.ps1 -SkipSign       # solo compilar
 ```
 
-Requiere el modulo `ps2exe` (se instala automaticamente si no esta presente).  
-El instalador se genera con Inno Setup 6 usando `installer\WinBoost.iss`.
+Requiere el modulo `ps2exe` (se instala automaticamente). El instalador se genera con
+Inno Setup 6 a partir de `installer\WinBoost.iss`.
 
 ---
 
 ## Estructura del proyecto
 
 ```
-OptimizarPC_App.ps1     logica principal (7100+ lineas)
-OptimizarPC_UI.xaml     interfaz WPF (2100+ lineas)
-Build.ps1               compilar a exe + firmar
-Create-Icon.ps1         genera WinBoost.ico
-EJECUTAR_COMO_ADMIN.bat launcher para desarrollo
-version.json            metadata para auto-update
-installer\WinBoost.iss  script Inno Setup 6
-docs\CHANGELOG.md       historial de implementaciones
-docs\PENDIENTES.md      features pendientes
+OptimizarPC_App.ps1      logica principal (10400+ lineas)
+OptimizarPC_UI.xaml      interfaz WPF (2550+ lineas)
+Build.ps1                compilar a exe + firmar
+Create-Icon.ps1          genera WinBoost.ico
+Gen-License.ps1          emision de licencias (uso interno)
+EJECUTAR_COMO_ADMIN.bat  launcher para desarrollo
+version.json             metadata para auto-actualizacion
+installer\WinBoost.iss   script Inno Setup 6
+docs\CHANGELOG.md        historial de implementaciones
+docs\PENDIENTES.md       estado del roadmap
 ```
 
 ---
 
-## Stack
+## Stack tecnico
 
 - PowerShell 5.1 — sin operadores PS7
 - WPF + XAML cargado desde archivo externo
 - `Get-CimInstance` (no WMI legacy)
 - Sin threading — todo en hilo UI con `Flush-UI` entre pasos
-- `ps2exe` para compilar a exe nativo con UAC elevation (`requireAdmin`)
+- `ps2exe` para compilar a exe nativo con elevacion UAC (`requireAdmin`)
