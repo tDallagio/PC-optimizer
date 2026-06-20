@@ -17,7 +17,27 @@
 - Sin threading — todo en hilo UI con `Flush-UI` entre pasos
 - Nombre de la app: **WinBoost**
 
-## Reglas — NUNCA
+## Migracion a C# / WPF (en curso)
+La app esta migrando de PowerShell 5.1 a C#/WPF de forma incremental. El proyecto
+C# vive en `src-csharp/`. El `.ps1` (OptimizarPC_App.ps1) sigue siendo la version
+distribuida hasta que C# llegue a paridad. El XAML (OptimizarPC_UI.xaml) se reusa
+en ambos.
+- Las reglas de PowerShell de mas abajo aplican SOLO al codigo legacy en `.ps1`.
+- Para codigo C# nuevo, usar las convenciones C# (ver mas abajo).
+- Validar cada modulo migrado contra el comportamiento del `.ps1` original.
+
+## Convenciones C# (src-csharp)
+- .NET 8, WPF. Nullable habilitado.
+- async/await + Task.Run para TODO trabajo pesado; nunca bloquear el hilo UI.
+  (Reemplaza el patron Flush-UI del PS1: en C# la UI no se congela.)
+- Actualizar la UI desde background via Dispatcher.
+- Los elementos con x:Name en el XAML son campos tipados generados; NO usar FindName
+  manual. (Reemplaza Get-Ctrl.)
+- Brushes y colores desde recursos XAML tipados. (Reemplaza New-Brush.)
+- P/Invoke nativo en una clase NativeMethods dedicada.
+- Registrar cada modulo migrado en CHANGELOG.md.
+
+## Reglas PowerShell legacy (.ps1) — NUNCA
 - Sin operadores PS7 (`?.` `??` etc.)
 - Sin `System.Threading.Thread`
 - Sin `-Wait` en `Start-Process` en el hilo UI
@@ -37,7 +57,7 @@
   Para crear brushes desde hex usar siempre `New-Brush`, que internamente usa
   `BrushConverter.ConvertFromString` en lugar de `ColorConverter`.
 
-## Reglas — SIEMPRE
+## Reglas PowerShell legacy (.ps1) — SIEMPRE
 - `Flush-UI` despues de cualquier update de UI
 - Logica en PS1, visual en XAML
 - Controles UI: `$var = Get-Ctrl "xName"` — nunca `FindName` directo

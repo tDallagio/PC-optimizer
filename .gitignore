@@ -10,3 +10,27 @@ _private_key.xml
 
 # Prompts de trabajo para Claude Code (material interno)
 prompt_*.txt
+
+# === C# / .NET (src-csharp) ===
+# Artefactos de compilacion
+[Bb]in/
+[Oo]bj/
+# Resultados de build y publicacion
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bld/
+publish/
+# Archivos de usuario de Visual Studio / Rider
+*.user
+*.suo
+.vs/
+.idea/
+# NuGet
+*.nupkg
+packages/
+# Otros
+*.dll
+*.pdb
