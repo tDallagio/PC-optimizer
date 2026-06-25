@@ -2,8 +2,8 @@
 
 > **Instruccion para Claude Code:** Leer este archivo al arrancar cada sesion.
 > El desarrollo v4.x en PowerShell esta COMPLETO (41/41). El trabajo ACTIVO ahora es
-> la migracion a C#/WPF (carpeta `src-csharp/`). Implementar los items de la migracion
-> EN ORDEN, de arriba hacia abajo. Marcar [x] al completar. Al terminar un item,
+> la migracion a C#/WPF (carpeta `src-csharp/`). Implementar los items EN ORDEN por su
+> identificador (0.4, 0.5, 1.1, ...). Marcar [x] al completar. Al terminar un item,
 > actualizar tambien CHANGELOG.md. Reglas C# en CLAUDE.md.
 
 ---
@@ -15,52 +15,52 @@ sigue siendo la version distribuida hasta paridad. Validar cada modulo contra el
 comportamiento del PS1 original.
 
 ### FASE 0 — Andamiaje + infraestructura
-- [ ] Proyecto C# WPF (.NET 8) en `src-csharp/`
-- [ ] MainWindow carga el XAML actual (compilado); x:Name -> campos tipados (mueren los Get-Ctrl)
-- [ ] NativeMethods: portar los dos bloques P/Invoke (ntdll/psapi/advapi32/kernel32 + user32)
-- [ ] Infraestructura base: logging, Set-Progress, toasts, settings (JSON), theme
-- [ ] Patron async base (servicio para correr trabajo fuera del hilo UI)
-- [ ] Meta: la app abre, el sidebar navega, los settings cargan
+- [x] 0.1 Proyecto C# WPF (.NET 8) en `src-csharp/`
+- [x] 0.2 MainWindow carga el XAML actual (compilado); x:Name -> campos tipados (mueren los Get-Ctrl)
+- [x] 0.3 NativeMethods: portar los dos bloques P/Invoke (ntdll/psapi/advapi32/kernel32 + user32)
+- [x] 0.4 Infraestructura base: logging, Set-Progress, toasts, settings (JSON), theme
+- [x] 0.5 Patron async base (servicio para correr trabajo fuera del hilo UI)
+- **Meta de cierre:** la app abre, el sidebar navega, los settings cargan
 
 ### FASE 1 — Nucleo de seguridad (backup/restore)
-- [ ] BackupService: New-BackupSession + Save-*Backup (Reg/Svc/Net/PowerPlan/PageFile/Netsh)
-- [ ] Restore-* completos + Get-BackupSessions + Cleanup
-- [ ] Validar contra el motor de backup del PS1
+- [ ] 1.1 BackupService: New-BackupSession + Save-*Backup (Reg/Svc/Net/PowerPlan/PageFile/Netsh)
+- [ ] 1.2 Restore-* completos + Get-BackupSessions + Cleanup
+- [ ] 1.3 Validar contra el motor de backup del PS1
 
 ### FASE 2 — Diagnostico read-only (valida la fluidez async)
-- [ ] System info + score + auditoria
-- [ ] Snapshots (boot time, RAM idle, conteo procesos) + Compare
-- [ ] Temperaturas CPU/GPU/thermal
-- [ ] Procesos pesados (async, sin Sleep en hilo UI)
-- [ ] Dispositivos con problemas + inventario de drivers
-- [ ] Confirmar que la UI no se congela en ninguna de estas operaciones
+- [ ] 2.1 System info + score + auditoria
+- [ ] 2.2 Snapshots (boot time, RAM idle, conteo procesos) + Compare
+- [ ] 2.3 Temperaturas CPU/GPU/thermal
+- [ ] 2.4 Procesos pesados (async, sin Sleep en hilo UI)
+- [ ] 2.5 Dispositivos con problemas + inventario de drivers
+- **Meta de cierre:** confirmar que la UI no se congela en ninguna de estas operaciones
 
 ### FASE 3 — Motor de optimizacion
-- [ ] OptimizationService: Apply-Preset + Invoke-*Tweaks (cleanup/registry/network/service)
-- [ ] Build-ActionPlan + modelo de action plan
-- [ ] Dialogos de confirmacion / analisis
-- [ ] Invoke-OptimizeFinish + resumen aplicado/omitido
-- [ ] Modo silencioso CLI (-Silent -Preset)
+- [ ] 3.1 OptimizationService: Apply-Preset + Invoke-*Tweaks (cleanup/registry/network/service)
+- [ ] 3.2 Build-ActionPlan + modelo de action plan
+- [ ] 3.3 Dialogos de confirmacion / analisis
+- [ ] 3.4 Invoke-OptimizeFinish + resumen aplicado/omitido
+- [ ] 3.5 Modo silencioso CLI (-Silent -Preset)
 
 ### FASE 4 — Features independientes (paralelizable)
-- [ ] Bloatware (AppX + winget)
-- [ ] Startup manager
-- [ ] Mantenimiento (tarea programada)
-- [ ] Game Focus Mode (P/Invoke user32 + afinidad de CPU)
-- [ ] Purga de RAM (Standby List)
-- [ ] Historial + score history
-- [ ] Reporte HTML
-- [ ] Dialogo de comparacion
+- [ ] 4.1 Bloatware (AppX + winget)
+- [ ] 4.2 Startup manager
+- [ ] 4.3 Mantenimiento (tarea programada)
+- [ ] 4.4 Game Focus Mode (P/Invoke user32 + afinidad de CPU)
+- [ ] 4.5 Purga de RAM (Standby List)
+- [ ] 4.6 Historial + score history
+- [ ] 4.7 Reporte HTML
+- [ ] 4.8 Dialogo de comparacion
 
 ### FASE 5 — Licencias + onboarding + updater
-- [ ] Licencias: RSA-2048, trial, lock Pro, badge
-- [ ] First-run / onboarding / changelog
-- [ ] Auto-updater (Check / Download / Apply) en C#
+- [ ] 5.1 Licencias: RSA-2048, trial, lock Pro, badge
+- [ ] 5.2 First-run / onboarding / changelog
+- [ ] 5.3 Auto-updater (Check / Download / Apply) en C#
 
 ### FASE 6 — Tuning tab + pulido estetico + corte
-- [ ] Tuning tab: reconstruir como XAML declarativo (achica el Build-TuningTab de 1.200 lineas)
-- [ ] Sistema de diseno: tokens de espaciado/tipografia, acento unico, estados hover/pressed/disabled, transiciones
-- [ ] Corte: jubilar el `.ps1`, actualizar README e instalador
+- [ ] 6.1 Tuning tab: reconstruir como XAML declarativo (achica el Build-TuningTab de 1.200 lineas)
+- [ ] 6.2 Sistema de diseno: tokens de espaciado/tipografia, acento unico, estados hover/pressed/disabled, transiciones
+- [ ] 6.3 Corte: jubilar el `.ps1`, actualizar README e instalador
 
 ---
 

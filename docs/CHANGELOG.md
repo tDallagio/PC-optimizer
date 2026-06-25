@@ -5,6 +5,190 @@
 
 ---
 
+## C# 0.5 — Patron async base: WorkRunner
+
+**Archivo creado**
+- `src-csharp/WinBoost/Services/WorkRunner.cs`
+
+**Archivo modificado**
+- `src-csharp/WinBoost/App.xaml.cs` — agrega `App.Worker` como singleton estatico
+
+**Que reemplaza**
+El PS1 corre todo en el hilo UI y llama `Flush-UI` para dejar que WPF procese mensajes
+pendientes entre pasos. Para trabajo largo usa `Start-Job + DispatcherTimer` para pollear
+el resultado. En C# ninguno de esos patrones es necesario: `async/await` devuelve el hilo
+UI entre pasos, y `Task.Run` mueve trabajo pesado a un thread pool.
+
+**`WorkRunner`** — servicio que gestiona el ciclo de vida de operaciones async:
+- `RunAsync(Func<CancellationToken, Task>)`: ejecuta la lambda; gestiona `CancellationTokenSource`,
+  `IsRunning`, y el log de inicio/fin/cancel/error. Retorna `true` si completo con exito.
+- `Cancel()`: cancela el token de la operacion en curso (no-op si no hay ninguna).
+- `App.Worker`: singleton en `App`, accesible desde cualquier punto del codigo.
+
+**Patron de uso** (fase 3 en adelante):
+```csharp
+await App.Worker.RunAsync(async ct => {
+    App.Progress.Set(10, "Limpiando temporales...");
+    await Task.Run(() => CleanTempFiles(), ct);    // off UI thread
+    ct.ThrowIfCancellationRequested();
+    App.Progress.Set(50, "Tweaks de registro...");
+    await Task.Run(() => ApplyRegistryTweaks(), ct); // off UI thread
+    App.Progress.Set(100, "Completado");
+}, startMsg: "Iniciando optimizacion", doneMsg: "Optimizacion completada");
+```
+
+La lambda arranca en el hilo UI (progress/log directo, sin Dispatcher extra).
+Despues de cada `await Task.Run` la ejecucion vuelve al hilo UI automaticamente.
+
+**Meta de cierre Fase 0 verificada:**
+- App abre: si (MainWindow + XAML compilado)
+- Sidebar navega: si (SetActiveNav cableado)
+- Settings cargan: si (App.Settings.Load/Apply en OnLoaded)
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## C# 0.4 — Infraestructura base: logging, progreso, toasts, settings, theme
+
+**Archivos creados**
+- `src-csharp/WinBoost/GlobalUsings.cs` — desambigua colisiones WPF/WinForms + repone System.IO
+- `src-csharp/WinBoost/Services/AppSettings.cs` — modelo POCO con mismos defaults que el PS1
+- `src-csharp/WinBoost/Services/SettingsService.cs` — Load/Save (System.Text.Json) + ApplyTheme + Apply
+- `src-csharp/WinBoost/Services/AppLogger.cs` — equivalente a Write-Log: colores por tipo, badge de errores
+- `src-csharp/WinBoost/Services/ProgressService.cs` — equivalente a Set-Progress
+- `src-csharp/WinBoost/Services/ToastService.cs` — NotifyIcon balloon con DispatcherTimer de limpieza
+
+**Archivos modificados**
+- `src-csharp/WinBoost/WinBoost.csproj` — agrega `<UseWindowsForms>true</UseWindowsForms>` (para NotifyIcon)
+- `src-csharp/WinBoost/App.xaml.cs` — expone `App.Settings`, `App.Logger`, `App.Progress` como singletons estaticos
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — cablea servicios en OnLoaded; log inicial "WinBoost iniciado"
+
+**AppSettings** — replica `$script:settings` del PS1:
+`Theme/Language/CloseAction/ShowSplash/ProcRefreshSec/RunAtStartup/BackupRoot/BackupRetainDays/TrialStartDate/TrialExpired/TechnicianName/GameAffinityEnabled`
+
+**SettingsService**
+- `Load()`: merge seguro desde JSON (null-safe, defaults intactos si falta un campo)
+- `Save()`: WriteIndented a `%USERPROFILE%\.OptimizarPC\settings.json`
+- `ApplyTheme(window)`: actualiza los 11 DynamicResource brushes (BrushAppBg..BrushFgDim) con las mismas paletas dark/light del PS1; modo "auto" lee `AppsUseLightTheme` del registro
+- `Apply(window)`: ApplyTheme + RunAtStartup en `HKCU\...\Run`
+
+**AppLogger** — replica `Write-Log`:
+- Tipos: ok (#22C55E) / err (#EF4444) / skip (#666666) / head (#00C8FF) / info (#F59E0B)
+- Labels: `"  OK   "` / `"  !!   "` / `"  --   "` / `" ====  "` / `"  >>   "`
+- Formato: `"HH:mm:ss<label><mensaje>"`; siempre via `Dispatcher.BeginInvoke`
+- Errores: actualiza `btnErrBadge` (Visible) y `lblErrCount` ("N error/es")
+
+**ProgressService** — replica `Set-Progress`:
+- Actualiza `progressBar.Value`, `lblProgress.Text`, `lblPct.Text` via `Dispatcher.BeginInvoke`
+
+**ToastService** — replica `Show-ToastNotification` (path NotifyIcon del PS1):
+- `NotifyIcon.ShowBalloonTip(5000ms)` + `DispatcherTimer` a 6s para `Dispose`
+- Siempre via `Dispatcher.BeginInvoke` (safe desde background threads)
+
+**GlobalUsings.cs** — necesario porque `UseWindowsForms=true` cambia el implicit usings set:
+quita `System.IO` y agrega `System.Drawing` + `System.Windows.Forms`. El archivo repone
+`System.IO` y fija aliases WPF para `Application/Button/RichTextBox/ProgressBar/Color/ColorConverter`.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## C# Fase 0: NativeMethods — P/Invoke consolidado en clase dedicada
+
+**Archivo creado**
+- `src-csharp/WinBoost/NativeMethods.cs`
+
+**Archivo modificado**
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — P/Invoke inline migrado a NativeMethods
+
+**Contenido de NativeMethods**
+
+Consolida los dos bloques `Add-Type` del PS1 mas el P/Invoke inline del monitor:
+
+- **kernel32**: `GetSystemTimes`, `GlobalMemoryStatusEx`, `GetCurrentProcess`, `CloseHandle`
+- **psapi**: `EmptyWorkingSet` (purga de Working Set / RAM)
+- **ntdll**: `NtSetSystemInformation` (purga de Standby List)
+- **advapi32**: `OpenProcessToken`, `LookupPrivilegeValue`, `AdjustTokenPrivileges` (elevacion de privilegios)
+- **user32**: `GetForegroundWindow`, `GetWindowRect`, `MonitorFromWindow`, `GetMonitorInfo`, `GetWindowThreadProcessId`, `GetDesktopWindow`, `GetShellWindow` (deteccion fullscreen / Game Focus Mode)
+- **Structs**: `FILETIME`, `MEMORYSTATUSEX`, `LUID`, `TOKEN_PRIVILEGES`, `RECT`, `MONITORINFO`
+- **Helpers**: `FileTimeToLong`, `EnablePrivilege`, `PurgeStandbyList`, `MemoryStatusExSize`
+
+`MainWindow.xaml.cs` ya no contiene ningun `[DllImport]` ni struct P/Invoke — todo pasa por `NativeMethods.*`.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## C# monitor: barra de disco corregida a actividad real (PhysicalDisk % Disk Time) + color por umbral
+
+**Archivo modificado**
+- `src-csharp/WinBoost/MainWindow.xaml.cs`
+
+**Problema**
+La barra de Disco del monitor en tiempo real mostraba un valor fijo (~espacio usado del disco via `DriveInfo`), que casi no cambia. En un monitor en tiempo real eso es incorrecto: no refleja si el disco esta trabajando o idle.
+
+**Fix**
+- `_diskCounter` (`PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total")`): creado una sola vez en `OnLoaded`, antes de arrancar el timer. Reusado en cada tick.
+- `ReadMetrics()`: reemplaza el bloque `DriveInfo` por `_diskCounter?.NextValue()`. El valor se clampea a 0-100 (el contador puede superar 100 en picos de I/O). El primer tick devuelve 0 (comportamiento normal del contador: necesita dos muestras).
+- Lectura en `Task.Run` (fuera del hilo UI), igual que CPU y RAM.
+- `_diskCounter?.Dispose()` en `OnClosed`.
+
+**Color por umbral (aplicado a las tres barras)**
+- `ThresholdBrush(pct, high, mid, okBrush)`: helper estatico que devuelve uno de tres brushes congelados.
+- Disco / CPU: > 85% rojo, > 60% amarillo, resto verde (`#22C55E`).
+- RAM: > 85% rojo, > 70% amarillo, resto azul (`#00C8FF`).
+- Brushes estaticos congelados: `BrushGreen`, `BrushYellow`, `BrushRed`, `BrushBlue`.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## C# Fase 0: navegacion del sidebar cableada (SetActiveNav, estilos activo/inactivo, footer condicional)
+
+`SetActiveNav(int index)` implementado en `MainWindow.xaml.cs`:
+- `mainTabs.SelectedIndex = index`
+- Aplica estilo `BtnNavActive` al boton seleccionado y `BtnNav` al resto via `FindResource`.
+- `footerBar`: `Visible` + `Height=Auto` en index 0; `Collapsed` + `Height=0` en el resto.
+- Animacion de opacidad 0→1 (150ms) sobre `mainTabs.SelectedContent` al cambiar de tab.
+- Botones cableados: navOptimizar(0)…navLicencia(8). `navTuning` no existe como `x:Name`
+  en el XAML actual (el tab de Tuning Avanzado no tiene boton de nav propio aun).
+- `SetActiveNav(0)` llamado en el evento `Loaded` para arrancar en Optimizar.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## Inicio migracion C# — POC: shell WPF cargando el XAML existente + monitor de sistema async
+
+Shell C#/WPF (.NET 8) en `src-csharp/WinBoost/` que reutiliza `OptimizarPC_UI.xaml` sin
+modificaciones de contenido (solo se agrego `x:Class="WinBoost.MainWindow"` en el elemento
+raiz). Valida tres puntos clave de la migracion:
+
+- **Reuso de XAML**: el mismo .xaml compila tanto en PS1 como en C# sin cambios de estructura.
+- **Campos tipados**: los `x:Name` del XAML se generan como campos del partial class;
+  no se necesita `Get-Ctrl` ni `FindName`.
+- **Patron async sin congelamiento de UI**: un `DispatcherTimer` tickea cada 1 segundo;
+  la lectura de CPU% (via `GetSystemTimes`), RAM (via `GlobalMemoryStatusEx`) y disco
+  (`DriveInfo`) corre en `Task.Run` fuera del hilo UI. Las barras del monitor se animan
+  con `DoubleAnimation` de 200ms. La ventana se puede arrastrar y redimensionar sin
+  tironeos mientras el monitor actualiza — el contraste central con PS5.1.
+
+**Archivos creados**
+- `src-csharp/WinBoost/WinBoost.csproj` — net8.0-windows, UseWPF, Nullable=enable, manifest asInvoker
+- `src-csharp/WinBoost/app.manifest` — requestedExecutionLevel=asInvoker
+- `src-csharp/WinBoost/MainWindow.xaml` — copia del XAML real + x:Class
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — monitor async (CPU/RAM/disco + animaciones)
+- `src-csharp/WinBoost/App.xaml` / `App.xaml.cs` — generados por plantilla WPF
+
+**Brushes faltantes**: ninguno. Todos los `DynamicResource` del XAML (BrushAppBg, BrushSidebar,
+BrushCard, BrushDeep, BrushElev, BrushCtrl, BrushBorder, BrushFg1, BrushFg2, BrushFgMuted,
+BrushFgDim) estan definidos dentro del propio XAML en `Window.Resources`.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
 ## Auto-updater v4.1 — Camino B (instalador silencioso) + verificacion de integridad
 
 **Archivos modificados**
