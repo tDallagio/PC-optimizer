@@ -67,6 +67,19 @@ internal static class NativeMethods
     [DllImport("user32.dll")]
     internal static extern IntPtr GetShellWindow();
 
+    // ── shell32 ───────────────────────────────────────────────────────────────
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, uint dwFlags);
+
+    internal static void EmptyRecycleBin()
+    {
+        const uint SHERB_NOCONFIRMATION = 0x00000001;
+        const uint SHERB_NOPROGRESSUI   = 0x00000002;
+        const uint SHERB_NOSOUND        = 0x00000004;
+        SHEmptyRecycleBin(IntPtr.Zero, null, SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
+    }
+
     // ── structs ───────────────────────────────────────────────────────────────
 
     [StructLayout(LayoutKind.Sequential)]

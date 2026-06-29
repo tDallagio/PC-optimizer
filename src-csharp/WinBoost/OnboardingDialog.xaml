@@ -1,0 +1,258 @@
+<Window x:Class="WinBoost.OnboardingDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WinBoost - Bienvenido"
+        Width="600" Height="540"
+        WindowStartupLocation="CenterOwner"
+        Background="#0D0D0D" FontFamily="Segoe UI"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+
+  <Window.Resources>
+    <Style x:Key="ObdBtnSec" TargetType="Button">
+      <Setter Property="Background"      Value="#1E1E1E"/>
+      <Setter Property="Foreground"      Value="#CCCCCC"/>
+      <Setter Property="BorderBrush"     Value="#2A2A2A"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor"          Value="Hand"/>
+      <Setter Property="FontSize"        Value="12"/>
+      <Setter Property="Height"          Value="34"/>
+      <Setter Property="Padding"         Value="18,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background"  Value="#2A2A2A"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background"  Value="#111111"/>
+                <Setter Property="Foreground"  Value="#333333"/>
+                <Setter Property="BorderBrush" Value="#1A1A1A"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="ObdBtnMain" TargetType="Button">
+      <Setter Property="Background"      Value="{StaticResource BrushAccent}"/>
+      <Setter Property="Foreground"      Value="#0D0D0D"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor"          Value="Hand"/>
+      <Setter Property="FontSize"        Value="12"/>
+      <Setter Property="FontWeight"      Value="SemiBold"/>
+      <Setter Property="Height"          Value="34"/>
+      <Setter Property="Padding"         Value="20,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#33D6FF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Header: titulo + sub + dots -->
+    <Border Grid.Row="0" Background="#161616" BorderBrush="#2A2A2A"
+            BorderThickness="0,0,0,1" Padding="28,18">
+      <StackPanel>
+        <TextBlock x:Name="lblObdStepTitle" Text="Bienvenido a WinBoost"
+                   FontSize="18" FontWeight="SemiBold" Foreground="#EEEEEE"/>
+        <TextBlock x:Name="lblObdStepSub" Text=""
+                   FontSize="12" Foreground="#555555" Margin="0,4,0,0"/>
+        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+          <Border x:Name="dot0" Width="32" Height="6" CornerRadius="3" Background="{StaticResource BrushAccent}" Margin="0,0,7,0"/>
+          <Border x:Name="dot1" Width="32" Height="6" CornerRadius="3" Background="#2A2A2A" Margin="0,0,7,0"/>
+          <Border x:Name="dot2" Width="32" Height="6" CornerRadius="3" Background="#2A2A2A" Margin="0,0,7,0"/>
+          <Border x:Name="dot3" Width="32" Height="6" CornerRadius="3" Background="#2A2A2A"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="1">
+      <!-- Paso 0: hardware -->
+      <Border x:Name="step0" Visibility="Visible" Padding="28,20">
+        <StackPanel>
+          <TextBlock Text="HARDWARE DETECTADO" FontSize="10" FontWeight="SemiBold"
+                     Foreground="#555555" Margin="0,0,0,14"/>
+          <Border Background="#161616" CornerRadius="8" BorderBrush="#2A2A2A"
+                  BorderThickness="1" Padding="20,14">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="90"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+              </Grid.RowDefinitions>
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU"    FontSize="12" Foreground="#555555" Margin="0,7"/>
+              <TextBlock Grid.Row="0" Grid.Column="1" x:Name="lblObdCPU"  FontSize="12" Foreground="#CCCCCC" Margin="0,7" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="GPU"    FontSize="12" Foreground="#555555" Margin="0,7"/>
+              <TextBlock Grid.Row="1" Grid.Column="1" x:Name="lblObdGPU"  FontSize="12" Foreground="#CCCCCC" Margin="0,7" TextTrimming="CharacterEllipsis"/>
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="RAM"    FontSize="12" Foreground="#555555" Margin="0,7"/>
+              <TextBlock Grid.Row="2" Grid.Column="1" x:Name="lblObdRAM"  FontSize="12" Foreground="#CCCCCC" Margin="0,7"/>
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="Disco"  FontSize="12" Foreground="#555555" Margin="0,7"/>
+              <TextBlock Grid.Row="3" Grid.Column="1" x:Name="lblObdDisk" FontSize="12" Foreground="#CCCCCC" Margin="0,7"/>
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="Equipo" FontSize="12" Foreground="#555555" Margin="0,7"/>
+              <TextBlock Grid.Row="4" Grid.Column="1" x:Name="lblObdType" FontSize="12" Foreground="#CCCCCC" Margin="0,7"/>
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Paso 1: score -->
+      <Border x:Name="step1" Visibility="Collapsed" Padding="28,20">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="PUNTUACION DE SALUD ACTUAL" FontSize="10" FontWeight="SemiBold"
+                     Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,24"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+            <TextBlock x:Name="lblObdScore" Text="--" FontSize="72" FontWeight="Bold"
+                       Foreground="{StaticResource BrushAccent}" VerticalAlignment="Bottom"/>
+            <TextBlock Text="%" FontSize="28" Foreground="#555555"
+                       VerticalAlignment="Bottom" Margin="4,0,0,10"/>
+          </StackPanel>
+          <TextBlock x:Name="lblObdScoreLabel" Text="Calculando..."
+                     FontSize="14" Foreground="#888888"
+                     HorizontalAlignment="Center" Margin="0,14,0,0"/>
+          <Border Background="#161616" CornerRadius="8" Padding="18,14" Margin="0,28,0,0"
+                  BorderBrush="#2A2A2A" BorderThickness="1">
+            <TextBlock FontSize="11" Foreground="#555555" TextWrapping="Wrap" TextAlignment="Center"
+              Text="WinBoost analiza 19 aspectos de tu PC: rendimiento, privacidad, red y servicios. Una puntuacion mas alta indica un sistema mas optimizado."/>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <!-- Paso 2: seleccion de preset -->
+      <Border x:Name="step2" Visibility="Collapsed" Padding="28,20">
+        <StackPanel>
+          <TextBlock Text="SELECCIONA TU PERFIL DE USO" FontSize="10" FontWeight="SemiBold"
+                     Foreground="#555555" Margin="0,0,0,6"/>
+          <TextBlock Text="Podras cambiarlo en cualquier momento desde la pantalla principal."
+                     FontSize="11" Foreground="#444444" Margin="0,0,0,20"/>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="10"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="10"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Border x:Name="cardGaming" Grid.Column="0" Background="#161616"
+                    CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="2"
+                    Padding="14,18" Cursor="Hand" MouseLeftButtonUp="OnPickGaming">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="&#x26A1;" FontFamily="Segoe UI Symbol" FontSize="32"
+                           HorizontalAlignment="Center" Foreground="{StaticResource BrushAccent}" Margin="0,0,0,10"/>
+                <TextBlock Text="Gaming" FontSize="13" FontWeight="SemiBold"
+                           Foreground="#CCCCCC" HorizontalAlignment="Center"/>
+                <TextBlock Text="Maximo rendimiento" FontSize="10" Foreground="#555555"
+                           HorizontalAlignment="Center" Margin="0,4,0,0"
+                           TextWrapping="Wrap" TextAlignment="Center"/>
+                <Border x:Name="badgeRecGaming" Background="#0D1520" CornerRadius="4"
+                        Padding="6,2" Margin="0,10,0,0" Visibility="Collapsed"
+                        HorizontalAlignment="Center">
+                  <TextBlock Text="Recomendado" FontSize="9" Foreground="{StaticResource BrushAccent}"/>
+                </Border>
+              </StackPanel>
+            </Border>
+            <Border x:Name="cardProd" Grid.Column="2" Background="#161616"
+                    CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="2"
+                    Padding="14,18" Cursor="Hand" MouseLeftButtonUp="OnPickProd">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="&#x2699;" FontFamily="Segoe UI Symbol" FontSize="32"
+                           HorizontalAlignment="Center" Foreground="#F59E0B" Margin="0,0,0,10"/>
+                <TextBlock Text="Productividad" FontSize="13" FontWeight="SemiBold"
+                           Foreground="#CCCCCC" HorizontalAlignment="Center"/>
+                <TextBlock Text="Trabajo y uso general" FontSize="10" Foreground="#555555"
+                           HorizontalAlignment="Center" Margin="0,4,0,0"
+                           TextWrapping="Wrap" TextAlignment="Center"/>
+                <Border x:Name="badgeRecProd" Background="#1A1400" CornerRadius="4"
+                        Padding="6,2" Margin="0,10,0,0" Visibility="Collapsed"
+                        HorizontalAlignment="Center">
+                  <TextBlock Text="Recomendado" FontSize="9" Foreground="#F59E0B"/>
+                </Border>
+              </StackPanel>
+            </Border>
+            <Border x:Name="cardSafe" Grid.Column="4" Background="#161616"
+                    CornerRadius="8" BorderBrush="#2A2A2A" BorderThickness="2"
+                    Padding="14,18" Cursor="Hand" MouseLeftButtonUp="OnPickSafe">
+              <StackPanel HorizontalAlignment="Center">
+                <TextBlock Text="&#x2713;" FontFamily="Segoe UI Symbol" FontSize="32"
+                           HorizontalAlignment="Center" Foreground="#22C55E" Margin="0,0,0,10"/>
+                <TextBlock Text="Conservador" FontSize="13" FontWeight="SemiBold"
+                           Foreground="#CCCCCC" HorizontalAlignment="Center"/>
+                <TextBlock Text="Solo limpieza basica" FontSize="10" Foreground="#555555"
+                           HorizontalAlignment="Center" Margin="0,4,0,0"
+                           TextWrapping="Wrap" TextAlignment="Center"/>
+                <Border x:Name="badgeRecSafe" Background="#0A2A0A" CornerRadius="4"
+                        Padding="6,2" Margin="0,10,0,0" Visibility="Collapsed"
+                        HorizontalAlignment="Center">
+                  <TextBlock Text="Recomendado" FontSize="9" Foreground="#22C55E"/>
+                </Border>
+              </StackPanel>
+            </Border>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Paso 3: listo -->
+      <Border x:Name="step3" Visibility="Collapsed" Padding="28,20">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+          <TextBlock Text="&#x2605;" FontFamily="Segoe UI Symbol" FontSize="52"
+                     Foreground="{StaticResource BrushAccent}" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+          <TextBlock Text="Todo listo para optimizar"
+                     FontSize="18" FontWeight="SemiBold" Foreground="#EEEEEE"
+                     HorizontalAlignment="Center" Margin="0,0,0,10"/>
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
+            <TextBlock Text="Perfil configurado: " FontSize="13" Foreground="#555555"
+                       VerticalAlignment="Center"/>
+            <TextBlock x:Name="lblObdPresetChosen" Text="Gaming" FontSize="13"
+                       FontWeight="SemiBold" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+          </StackPanel>
+          <Border Background="#161616" CornerRadius="8" Padding="18,14" Margin="0,24,0,0"
+                  BorderBrush="#2A2A2A" BorderThickness="1">
+            <TextBlock FontSize="11" Foreground="#555555" TextWrapping="Wrap" TextAlignment="Center"
+              Text="Los checkboxes de la pantalla Optimizar se configuraron segun tu perfil. Podes ajustarlos antes de ejecutar."/>
+          </Border>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Footer: navegacion -->
+    <Border Grid.Row="2" Background="#111111" BorderBrush="#2A2A2A"
+            BorderThickness="0,1,0,0" Padding="20,14">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="btnObdBack" Content="Anterior" Margin="0,0,8,0"
+                IsEnabled="False" Style="{StaticResource ObdBtnSec}" Click="OnBack"/>
+        <Button x:Name="btnObdNext" Content="Siguiente"
+                Style="{StaticResource ObdBtnMain}" Click="OnNext"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

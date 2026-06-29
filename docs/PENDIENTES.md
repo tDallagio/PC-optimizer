@@ -23,43 +23,43 @@ comportamiento del PS1 original.
 - **Meta de cierre:** la app abre, el sidebar navega, los settings cargan
 
 ### FASE 1 — Nucleo de seguridad (backup/restore)
-- [ ] 1.1 BackupService: New-BackupSession + Save-*Backup (Reg/Svc/Net/PowerPlan/PageFile/Netsh)
-- [ ] 1.2 Restore-* completos + Get-BackupSessions + Cleanup
-- [ ] 1.3 Validar contra el motor de backup del PS1
+- [x] 1.1 BackupService: New-BackupSession + Save-*Backup (Reg/Svc/Net/PowerPlan/PageFile/Netsh)
+- [x] 1.2 Restore-* completos + Get-BackupSessions + Cleanup
+- [x] 1.3 Validar contra el motor de backup del PS1
 
 ### FASE 2 — Diagnostico read-only (valida la fluidez async)
-- [ ] 2.1 System info + score + auditoria
-- [ ] 2.2 Snapshots (boot time, RAM idle, conteo procesos) + Compare
-- [ ] 2.3 Temperaturas CPU/GPU/thermal
-- [ ] 2.4 Procesos pesados (async, sin Sleep en hilo UI)
-- [ ] 2.5 Dispositivos con problemas + inventario de drivers
+- [x] 2.1 System info + score + auditoria
+- [x] 2.2 Snapshots (boot time, RAM idle, conteo procesos) + Compare
+- [x] 2.3 Temperaturas CPU/GPU/thermal
+- [x] 2.4 Procesos pesados (async, sin Sleep en hilo UI)
+- [x] 2.5 Dispositivos con problemas + inventario de drivers
 - **Meta de cierre:** confirmar que la UI no se congela en ninguna de estas operaciones
 
 ### FASE 3 — Motor de optimizacion
-- [ ] 3.1 OptimizationService: Apply-Preset + Invoke-*Tweaks (cleanup/registry/network/service)
-- [ ] 3.2 Build-ActionPlan + modelo de action plan
-- [ ] 3.3 Dialogos de confirmacion / analisis
-- [ ] 3.4 Invoke-OptimizeFinish + resumen aplicado/omitido
-- [ ] 3.5 Modo silencioso CLI (-Silent -Preset)
+- [x] 3.1 OptimizationService: Apply-Preset + Invoke-*Tweaks (cleanup/registry/network/service)
+- [x] 3.2 Build-ActionPlan + modelo de action plan
+- [x] 3.3 Dialogos de confirmacion / analisis
+- [x] 3.4 Invoke-OptimizeFinish + resumen aplicado/omitido
+- [x] 3.5 Modo silencioso CLI (-Silent -Preset)
 
 ### FASE 4 — Features independientes (paralelizable)
-- [ ] 4.1 Bloatware (AppX + winget)
-- [ ] 4.2 Startup manager
-- [ ] 4.3 Mantenimiento (tarea programada)
-- [ ] 4.4 Game Focus Mode (P/Invoke user32 + afinidad de CPU)
-- [ ] 4.5 Purga de RAM (Standby List)
-- [ ] 4.6 Historial + score history
-- [ ] 4.7 Reporte HTML
-- [ ] 4.8 Dialogo de comparacion
+- [x] 4.1 Bloatware (AppX + winget)
+- [x] 4.2 Startup manager
+- [x] 4.3 Mantenimiento (tarea programada)
+- [x] 4.4 Game Focus Mode (P/Invoke user32 + afinidad de CPU)
+- [x] 4.5 Purga de RAM (Standby List)
+- [x] 4.6 Historial + score history
+- [x] 4.7 Reporte HTML
+- [x] 4.8 Dialogo de comparacion
 
 ### FASE 5 — Licencias + onboarding + updater
-- [ ] 5.1 Licencias: RSA-2048, trial, lock Pro, badge
-- [ ] 5.2 First-run / onboarding / changelog
-- [ ] 5.3 Auto-updater (Check / Download / Apply) en C#
+- [x] 5.1 Licencias: RSA-2048, trial, lock Pro, badge
+- [x] 5.2 First-run / onboarding / changelog
+- [x] 5.3 Auto-updater (Check / Download / Apply) en C#
 
 ### FASE 6 — Tuning tab + pulido estetico + corte
-- [ ] 6.1 Tuning tab: reconstruir como XAML declarativo (achica el Build-TuningTab de 1.200 lineas)
-- [ ] 6.2 Sistema de diseno: tokens de espaciado/tipografia, acento unico, estados hover/pressed/disabled, transiciones
+- [x] 6.1 Tuning tab: reconstruir como XAML declarativo (achica el Build-TuningTab de 1.200 lineas)
+- [x] 6.2 Sistema de diseno: tokens de espaciado/tipografia, acento unico, estados hover/pressed/disabled, transiciones
 - [ ] 6.3 Corte: jubilar el `.ps1`, actualizar README e instalador
 
 ---

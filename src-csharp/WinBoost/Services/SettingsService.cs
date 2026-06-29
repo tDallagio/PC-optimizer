@@ -33,6 +33,7 @@ internal sealed class SettingsService
             Current.TrialExpired        = loaded.TrialExpired;
             Current.TechnicianName      = loaded.TechnicianName  ?? "";
             Current.GameAffinityEnabled = loaded.GameAffinityEnabled;
+            Current.FirstRunCompleted   = loaded.FirstRunCompleted;
         }
         catch { }
     }

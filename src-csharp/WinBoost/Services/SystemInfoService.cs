@@ -1,0 +1,325 @@
+using System.Diagnostics;
+using System.Management;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.ServiceProcess;
+using Microsoft.Win32;
+
+namespace WinBoost.Services;
+
+public sealed record SystemSnapshot(
+    string CpuName,
+    string GpuName,
+    int    TotalRamGb,
+    bool   IsLaptop,
+    bool   HasSsd,
+    string OsCaption,
+    int    BuildNumber,
+    bool   IsWin11);
+
+public sealed record AuditItemResult(string Id, string Label, string Category, int Weight, bool Ok);
+
+public sealed record AuditResult(
+    int    Score,
+    IReadOnlyList<AuditItemResult>      Items,
+    IReadOnlyDictionary<string, string> ByCategory,
+    int    OkCount,
+    int    FailCount);
+
+public sealed class SystemInfoService
+{
+    // Mirror of $script:auditItems in PS1 (Id, Label, Category, Weight)
+    private static readonly (string Id, string Label, string Cat, int Wt)[] AuditDefs =
+    [
+        ("HPET",        "HPET deshabilitado",                    "Rendimiento", 5),
+        ("GPUPrio",     "GPU Priority (DXGI)",                   "Rendimiento", 5),
+        ("PowerThrot",  "Power Throttling desactivado",          "Rendimiento", 5),
+        ("MouseAccel",  "Aceleracion de mouse OFF",              "Rendimiento", 3),
+        ("FastStartup", "Fast Startup deshabilitado",            "Rendimiento", 4),
+        ("Visual",      "Efectos visuales minimizados",          "Rendimiento", 4),
+        ("Telemetry",   "Telemetria deshabilitada",              "Privacidad",  8),
+        ("GameDVR",     "Game DVR Xbox OFF",                     "Privacidad",  5),
+        ("Cortana",     "Cortana deshabilitada",                 "Privacidad",  5),
+        ("Tasks",       "Tareas de telemetria deshabilitadas",   "Privacidad",  8),
+        ("DNS",         "DNS optimizado (no ISP)",               "Red",         8),
+        ("Nagle",       "Algoritmo de Nagle OFF",                "Red",         5),
+        ("TCPTuning",   "TCP/IP optimizado (RSS habilitado)",    "Red",         5),
+        ("SvcDiag",     "DiagTrack deshabilitado",               "Servicios",   7),
+        ("SvcXbox",     "Servicios Xbox deshabilitados",         "Servicios",   5),
+        ("SvcFax",      "Fax y RemoteRegistry deshabilitados",   "Servicios",   5),
+        ("SvcWER",      "Windows Error Reporting deshabilitado", "Servicios",   5),
+    ];
+
+    // ── System info ───────────────────────────────────────────────────────────
+
+    public Task<SystemSnapshot> GetSystemInfoAsync() => Task.Run(GatherSystemInfo);
+
+    private static SystemSnapshot GatherSystemInfo()
+    {
+        string cpu = "", gpu = "", os = "";
+        int    ram = 0, build = 0;
+        bool   laptop = false, ssd = false;
+
+        try
+        {
+            using var q = new ManagementObjectSearcher("SELECT Name FROM Win32_Processor");
+            foreach (ManagementObject o in q.Get())
+            { cpu = o["Name"]?.ToString()?.Trim() ?? ""; break; }
+        }
+        catch { }
+
+        try
+        {
+            using var q = new ManagementObjectSearcher("SELECT Name FROM Win32_VideoController");
+            foreach (ManagementObject o in q.Get())
+            { gpu = o["Name"]?.ToString()?.Trim() ?? ""; break; }
+        }
+        catch { }
+
+        try
+        {
+            using var q = new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem");
+            foreach (ManagementObject o in q.Get())
+            {
+                ram = (int)Math.Round(Convert.ToDouble(o["TotalPhysicalMemory"]) / 1_073_741_824.0);
+                break;
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var q = new ManagementObjectSearcher("SELECT Caption,BuildNumber FROM Win32_OperatingSystem");
+            foreach (ManagementObject o in q.Get())
+            {
+                os    = o["Caption"]?.ToString() ?? "";
+                build = Convert.ToInt32(o["BuildNumber"]);
+                break;
+            }
+        }
+        catch { }
+
+        try
+        {
+            using var q = new ManagementObjectSearcher("SELECT ChassisTypes FROM Win32_SystemEnclosure");
+            foreach (ManagementObject o in q.Get())
+            {
+                if (o["ChassisTypes"] is Array arr)
+                {
+                    int[] lt = [8, 9, 10, 14];
+                    foreach (var v in arr) if (lt.Contains(Convert.ToInt32(v))) { laptop = true; break; }
+                }
+                break;
+            }
+        }
+        catch { }
+
+        try
+        {
+            var scope   = new ManagementScope(@"\\.\root\microsoft\windows\storage");
+            var query   = new ObjectQuery("SELECT MediaType FROM MSFT_PhysicalDisk");
+            using var q = new ManagementObjectSearcher(scope, query);
+            foreach (ManagementObject o in q.Get())
+                if (Convert.ToInt32(o["MediaType"]) == 4) { ssd = true; break; }
+        }
+        catch { }
+
+        return new SystemSnapshot(cpu, gpu, ram, laptop, ssd, os, build, build >= 22000);
+    }
+
+    // ── Audit ─────────────────────────────────────────────────────────────────
+
+    public Task<AuditResult> RunAuditAsync() => Task.Run(RunAudit);
+
+    private static AuditResult RunAudit()
+    {
+        int maxPts  = AuditDefs.Sum(d => d.Wt);
+        int earned  = 0;
+        var results = new List<AuditItemResult>(AuditDefs.Length);
+
+        foreach (var (id, label, cat, wt) in AuditDefs)
+        {
+            bool ok = false;
+            try { ok = Check(id); } catch { }
+            earned += ok ? wt : 0;
+            results.Add(new AuditItemResult(id, label, cat, wt, ok));
+        }
+
+        int score = maxPts > 0 ? (int)Math.Round(earned * 100.0 / maxPts) : 0;
+        var byCategory = results
+            .GroupBy(r => r.Category)
+            .ToDictionary(g => g.Key, g => $"{g.Count(r => r.Ok)}/{g.Count()}");
+
+        return new AuditResult(score, results, byCategory,
+            results.Count(r => r.Ok), results.Count(r => !r.Ok));
+    }
+
+    private static bool Check(string id) => id switch
+    {
+        "HPET"        => CheckHpet(),
+        "GPUPrio"     => CheckGpuPrio(),
+        "PowerThrot"  => CheckPowerThrot(),
+        "MouseAccel"  => CheckMouseAccel(),
+        "FastStartup" => CheckFastStartup(),
+        "Visual"      => CheckVisual(),
+        "Telemetry"   => CheckTelemetry(),
+        "GameDVR"     => CheckGameDvr(),
+        "Cortana"     => CheckCortana(),
+        "Tasks"       => CheckTasks(),
+        "DNS"         => CheckDns(),
+        "Nagle"       => CheckNagle(),
+        "TCPTuning"   => CheckTcpTuning(),
+        "SvcDiag"     => CheckSvc("DiagTrack"),
+        "SvcXbox"     => CheckSvcXbox(),
+        "SvcFax"      => CheckSvc("Fax") || CheckSvc("RemoteRegistry"),
+        "SvcWER"      => CheckSvc("WerSvc"),
+        _             => false,
+    };
+
+    // ── Individual checks (mirror of PS1 scriptblocks) ───────────────────────
+
+    private static bool CheckHpet()
+    {
+        foreach (string line in RunProcess("bcdedit", "/enum").Split('\n'))
+            if (line.Contains("disabledynamictick", StringComparison.OrdinalIgnoreCase)
+             && line.Contains("Yes", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    private static bool CheckGpuPrio()
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(
+            @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games");
+        return k?.GetValue("GPU Priority") is int i && i >= 8;
+    }
+
+    private static bool CheckPowerThrot()
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(
+            @"SYSTEM\CurrentControlSet\Control\Power\PowerThrottling");
+        return k?.GetValue("PowerThrottlingOff") is int i && i == 1;
+    }
+
+    private static bool CheckMouseAccel()
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(@"Control Panel\Mouse");
+        return k?.GetValue("MouseSpeed")?.ToString() == "0";
+    }
+
+    private static bool CheckFastStartup()
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(
+            @"SYSTEM\CurrentControlSet\Control\Session Manager\Power");
+        return k?.GetValue("HiberbootEnabled") is int i && i == 0;
+    }
+
+    private static bool CheckVisual()
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects");
+        return k?.GetValue("VisualFXSetting") is int i && i == 2;
+    }
+
+    private static bool CheckTelemetry()
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(
+            @"SOFTWARE\Policies\Microsoft\Windows\DataCollection");
+        return k?.GetValue("AllowTelemetry") is int i && i == 0;
+    }
+
+    private static bool CheckGameDvr()
+    {
+        using var k = Registry.CurrentUser.OpenSubKey(@"System\GameConfigStore");
+        return k?.GetValue("GameDVR_Enabled") is int i && i == 0;
+    }
+
+    private static bool CheckCortana()
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(
+            @"SOFTWARE\Policies\Microsoft\Windows\Windows Search");
+        return k?.GetValue("AllowCortana") is int i && i == 0;
+    }
+
+    private static bool CheckTasks()
+    {
+        string[] tasks =
+        [
+            @"\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser",
+            @"\Microsoft\Windows\Customer Experience Improvement Program\Consolidator",
+            @"\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector",
+        ];
+        int disabled = tasks.Count(t =>
+            RunProcess("schtasks", $"/query /fo CSV /tn \"{t}\"")
+                .Contains("Disabled", StringComparison.OrdinalIgnoreCase));
+        return disabled >= 2;
+    }
+
+    private static bool CheckDns()
+    {
+        string[] known = ["1.1.1.1","1.0.0.1","8.8.8.8","8.8.4.4",
+                          "9.9.9.9","149.112.112.112","94.140.14.14","94.140.15.15"];
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus != OperationalStatus.Up) continue;
+            foreach (var dns in nic.GetIPProperties().DnsAddresses)
+                if (dns.AddressFamily == AddressFamily.InterNetwork && known.Contains(dns.ToString()))
+                    return true;
+            break;
+        }
+        return false;
+    }
+
+    private static bool CheckNagle()
+    {
+        using var k = Registry.LocalMachine.OpenSubKey(
+            @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces");
+        if (k == null) return false;
+        foreach (string sub in k.GetSubKeyNames())
+        {
+            using var iface = k.OpenSubKey(sub);
+            if (iface?.GetValue("TcpAckFrequency") is int i && i == 1) return true;
+        }
+        return false;
+    }
+
+    private static bool CheckTcpTuning()
+    {
+        foreach (string line in RunProcess("netsh", "int tcp show global").Split('\n'))
+            if (line.Contains("Receive-Side Scaling", StringComparison.OrdinalIgnoreCase)
+             && line.Contains("enabled", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    private static bool CheckSvc(string name)
+    {
+        try { using var s = new ServiceController(name); return s.StartType == ServiceStartMode.Disabled; }
+        catch { return false; }
+    }
+
+    private static bool CheckSvcXbox()
+    {
+        string[] names = ["XblAuthManager", "XblGameSave", "XboxNetApiSvc"];
+        return names.Count(CheckSvc) >= 2;
+    }
+
+    private static string RunProcess(string exe, string args)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(exe, args)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError  = true,
+                UseShellExecute        = false,
+                CreateNoWindow         = true,
+            };
+            using var proc = Process.Start(psi)!;
+            string output = proc.StandardOutput.ReadToEnd();
+            proc.WaitForExit();
+            return output;
+        }
+        catch { return ""; }
+    }
+}

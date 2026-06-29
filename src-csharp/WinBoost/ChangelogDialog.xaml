@@ -1,0 +1,105 @@
+<Window x:Class="WinBoost.ChangelogDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Actualizacion disponible"
+        Width="520" Height="400"
+        WindowStartupLocation="CenterOwner"
+        Background="#0D0D0D" FontFamily="Segoe UI"
+        ResizeMode="NoResize" ShowInTaskbar="False">
+
+  <Window.Resources>
+    <Style x:Key="ClBtnSec" TargetType="Button">
+      <Setter Property="Background"      Value="#1E1E1E"/>
+      <Setter Property="Foreground"      Value="#CCCCCC"/>
+      <Setter Property="BorderBrush"     Value="#2A2A2A"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor"          Value="Hand"/>
+      <Setter Property="FontSize"        Value="12"/>
+      <Setter Property="Height"          Value="32"/>
+      <Setter Property="Padding"         Value="14,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background"  Value="#2A2A2A"/>
+                <Setter Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="ClBtnMain" TargetType="Button">
+      <Setter Property="Background"      Value="{StaticResource BrushAccent}"/>
+      <Setter Property="Foreground"      Value="#0D0D0D"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor"          Value="Hand"/>
+      <Setter Property="FontSize"        Value="12"/>
+      <Setter Property="FontWeight"      Value="SemiBold"/>
+      <Setter Property="Height"          Value="32"/>
+      <Setter Property="Padding"         Value="16,0"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#33D6FF"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="#2A2A2A"/>
+                <Setter Property="Foreground" Value="#555555"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
+
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="#161616" BorderBrush="#2A2A2A"
+            BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="lblUpdateVersion" Text="WinBoost disponible"
+                   FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource BrushAccent}"/>
+        <TextBlock x:Name="lblUpdateCurrentVer" Text=""
+                   FontSize="11" Foreground="#555555" Margin="0,4,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="20,14">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <TextBlock x:Name="tbChangelog" Text="" FontSize="12"
+                   Foreground="#CCCCCC" TextWrapping="Wrap" LineHeight="20"/>
+      </ScrollViewer>
+    </Border>
+
+    <Border Grid.Row="2" Background="#111111" BorderBrush="#2A2A2A"
+            BorderThickness="0,1,0,0" Padding="16,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="btnUpdateLater" Content="Ahora no" Margin="0,0,8,0"
+                Style="{StaticResource ClBtnSec}" Click="OnLater"/>
+        <Button x:Name="btnUpdateGitHub" Content="Ver en GitHub" Margin="0,0,8,0"
+                Style="{StaticResource ClBtnSec}" Click="OnGitHub"/>
+        <Button x:Name="btnUpdateDownload" Content="Descargar e instalar"
+                Style="{StaticResource ClBtnMain}" Click="OnDownload"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
