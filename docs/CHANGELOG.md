@@ -5,6 +5,59 @@
 
 ---
 
+## C# Procesos lazy + autorefresh ON, reorden de tabs y limpieza del sidebar
+
+Tres cambios sobre la app C# (`src-csharp/WinBoost/`): procesos pesados con carga lazy y
+auto-refresh encendido por defecto, reorden de las pestañas del sidebar, y se quita el
+bloque de info de hardware del sidebar.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/MainWindow.xaml` — (1) reorden de los `<TabItem>` dentro de `mainTabs`
+  al nuevo orden de indices; (2) reorden visual de los botones de navegacion del sidebar;
+  (3) eliminado el bloque "Info sistema compacta" (CPU/GPU/RAM/disco) que estaba arriba de
+  "Licencia"; el `Grid` del sidebar pasa de 4 a 3 filas y se renumeran `btnErrBadge` (Row 1)
+  y `navLicencia` (Row 2) para que no quede hueco.
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — array `_navButtons`, handlers `Click`, y TODAS
+  las referencias por indice (`SetActiveNav`, `mainTabs.SelectedIndex == N`) remapeadas al
+  nuevo orden. Nuevo flag `_procLoaded` + `InitProcessesAsync()` (carga lazy de Herramientas:
+  refresca la lista una vez y arranca el timer si el auto-refresh esta ON). `ToggleProcTimer`
+  persiste la eleccion en settings; `StartProcTimer` toma el intervalo de `ProcRefreshSec`.
+  `PopulateSystemInfoControls` ya no escribe en los labels eliminados del sidebar.
+- `src-csharp/WinBoost/Services/AppSettings.cs` — nuevo `ProcAutoRefresh` (default `true`).
+- `src-csharp/WinBoost/Services/SettingsService.cs` — carga/persistencia de `ProcAutoRefresh`.
+
+**Detalle**
+
+CAMBIO 1 — Procesos pesados. La lista de procesos pesados ahora se carga sola la primera vez
+que se entra a Herramientas (carga lazy, mismo patron que Bloatware), no al iniciar la app.
+El auto-refresh arranca ENCENDIDO por defecto (`ProcAutoRefresh = true`), refrescando cada
+`ProcRefreshSec` (~3s) fuera del hilo UI via `App.Processes.GetHeavyProcessesAsync` +
+`Task.Run`, sin trabar la UI. El estado del toggle se guarda en `settings.json`. En PS5.1 esto
+estaba OFF porque el refresh sincrono trababa la UI; en C# (async) ya no aplica.
+
+CAMBIO 2 — Reorden de tabs. Nuevo orden de indices (sidebar de arriba hacia abajo):
+0 Optimizar · 1 Herramientas · 2 Info del sistema · 3 Arranque · 4 Bloatware · 5 Consola ·
+6 Historial · 7 Ajustes. Licencia (8) y Tuning (9) quedan aparte como hasta ahora. Se movieron
+las TRES cosas en sincronia: orden visual de los botones, orden de los `TabItem`, e indices que
+cada boton pasa a `SetActiveNav` + toda referencia por indice (footer solo en Optimizar idx 0;
+score widget abre Info idx 2; navegaciones a Consola idx 5, Historial idx 6, Bloatware idx 4;
+lazy-loads de Arranque idx 3, Info idx 2, Bloatware idx 4, Historial idx 6, Tuning idx 9).
+
+CAMBIO 3 — Sidebar mas limpio. El bloque informativo de hardware (CPU/Ryzen, GPU/RX, RAM, tipo
+de disco) arriba de "Licencia" era solo display, no acoplado a funcionalidad. Se quito del XAML
+y se dejaron de poblar sus labels en el code-behind. El layout del sidebar se ajusto (una fila
+menos) para que no quede hueco.
+
+**Verificacion**
+
+`dotnet build -c Debug` correcto: 0 advertencias, 0 errores. XAML valido (`ElementTree`); orden
+de `TabItem` y de botones confirmado por script. Pendiente de prueba visual del usuario: que la
+lista de procesos no "salte"/parpadee de forma molesta al reordenarse en cada refresh (la lista
+se reconstruye completa cada ~3s y se ordena por CPU, asi que el reordenamiento es posible —
+reportar si molesta).
+
+---
+
 ## C# Bloatware — escaneo automatico (lazy) al entrar a la pestaña
 
 C# Bloatware: la lista se escanea sola la primera vez que se entra a la tab (carga lazy),

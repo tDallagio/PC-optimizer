@@ -26,6 +26,7 @@ internal sealed class SettingsService
             if (!string.IsNullOrEmpty(loaded.CloseAction)) Current.CloseAction       = loaded.CloseAction;
             Current.ShowSplash          = loaded.ShowSplash;
             Current.ProcRefreshSec      = loaded.ProcRefreshSec > 0 ? loaded.ProcRefreshSec : 3;
+            Current.ProcAutoRefresh     = loaded.ProcAutoRefresh;
             Current.RunAtStartup        = loaded.RunAtStartup;
             if (!string.IsNullOrEmpty(loaded.BackupRoot))  Current.BackupRoot        = loaded.BackupRoot;
             Current.BackupRetainDays    = loaded.BackupRetainDays > 0 ? loaded.BackupRetainDays : 30;

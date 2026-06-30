@@ -7,6 +7,7 @@ internal sealed class AppSettings
     public string CloseAction         { get; set; } = "exit";
     public bool   ShowSplash          { get; set; } = true;
     public int    ProcRefreshSec      { get; set; } = 3;
+    public bool   ProcAutoRefresh     { get; set; } = true;
     public bool   RunAtStartup        { get; set; } = false;
     public string BackupRoot          { get; set; } = DefaultBackupRoot;
     public int    BackupRetainDays    { get; set; } = 30;

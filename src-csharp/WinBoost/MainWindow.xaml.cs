@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _procTimer;
     private bool             _procTimerRunning  = false;
     private bool             _procRefreshing    = false;
+    private bool             _procLoaded        = false;  // carga lazy al entrar a Herramientas
     private const int        ProcTimerIntervalSec = 3;
 
     // Optimizacion (3.1): cache del system info + score previo
@@ -117,24 +118,24 @@ public partial class MainWindow : Window
         _navButtons =
         [
             navOptimizar,    // 0
-            navConsola,      // 1
-            navArranque,     // 2
-            navHerramientas, // 3
-            navInfo,         // 4
-            navHistorial,    // 5
-            navBloatware,    // 6
+            navHerramientas, // 1
+            navInfo,         // 2
+            navArranque,     // 3
+            navBloatware,    // 4
+            navConsola,      // 5
+            navHistorial,    // 6
             navAjustes,      // 7
             navLicencia,     // 8
             navTuning,       // 9
         ];
 
         navOptimizar.Click    += (_, _) => SetActiveNav(0);
-        navConsola.Click      += (_, _) => SetActiveNav(1);
-        navArranque.Click     += (_, _) => SetActiveNav(2);
-        navHerramientas.Click += (_, _) => SetActiveNav(3);
-        navInfo.Click         += (_, _) => SetActiveNav(4);
-        navHistorial.Click    += (_, _) => SetActiveNav(5);
-        navBloatware.Click    += (_, _) => SetActiveNav(6);
+        navHerramientas.Click += (_, _) => SetActiveNav(1);
+        navInfo.Click         += (_, _) => SetActiveNav(2);
+        navArranque.Click     += (_, _) => SetActiveNav(3);
+        navBloatware.Click    += (_, _) => SetActiveNav(4);
+        navConsola.Click      += (_, _) => SetActiveNav(5);
+        navHistorial.Click    += (_, _) => SetActiveNav(6);
         navAjustes.Click      += (_, _) => SetActiveNav(7);
         navLicencia.Click     += (_, _) => SetActiveNav(8);
         navTuning.Click       += (_, _) => SetActiveNav(9);
@@ -152,7 +153,7 @@ public partial class MainWindow : Window
         _monitorTimer.Start();
 
         mainTabs.SelectionChanged += OnMainTabsSelectionChanged;
-        scoreWidget.MouseLeftButtonUp += (_, _) => SetActiveNav(4);
+        scoreWidget.MouseLeftButtonUp += (_, _) => SetActiveNav(2);
         btnRecalcScore.Click += async (_, _) => await RecalcScoreAsync();
 
         // Procesos (2.4)
@@ -486,15 +487,9 @@ public partial class MainWindow : Window
 
     private void PopulateSystemInfoControls(SystemSnapshot info)
     {
-        string cpuShort = info.CpuName.Length > 26 ? info.CpuName[..26] + "..." : info.CpuName;
-        string gpuShort = info.GpuName.Length > 26 ? info.GpuName[..26] + "..." : info.GpuName;
         string diskType = info.HasSsd ? "SSD" : "HDD";
         string osShort  = info.OsCaption.Replace("Microsoft ", "");
 
-        lblCPU.Text  = cpuShort;
-        lblGPU.Text  = gpuShort;
-        lblRAM.Text  = $"{info.TotalRamGb} GB";
-        lblDisk.Text = diskType;
         lblOS.Text   = osShort;
 
         infoOS.Text   = info.OsCaption;
@@ -680,37 +675,44 @@ public partial class MainWindow : Window
     {
         if (e.Source != mainTabs) return;
 
-        // Tab Arranque (2): carga lazy de la lista de startup la primera vez
-        if (mainTabs.SelectedIndex == 2 && !_startupLoaded)
+        // Tab Herramientas (1): carga lazy de procesos pesados la primera vez +
+        // arranca el auto-refresh (ON por defecto). El scan corre async, no traba la UI.
+        if (mainTabs.SelectedIndex == 1 && !_procLoaded)
+        {
+            _procLoaded = true;
+            _ = InitProcessesAsync();
+        }
+
+        // Tab Info (2): re-dibuja las barras de categoria del score
+        if (mainTabs.SelectedIndex == 2 && _lastAuditResult is { } r)
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => UpdateScorePanel(r)));
+
+        // Tab Info (2): info de componentes (carga WMI lazy la primera vez; luego
+        // re-render instantaneo desde cache para refrescar el estado de HAGS).
+        if (mainTabs.SelectedIndex == 2)
+            _ = LoadComponentsInfoAsync();
+
+        // Tab Arranque (3): carga lazy de la lista de startup la primera vez
+        if (mainTabs.SelectedIndex == 3 && !_startupLoaded)
         {
             _startupLoaded = true;
             _ = RefreshStartupAsync();
-            return;
         }
 
-        // Tab Info (4): re-dibuja las barras de categoria del score
-        if (mainTabs.SelectedIndex == 4 && _lastAuditResult is { } r)
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => UpdateScorePanel(r)));
-
-        // Tab Info (4): info de componentes (carga WMI lazy la primera vez; luego
-        // re-render instantaneo desde cache para refrescar el estado de HAGS).
-        if (mainTabs.SelectedIndex == 4)
-            _ = LoadComponentsInfoAsync();
-
-        // Tab Historial (5): carga lazy la primera vez
-        if (mainTabs.SelectedIndex == 5 && !_historyLoaded)
-        {
-            _historyLoaded = true;
-            _ = RefreshHistoryAsync();
-        }
-
-        // Tab Bloatware (6): escanea lazy la primera vez (el scan enumera AppX y
+        // Tab Bloatware (4): escanea lazy la primera vez (el scan enumera AppX y
         // tarda; dispararlo aca y no en el arranque evita penalizar el startup).
         // El boton "Actualizar lista" sigue refrescando manualmente despues.
-        if (mainTabs.SelectedIndex == 6 && !_bloatLoaded)
+        if (mainTabs.SelectedIndex == 4 && !_bloatLoaded)
         {
             _bloatLoaded = true;
             _ = ScanBloatwareAsync();
+        }
+
+        // Tab Historial (6): carga lazy la primera vez
+        if (mainTabs.SelectedIndex == 6 && !_historyLoaded)
+        {
+            _historyLoaded = true;
+            _ = RefreshHistoryAsync();
         }
 
         // Tab Tuning Avanzado (9): carga lazy de estados + info la primera vez
@@ -951,18 +953,32 @@ public partial class MainWindow : Window
         }
     }
 
+    // Carga lazy de la tab Herramientas (mirror del patron usado en Bloatware):
+    // trae la lista una vez al entrar y, si el auto-refresh esta habilitado en
+    // settings (ON por defecto), arranca el timer. Todo async, no traba la UI.
+    private async Task InitProcessesAsync()
+    {
+        await RefreshProcessListAsync();
+        if (App.Settings.Current.ProcAutoRefresh && !_procTimerRunning)
+            StartProcTimer();
+    }
+
     // Mirror de Start-ProcTimer / Stop-ProcTimer del PS1.
     private void ToggleProcTimer()
     {
         if (_procTimerRunning) StopProcTimer();
         else                   StartProcTimer();
+        // Persistir la eleccion del usuario (default ON al primer arranque)
+        App.Settings.Current.ProcAutoRefresh = _procTimerRunning;
+        App.Settings.Save();
     }
 
     private void StartProcTimer()
     {
         if (_procTimerRunning) return;
-        _procTimer = new DispatcherTimer
-            { Interval = TimeSpan.FromSeconds(ProcTimerIntervalSec) };
+        int sec = App.Settings.Current.ProcRefreshSec > 0
+            ? App.Settings.Current.ProcRefreshSec : ProcTimerIntervalSec;
+        _procTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(sec) };
         _procTimer.Tick += async (_, _) => await RefreshProcessListAsync();
         _procTimer.Start();
         _procTimerRunning              = true;
@@ -1246,7 +1262,7 @@ public partial class MainWindow : Window
 
         OptResult? optResult = null;
 
-        SetActiveNav(1); // Consola — log en tiempo real
+        SetActiveNav(5); // Consola — log en tiempo real
 
         bool ok = await App.Worker.RunAsync(async ct =>
         {
@@ -1314,7 +1330,7 @@ public partial class MainWindow : Window
             { Owner = this };
         dlg.ShowDialog();
 
-        if (dlg.GoToHistory) SetActiveNav(5); // Historial
+        if (dlg.GoToHistory) SetActiveNav(6); // Historial
         else if (dlg.ShowCompare) ShowCompareDialog(res.FreedMb);
     }
 
@@ -1339,7 +1355,7 @@ public partial class MainWindow : Window
                 catch (Exception ex) { App.Logger.Log($"No se pudo reiniciar: {ex.Message}", "err"); }
                 break;
             case "log":
-                SetActiveNav(1); // Consola
+                SetActiveNav(5); // Consola
                 break;
             // "later": no hacer nada
         }
@@ -3082,7 +3098,7 @@ public partial class MainWindow : Window
         btnRemoveBloat.IsEnabled  = false;
         btnBloatSelAll.IsEnabled  = false;
         btnBloatSelNone.IsEnabled = false;
-        SetActiveNav(1);
+        SetActiveNav(5); // Consola — log en tiempo real
 
         // Guardar backup de lo que se va a eliminar
         if (App.Backup.ActiveSession is { } sessionPath)
@@ -3137,7 +3153,7 @@ public partial class MainWindow : Window
         btnBloatSelNone.IsEnabled = true;
 
         // Re-escanear automaticamente para reflejar cambios
-        SetActiveNav(6);
+        SetActiveNav(4); // Bloatware
         await ScanBloatwareAsync();
 
         string resultMsg = okCount > 0
