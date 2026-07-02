@@ -5,7 +5,12 @@ using System.Windows.Media;
 
 namespace WinBoost.Services;
 
-internal sealed class AppLogger
+public interface IAppLogger
+{
+    void Log(string message, string type = "info");
+}
+
+internal sealed class AppLogger : IAppLogger
 {
     private readonly RichTextBox  _rtb;
     private readonly ScrollViewer _scroll;
@@ -39,7 +44,7 @@ internal sealed class AppLogger
         _errCount = errCount;
     }
 
-    internal void Log(string message, string type = "info")
+    public void Log(string message, string type = "info")
     {
         string ts    = DateTime.Now.ToString("HH:mm:ss");
         string label = Labels.GetValueOrDefault(type, "  >>   ");

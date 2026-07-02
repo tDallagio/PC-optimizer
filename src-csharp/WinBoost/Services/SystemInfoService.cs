@@ -285,10 +285,21 @@ public sealed class SystemInfoService
 
     private static bool CheckTcpTuning()
     {
+        // La salida de `netsh int tcp show global` se localiza segun el idioma de
+        // Windows: en es-ES la linea de RSS es "Estado de escalado de lado de
+        // recepcion: enabled", no "Receive-Side Scaling State: enabled". El check
+        // original solo matcheaba el rotulo en ingles, por lo que en Windows en
+        // espanol SIEMPRE daba negativo (Red se quedaba en 2/3) aunque RSS estuviera
+        // activo. Se matchea bilingue: el token "escalado" identifica la linea de RSS
+        // en espanol (la de RSC usa "fusion de segmento", sin "escalado"); el valor
+        // "enabled"/"disabled" que emite netsh no se localiza.
         foreach (string line in RunProcess("netsh", "int tcp show global").Split('\n'))
-            if (line.Contains("Receive-Side Scaling", StringComparison.OrdinalIgnoreCase)
-             && line.Contains("enabled", StringComparison.OrdinalIgnoreCase))
+        {
+            bool isRssLine = line.Contains("Receive-Side Scaling", StringComparison.OrdinalIgnoreCase)
+                          || line.Contains("escalado", StringComparison.OrdinalIgnoreCase);
+            if (isRssLine && line.Contains("enabled", StringComparison.OrdinalIgnoreCase))
                 return true;
+        }
         return false;
     }
 

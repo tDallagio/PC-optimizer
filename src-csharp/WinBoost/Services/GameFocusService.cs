@@ -159,27 +159,27 @@ public sealed class GameFocusService
                 {
                     _state.PreviousAffinity = proc.ProcessorAffinity.ToInt64();
                     proc.ProcessorAffinity  = (IntPtr)mask;
-                    App.Logger.Log(
+                    App.Logger?.Log(
                         $"Gaming Mode ON - {proc.ProcessName} (PID {proc.Id}) prioridad High, " +
                         $"notificaciones OFF, afinidad CPU fisica (mascara 0x{mask:X})", "ok");
                 }
                 catch
                 {
-                    App.Logger.Log(
+                    App.Logger?.Log(
                         $"Gaming Mode ON - {proc.ProcessName} (PID {proc.Id}) prioridad High, " +
                         "notificaciones OFF (afinidad CPU no disponible)", "ok");
                 }
             }
             else
             {
-                App.Logger.Log(
+                App.Logger?.Log(
                     $"Gaming Mode ON - {proc.ProcessName} (PID {proc.Id}) prioridad High, " +
                     "notificaciones OFF (sin SMT/HT, afinidad sin cambio)", "ok");
             }
         }
         else
         {
-            App.Logger.Log(
+            App.Logger?.Log(
                 $"Gaming Mode ON - {proc.ProcessName} (PID {proc.Id}) prioridad High, " +
                 "notificaciones OFF", "ok");
         }
@@ -218,7 +218,7 @@ public sealed class GameFocusService
         }
 
         state.Active = false;
-        App.Logger.Log("Gaming Mode OFF - prioridad, notificaciones y afinidad CPU restauradas", "info");
+        App.Logger?.Log("Gaming Mode OFF - prioridad, notificaciones y afinidad CPU restauradas", "info");
     }
 
     // Devuelve true si el proceso en foco ya termino (para que el timer limpie

@@ -7,7 +7,7 @@ public partial class App : Application
 {
     internal const  string          Version  = "4.1";
     internal static SettingsService Settings { get; } = new();
-    internal static AppLogger       Logger   { get; set; } = null!;
+    internal static IAppLogger        Logger   { get; set; } = Services.NullLogger.Instance;
     internal static ProgressService Progress { get; set; } = null!;
     internal static WorkRunner      Worker   { get; } = new();
     internal static BackupService       Backup     { get; } = new();
@@ -47,10 +47,9 @@ public partial class App : Application
 
         if (args.Silent)
         {
-            await RunSilentAsync(args);
-            // Pequeña espera para que el toast sea visible antes de salir
+            int exitCode = await RunSilentAsync(args);
             await Task.Delay(6000);
-            Shutdown(0);
+            Shutdown(exitCode);
         }
         else
         {
@@ -64,15 +63,20 @@ public partial class App : Application
 
     // ── Modo silencioso (3.5) ─────────────────────────────────────────────────
 
-    private static async Task RunSilentAsync(CliArgs args)
+    private static async Task<int> RunSilentAsync(CliArgs args)
     {
-        string logPath = Path.Combine(
+        string logsDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".OptimizarPC", "silent_run.log");
+            ".OptimizarPC", "logs");
+        string ts      = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string logPath = Path.Combine(logsDir, $"silent_{ts}.log");
 
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            Directory.CreateDirectory(logsDir);
+            Logger = new Services.SilentFileLogger(logPath);
+            Logger.Log($"WinBoost v{Version} modo silencioso | Preset: {args.Preset}", "head");
+
             Settings.Load();
             Backup.NewBackupSession();
 
@@ -86,50 +90,41 @@ public partial class App : Application
                 var svc = new Services.OptimizationService();
                 result = await svc.RunAsync(
                     sel,
-                    hasSsd:   sysInfo.HasSsd,
-                    isLaptop: sysInfo.IsLaptop,
-                    totalRamGb: sysInfo.TotalRamGb,
-                    sysDrive:   sysDrv,
-                    dnsIndex:   args.DnsIndex,
+                    hasSsd:              sysInfo.HasSsd,
+                    isLaptop:            sysInfo.IsLaptop,
+                    totalRamGb:          sysInfo.TotalRamGb,
+                    sysDrive:            sysDrv,
+                    dnsIndex:            args.DnsIndex,
                     altDriveForPageFile: null,
                     movePageFileToAlt:   false,
                     ct);
             },
-            startMsg: $"[Silent] Preset {args.Preset} iniciado...",
-            doneMsg:  $"[Silent] Preset {args.Preset} completado");
+            startMsg: $"Preset {args.Preset} iniciado...",
+            doneMsg:  $"Preset {args.Preset} completado");
 
             if (ok && result is { } res)
             {
-                Backup.SaveSessionMetadata(
-                    (int)Math.Round(res.FreedMb), 0, 0, args.Preset);
-
-                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] OK" +
-                              $" | Preset:{args.Preset}" +
-                              $" | Applied:{res.Applied}" +
-                              $" | Skipped:{res.Skipped}" +
-                              $" | Freed:{Math.Round(res.FreedMb, 1)} MB";
-                File.AppendAllText(logPath, line + Environment.NewLine);
-
-                string toastMsg = $"Preset {args.Preset}: {res.Applied} acciones" +
-                    (res.FreedMb > 0.1 ? $" · {Math.Round(res.FreedMb, 1)} MB liberados" : "");
-                ToastService.Show("WinBoost", toastMsg);
+                Backup.SaveSessionMetadata((int)Math.Round(res.FreedMb), 0, 0, args.Preset);
+                Logger.Log(
+                    $"COMPLETADO | Preset:{args.Preset}" +
+                    $" | Aplicados:{res.Applied} | Omitidos:{res.Skipped}" +
+                    $" | Liberados:{Math.Round(res.FreedMb, 1)} MB", "head");
+                ToastService.Show("WinBoost",
+                    $"Preset {args.Preset}: {res.Applied} acciones" +
+                    (res.FreedMb > 0.1 ? $" · {Math.Round(res.FreedMb, 1)} MB liberados" : ""));
+                return 0;
             }
             else
             {
-                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] CANCELADO | Preset:{args.Preset}";
-                File.AppendAllText(logPath, line + Environment.NewLine);
+                Logger.Log($"CANCELADO | Preset:{args.Preset}", "err");
+                return 1;
             }
         }
         catch (Exception ex)
         {
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-                string line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR | {ex.Message}";
-                File.AppendAllText(logPath, line + Environment.NewLine);
-            }
-            catch { }
+            try { Logger.Log($"ERROR FATAL | {ex.Message}", "err"); } catch { }
             ToastService.Show("WinBoost", $"Error en modo silencioso: {ex.Message}");
+            return 2;
         }
     }
 }

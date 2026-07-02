@@ -196,19 +196,48 @@ public sealed class BloatwareService
             {
                 try
                 {
-                    // Extraer el fragmento del nombre (antes del primer '_')
-                    string fragment = app.PackageFN.Split('_')[0];
+                    // Extraer el fragmento del nombre (antes del primer '_'); escapar comillas simples.
+                    string fragment = app.PackageFN.Split('_')[0].Replace("'", "''");
+
+                    // Script de remocion robusto. Quita el paquete del usuario actual y de todos
+                    // los usuarios (incluye estado Staged), ademas del provisionado. Emite un marcador
+                    // segun el resultado real (verificado tras la remocion), en vez de depender solo
+                    // del exit code de powershell:
+                    //   WB_REMOVED  -> existia y se quito
+                    //   WB_NOTFOUND -> ya no estaba (no es error: exito efectivo)
+                    //   WB_STILL    -> sigue instalado tras intentar (fallo real)
+                    //   WB_ERR:msg  -> excepcion durante la remocion
                     string psCmd =
-                        $"Get-AppxPackage -Name '*{fragment}*' -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction Stop; " +
-                        $"Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | " +
-                        $"Where-Object {{$_.PackageName -like '*{fragment}*'}} | " +
-                        $"Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue";
+                        "$ErrorActionPreference='Stop'; " +
+                        $"$frag='{fragment}'; $pat='*'+$frag+'*'; " +
+                        "try { " +
+                        "  $pk=Get-AppxPackage -Name $pat -EA SilentlyContinue; " +
+                        "  $pkAll=Get-AppxPackage -AllUsers -Name $pat -EA SilentlyContinue; " +
+                        "  $existed=[bool]($pk -or $pkAll); " +
+                        "  if($pk){ $pk | Remove-AppxPackage -EA Stop }; " +
+                        "  if($pkAll){ $pkAll | Remove-AppxPackage -AllUsers -EA SilentlyContinue }; " +
+                        "  Get-AppxProvisionedPackage -Online -EA SilentlyContinue | " +
+                        "    Where-Object { $_.PackageName -like $pat } | " +
+                        "    Remove-AppxProvisionedPackage -Online -EA SilentlyContinue | Out-Null; " +
+                        "  $still=@(Get-AppxPackage -AllUsers -Name $pat -EA SilentlyContinue | " +
+                        "    Where-Object { $_.PackageUserInformation | Where-Object { $_.InstallState -eq 'Installed' } }); " +
+                        "  if($still.Count -gt 0){ Write-Output 'WB_STILL' } " +
+                        "  elseif($existed){ Write-Output 'WB_REMOVED' } " +
+                        "  else{ Write-Output 'WB_NOTFOUND' } " +
+                        "} catch { Write-Output ('WB_ERR:'+$_.Exception.Message) }";
 
-                    int exit = RunPowerShell(psCmd, 60_000);
-                    if (exit == 0)
+                    string outp = RunPowerShellCapture(psCmd, 60_000);
+
+                    if (outp.Contains("WB_REMOVED"))
                         return new RemoveResult(app.Name, true, "appx", "Eliminado via AppX");
+                    if (outp.Contains("WB_NOTFOUND"))
+                        return new RemoveResult(app.Name, true, "appx", "Ya estaba desinstalada");
 
-                    msg = $"AppX ExitCode={exit}";
+                    int errIdx = outp.IndexOf("WB_ERR:", StringComparison.Ordinal);
+                    if (errIdx >= 0)
+                        msg = $"AppX fallo: {outp[(errIdx + 7)..].Trim()}";
+                    else
+                        msg = "AppX: el paquete sigue presente";
                 }
                 catch (Exception ex)
                 {
@@ -242,6 +271,11 @@ public sealed class BloatwareService
 
                     if (exit == 0)
                         return new RemoveResult(app.Name, true, "winget", "Eliminado via winget");
+
+                    // winget devuelve 0x8A15002B (NO_APPLICATIONS_FOUND) cuando la app ya no esta
+                    // instalada: no es error, es "ya estaba desinstalada" (exito efectivo).
+                    if (done && unchecked((uint)exit) == 0x8A15002B)
+                        return new RemoveResult(app.Name, true, "winget", "Ya estaba desinstalada");
 
                     string wingetMsg = done ? $"winget ExitCode={exit}" : "winget timeout";
                     if (!string.IsNullOrEmpty(msg)) msg += "; ";
@@ -287,14 +321,21 @@ public sealed class BloatwareService
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         try
         {
-            // Obtener todos los paquetes (usuario actual + todos los usuarios)
-            // @(...) es el operador de sub-expresion array: agrupa los dos cmdlets en
-            // una sola coleccion. Con parentesis simples (...) PowerShell lo trata como
-            // una unica expresion y el ';' interno es un error de sintaxis ("falta ')'"),
-            // por lo que el mapa quedaba vacio y el bloatware se reportaba como "sistema limpio".
+            // Obtener todos los paquetes REALMENTE instalados (usuario actual + otros usuarios).
+            // - Get-AppxPackage (sin args): paquetes del usuario actual (siempre instalados).
+            // - Get-AppxPackage -AllUsers: incluye paquetes en estado "Staged" (preparados pero
+            //   no instalados para ningun usuario, p.ej. tras desinstalar). Esos paquetes NO estan
+            //   presentes de verdad y generaban "apps fantasma" que reaparecian en la lista y al
+            //   reintentar daban ExitCode=1. Por eso filtramos -AllUsers a los que tengan al menos
+            //   un usuario con InstallState 'Installed'.
             string output = RunPowerShellCapture(
-                "@(Get-AppxPackage; Get-AppxPackage -AllUsers) | " +
-                "Select-Object -ExpandProperty PackageFamilyName -Unique",
+                "$ErrorActionPreference='SilentlyContinue'; " +
+                "$fams = New-Object System.Collections.Generic.List[string]; " +
+                "Get-AppxPackage | ForEach-Object { if($_.PackageFamilyName){ $fams.Add($_.PackageFamilyName) } }; " +
+                "Get-AppxPackage -AllUsers | Where-Object { $_.PackageUserInformation | " +
+                "Where-Object { $_.InstallState -eq 'Installed' } } | " +
+                "ForEach-Object { if($_.PackageFamilyName){ $fams.Add($_.PackageFamilyName) } }; " +
+                "$fams | Select-Object -Unique",
                 20_000);
 
             foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))

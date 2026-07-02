@@ -144,17 +144,106 @@ internal sealed class TuningService
             {
                 long ram = Convert.ToInt64(mo["AdapterRAM"] ?? 0);
                 if (ram <= 0) continue;
-                gpuVram   = Math.Round(ram / 1_048_576.0, 0);
                 gpuName   = mo["Name"]?.ToString() ?? "";
                 gpuDriver = mo["DriverVersion"]?.ToString() ?? "";
+
+                // BUG heredado: Win32_VideoController.AdapterRAM es un entero de 32 bits
+                // CON SIGNO -> cualquier GPU con >4GB reporta ~4GB por overflow (ej. una
+                // RX 6700 XT de 12GB). La VRAM real vive en el registro como QWORD de 64
+                // bits (HardwareInformation.qwMemorySize). Se prefiere esa; AdapterRAM
+                // queda solo como fallback si el registro no la expone.
+                long realBytes = GetVramBytesFromRegistry(gpuName);
+                gpuVram   = Math.Round((realBytes > 0 ? realBytes : ram) / 1_048_576.0, 0);
                 break;
             }
         }
         catch { }
 
+        // Sin controlador con AdapterRAM valido: intentar puramente por registro
+        // (toma la GPU con mas VRAM dedicada).
+        if (gpuVram <= 0)
+        {
+            var (regName, regBytes, regDrv) = GetPrimaryGpuFromRegistry();
+            if (regBytes > 0)
+            {
+                gpuVram   = Math.Round(regBytes / 1_048_576.0, 0);
+                if (gpuName.Length   == 0) gpuName   = regName;
+                if (gpuDriver.Length == 0) gpuDriver = regDrv;
+            }
+        }
+
         return new ExtendedSystemInfo(cpuCores, cpuThreads, cpuCacheMb,
             ramSpeed, ramSlots, ramUsed, gpuVram, gpuName, gpuDriver);
     });
+
+    // Clase de dispositivos de pantalla en el registro (GUID fijo de Windows).
+    private const string DisplayClassKey =
+        @"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+
+    // VRAM real (bytes) desde HardwareInformation.qwMemorySize del subkey cuyo
+    // DriverDesc coincide con el nombre de la GPU. Recorre 0000, 0001... por si hay
+    // varias GPU. Devuelve 0 si no la encuentra.
+    private static long GetVramBytesFromRegistry(string gpuName)
+    {
+        try
+        {
+            using var cls = Registry.LocalMachine.OpenSubKey(DisplayClassKey);
+            if (cls == null) return 0;
+            foreach (string sub in cls.GetSubKeyNames())
+            {
+                if (sub.Length != 4 || !int.TryParse(sub, out _)) continue;
+                using var k = cls.OpenSubKey(sub);
+                if (k == null) continue;
+                string desc = k.GetValue("DriverDesc")?.ToString() ?? "";
+                if (gpuName.Length > 0 && !string.Equals(desc, gpuName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                long bytes = ReadQwMemorySize(k);
+                if (bytes > 0) return bytes;
+            }
+        }
+        catch { }
+        return 0;
+    }
+
+    // GPU con mas VRAM dedicada segun el registro (nombre, bytes, driver).
+    private static (string Name, long Bytes, string Driver) GetPrimaryGpuFromRegistry()
+    {
+        string bestName = "", bestDrv = ""; long bestBytes = 0;
+        try
+        {
+            using var cls = Registry.LocalMachine.OpenSubKey(DisplayClassKey);
+            if (cls != null)
+                foreach (string sub in cls.GetSubKeyNames())
+                {
+                    if (sub.Length != 4 || !int.TryParse(sub, out _)) continue;
+                    using var k = cls.OpenSubKey(sub);
+                    if (k == null) continue;
+                    long bytes = ReadQwMemorySize(k);
+                    if (bytes > bestBytes)
+                    {
+                        bestBytes = bytes;
+                        bestName  = k.GetValue("DriverDesc")?.ToString() ?? "";
+                        bestDrv   = k.GetValue("DriverVersion")?.ToString() ?? "";
+                    }
+                }
+        }
+        catch { }
+        return (bestName, bestBytes, bestDrv);
+    }
+
+    // qwMemorySize puede venir como QWORD (long) o Binary de 8 bytes segun el driver.
+    private static long ReadQwMemorySize(RegistryKey k)
+    {
+        try
+        {
+            object? v = k.GetValue("HardwareInformation.qwMemorySize");
+            if (v is long l)       return l;
+            if (v is int i)        return i;
+            if (v is byte[] b && b.Length >= 8) return BitConverter.ToInt64(b, 0);
+        }
+        catch { }
+        return 0;
+    }
 
     // ── Limpieza del Driver Store (F2.19) ─────────────────────────────────────
     // Mirror de pnputil /enum-drivers + Parse-PnpUtilOutput + Get-ObsoleteDriverPackages.

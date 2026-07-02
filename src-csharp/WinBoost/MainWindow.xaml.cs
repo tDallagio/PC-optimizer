@@ -57,6 +57,13 @@ public partial class MainWindow : Window
     // Historial (4.6): flag de carga lazy
     private bool _historyLoaded = false;
 
+    // Ajustes (BUG 3): flag de carga lazy del calculo de tamano de backups
+    private bool _settingsLoaded = false;
+
+    // Toast in-app (BUG 6): timer unico reutilizable que oculta el toast; se
+    // reinicia con cada nuevo toast para que no queden colgados.
+    private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+
     // Onboarding (5.2): evita relanzar el wizard mas de una vez por sesion
     private bool _onboardingChecked = false;
 
@@ -145,6 +152,17 @@ public partial class MainWindow : Window
 
         App.Logger   = new AppLogger(rtbLog, logScroll, btnErrBadge, lblErrCount);
         App.Progress = new ProgressService(progressBar, lblProgress, lblPct);
+
+        // Badge de errores -> abre la Consola (indice 5 en el orden nuevo)
+        btnErrBadge.Click += (_, _) => SetActiveNav(5);
+        // Consola: limpiar el log visible (mirror del btnClearLog del PS1)
+        btnClearLog.Click += (_, _) =>
+        {
+            rtbLog.Document.Blocks.Clear();
+            lblLogStatus.Text = "Log limpiado";
+        };
+        // Consola: exportar el log a .txt (mirror del btnExportLog del PS1)
+        btnExportLog.Click += (_, _) => ExportConsoleLog();
 
         try { _diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total"); }
         catch { }
@@ -247,10 +265,161 @@ public partial class MainWindow : Window
         btnDriverBackup.Click += async (_, _) => await ExportDriverBackupAsync();
         btnDriverDelete.Click += async (_, _) => await DeleteSelectedDriversAsync();
 
+        // Ajustes: tema + seccion de mantenimiento/backup (BUG 3 y 4)
+        WireSettingsControls();
+
+        // Toast in-app (BUG 6): al vencer el timer, oculta el toast
+        _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); toastHost.Visibility = Visibility.Collapsed; };
+
         SetActiveNav(0);
         App.Logger.Log("WinBoost iniciado", "head");
 
         _ = LoadSystemInfoAsync();
+    }
+
+    // ── Toast in-app (BUG 6, mirror de Show-ToastNotification) ────────────────
+    // Muestra el toast y (re)arranca el timer de auto-hide. Si aparece otro toast
+    // antes de que venza, el Stop()+Start() reinicia la cuenta: no quedan colgados.
+    private void ShowToast(string message)
+    {
+        void Run()
+        {
+            toastText.Text        = message;
+            toastHost.Visibility  = Visibility.Visible;
+            _toastTimer.Stop();
+            _toastTimer.Start();
+        }
+        if (Dispatcher.CheckAccess()) Run();
+        else Dispatcher.BeginInvoke(Run);
+    }
+
+    // ── Ajustes: tema + mantenimiento/backup (BUG 3 y 4) ──────────────────────
+    // El tab Ajustes en C# habia quedado sin cablear: el combo de tema no hacia
+    // nada, la ruta de backups estaba vacia y el tamano se colgaba en "Calculando...".
+    private void WireSettingsControls()
+    {
+        // --- Tema (BUG 4) ---
+        // Fijar el indice ANTES de suscribir el handler para no dispararlo en el init.
+        cboTheme.SelectedIndex = App.Settings.Current.Theme switch
+        {
+            "light" => 1,
+            "auto"  => 2,
+            _       => 0,
+        };
+        cboTheme.SelectionChanged += (_, _) =>
+        {
+            App.Settings.Current.Theme = cboTheme.SelectedIndex switch
+            {
+                1 => "light",
+                2 => "auto",
+                _ => "dark",
+            };
+            App.Settings.ApplyTheme(this);   // reasigna los brushes de la paleta en runtime
+            App.Settings.Save();
+        };
+
+        // --- Ruta de sesiones de backup (BUG 3) ---
+        lblBackupPath.Text = App.Settings.Current.BackupRoot;
+
+        // --- Retencion de backups (BUG 3) ---
+        cboBackupRetention.SelectedIndex = App.Settings.Current.BackupRetainDays switch
+        {
+            7  => 0,
+            14 => 1,
+            30 => 2,
+            60 => 3,
+            0  => 4,   // Ilimitado
+            _  => 2,
+        };
+        cboBackupRetention.SelectionChanged += (_, _) =>
+        {
+            App.Settings.Current.BackupRetainDays = cboBackupRetention.SelectedIndex switch
+            {
+                0 => 7,
+                1 => 14,
+                2 => 30,
+                3 => 60,
+                4 => 0,   // Ilimitado
+                _ => 30,
+            };
+            App.Settings.Save();
+        };
+
+        // --- Abrir carpeta de backups (BUG 3) ---
+        btnOpenBackups.Click += (_, _) => OpenBackupRootFolder();
+
+        // --- Cambiar ruta de backups ---
+        btnChangeBackupPath.Click += (_, _) =>
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "Elegir carpeta de backups",
+                    InitialDirectory = Directory.Exists(App.Settings.Current.BackupRoot)
+                        ? App.Settings.Current.BackupRoot
+                        : AppSettings.DefaultBackupRoot,
+                };
+                if (dlg.ShowDialog(this) == true && !string.IsNullOrWhiteSpace(dlg.FolderName))
+                {
+                    App.Settings.Current.BackupRoot = dlg.FolderName;
+                    App.Settings.Save();
+                    lblBackupPath.Text = dlg.FolderName;
+                    _settingsLoaded = false;   // recalcular tamano con la nueva ruta
+                    _ = LoadBackupInfoAsync();
+                }
+            }
+            catch (Exception ex) { App.Logger.Log($"No se pudo cambiar la ruta de backups: {ex.Message}", "err"); }
+        };
+    }
+
+    // Abre la carpeta raiz de backups en el Explorador (creandola si no existe).
+    private void OpenBackupRootFolder()
+    {
+        try
+        {
+            string root = App.Settings.Current.BackupRoot;
+            Directory.CreateDirectory(root);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(root)
+            { UseShellExecute = true });
+        }
+        catch (Exception ex) { App.Logger.Log($"No se pudo abrir la carpeta de backups: {ex.Message}", "err"); }
+    }
+
+    // Calcula tamano + conteo de sesiones de la carpeta de backups fuera del hilo UI
+    // (BUG 3: antes se quedaba en "Calculando..." porque nunca se disparaba el calculo).
+    private async Task LoadBackupInfoAsync()
+    {
+        if (_settingsLoaded) return;
+        _settingsLoaded = true;
+
+        lblBackupPath.Text   = App.Settings.Current.BackupRoot;
+        lblBackupCount.Text  = "Calculando...";
+        string root = App.Settings.Current.BackupRoot;
+
+        var (count, mb) = await Task.Run(() =>
+        {
+            int sessions = 0; double sizeMb = 0;
+            try
+            {
+                if (Directory.Exists(root))
+                {
+                    sessions = Directory.EnumerateDirectories(root).Count();
+                    long bytes = 0;
+                    foreach (var f in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                    {
+                        try { bytes += new FileInfo(f).Length; } catch { }
+                    }
+                    sizeMb = bytes / (1024.0 * 1024.0);
+                }
+            }
+            catch { }
+            return (sessions, Math.Round(sizeMb, 1));
+        });
+
+        lblBackupCount.Text = count == 0
+            ? "Sin sesiones de backup guardadas"
+            : $"{count} sesion(es) · {mb} MB";
     }
 
     private void SetActiveNav(int index)
@@ -714,6 +883,11 @@ public partial class MainWindow : Window
             _historyLoaded = true;
             _ = RefreshHistoryAsync();
         }
+
+        // Tab Ajustes (7): calcula el tamano de la carpeta de backups la primera vez
+        // (async, fuera del hilo UI; BUG 3)
+        if (mainTabs.SelectedIndex == 7 && !_settingsLoaded)
+            _ = LoadBackupInfoAsync();
 
         // Tab Tuning Avanzado (9): carga lazy de estados + info la primera vez
         if (mainTabs.SelectedIndex == 9 && !_tuningLoaded)
@@ -1200,8 +1374,19 @@ public partial class MainWindow : Window
                 System.Text.Json.JsonSerializer.Serialize(GetCurrentSel(),
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
             App.Logger.Log("Perfil de optimizacion guardado", "ok");
+            // Feedback al usuario (mirror del MessageBox del btnSaveProfile del PS1):
+            // sin esto el boton parecia "no hacer nada" aunque el JSON se escribia bien.
+            System.Windows.MessageBox.Show(
+                $"Perfil guardado:\n{_optProfilePath}",
+                "WinBoost", MessageBoxButton.OK, MessageBoxImage.Information);
         }
-        catch (Exception ex) { App.Logger.Log($"Error guardando perfil: {ex.Message}", "err"); }
+        catch (Exception ex)
+        {
+            App.Logger.Log($"Error guardando perfil: {ex.Message}", "err");
+            System.Windows.MessageBox.Show(
+                $"Error al guardar el perfil:\n{ex.Message}",
+                "WinBoost", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void LoadProfile()
@@ -1321,7 +1506,7 @@ public partial class MainWindow : Window
         string toastMsg = $"{res.Applied} acciones aplicadas"
             + (res.FreedMb > 0.1 ? $" · {Math.Round(res.FreedMb, 1)} MB liberados" : "")
             + (delta > 0 ? $" · score +{delta}" : "");
-        await Task.Run(() => ToastService.Show("WinBoost", toastMsg));
+        ShowToast(toastMsg);
 
         // Dialogo de resumen — habilita "Ver comparativa" si hay ambos snapshots
         bool needsReboot = sel.TryGetValue("PageFile", out bool pf) && pf;
@@ -1476,8 +1661,7 @@ public partial class MainWindow : Window
             lblMaintStatus.Foreground = BrushGreen;
             lblLastMaint.Text         = $"Ultimo mantenimiento: {DateTime.Now:dd/MM/yyyy HH:mm}";
 
-            await Task.Run(() => ToastService.Show("WinBoost",
-                $"Mantenimiento completado. {mb} MB liberados."));
+            ShowToast($"Mantenimiento completado. {mb} MB liberados.");
         }
         catch (Exception ex)
         {
@@ -1826,6 +2010,31 @@ public partial class MainWindow : Window
             "ok"  => Color.FromRgb(0x0A, 0x2A, 0x0A),
             _     => Color.FromRgb(0x1A, 0x1A, 0x1A),
         });
+    }
+
+    // ── Consola: exportar log a .txt ─────────────────────────────────────────
+
+    // Mirror del Add_Click de btnExportLog del PS1: vuelca el texto de la consola a
+    // Documentos\WinBoost_Log_<fecha>.txt (UTF-8) y avisa por MessageBox.
+    private void ExportConsoleLog()
+    {
+        try
+        {
+            var range = new System.Windows.Documents.TextRange(
+                rtbLog.Document.ContentStart, rtbLog.Document.ContentEnd);
+            string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            string ts   = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string outFile = System.IO.Path.Combine(docs, $"WinBoost_Log_{ts}.txt");
+            System.IO.File.WriteAllText(outFile, range.Text, new System.Text.UTF8Encoding(false));
+            lblLogStatus.Text = "Log exportado";
+            System.Windows.MessageBox.Show($"Log exportado a:\n{outFile}",
+                "WinBoost", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Error al exportar: {ex.Message}",
+                "WinBoost - Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // ── Reporte HTML (4.7) ───────────────────────────────────────────────────

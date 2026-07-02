@@ -37,12 +37,12 @@ public sealed class BackupService
             _actions.Clear();
             _svcs.Clear();
             _nets.Clear();
-            App.Logger.Log($"Sesion de backup iniciada: {ts}", "ok");
+            App.Logger?.Log($"Sesion de backup iniciada: {ts}", "ok");
             return path;
         }
         catch (Exception ex)
         {
-            App.Logger.Log($"No se pudo crear sesion de backup: {ex.Message}", "err");
+            App.Logger?.Log($"No se pudo crear sesion de backup: {ex.Message}", "err");
             _path = null;
             return null;
         }
@@ -305,11 +305,11 @@ public sealed class BackupService
             string jsonPath = Path.Combine(_path, "session.json");
             File.WriteAllText(jsonPath,
                 JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true }));
-            App.Logger.Log($"Metadata de sesion guardada ({meta.ActionCount} acciones)", "ok");
+            App.Logger?.Log($"Metadata de sesion guardada ({meta.ActionCount} acciones)", "ok");
         }
         catch (Exception ex)
         {
-            App.Logger.Log($"No se pudo guardar metadata: {ex.Message}", "err");
+            App.Logger?.Log($"No se pudo guardar metadata: {ex.Message}", "err");
         }
     }
 
@@ -382,7 +382,7 @@ public sealed class BackupService
     /// </summary>
     public bool RestoreSession(string sessionPath, Action<string, string>? logFn = null)
     {
-        Action<string, string> log = logFn ?? App.Logger.Log;
+        Action<string, string> log = logFn ?? ((msg, type) => App.Logger?.Log(msg, type));
 
         if (!Directory.Exists(sessionPath))
         {

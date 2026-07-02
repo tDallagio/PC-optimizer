@@ -5,6 +5,163 @@
 
 ---
 
+## C# modo silencioso CLI reparado: motor de optimizacion desacoplado de la UI (recibe preset como datos), NullReference resuelto; log por fecha en logs/
+
+**Archivos modificados**
+- `src-csharp/WinBoost/Services/AppLogger.cs` — nueva interfaz `IAppLogger`; `AppLogger` la implementa
+- `src-csharp/WinBoost/Services/SilentFileLogger.cs` — nuevo: `NullLogger` (no-op, default) y `SilentFileLogger` (escribe al archivo, usado en modo silencioso)
+- `src-csharp/WinBoost/App.xaml.cs` — `App.Logger` cambia de `AppLogger` a `IAppLogger` (inicializado con `NullLogger.Instance`); `RunSilentAsync` pasa a `Task<int>`, crea log `silent_<yyyyMMdd_HHmmss>.log` en `logs/`, instancia `SilentFileLogger` antes de correr, devuelve exit code (0=OK / 1=cancelado / 2=error fatal) pasado a `Shutdown()`
+- `src-csharp/WinBoost/Services/BackupService.cs` — 5 null-refs corregidos: `App.Logger.Log(...)` → `App.Logger?.Log(...)` en `NewBackupSession` y `SaveSessionMetadata`; method group `App.Logger.Log` en `RestoreSession` → lambda `(msg, type) => App.Logger?.Log(msg, type)`
+- `src-csharp/WinBoost/Services/GameFocusService.cs` — 5 null-refs corregidos: `App.Logger.Log(...)` → `App.Logger?.Log(...)`
+- `src-csharp/WinBoost/Services/RamService.cs` — 1 null-ref corregido: `App.Logger.Log(...)` → `App.Logger?.Log(...)`
+
+**Causa raiz del NullReferenceException**
+
+`App.Logger` era `AppLogger = null!` (null hasta que MainWindow lo inicializa en `OnLoaded`). En modo silencioso, `MainWindow` nunca se crea, por lo que `App.Logger` quedaba null. La primera llamada real era `BackupService.NewBackupSession()` linea 40 con `App.Logger.Log(...)` sin null-conditional — crash inmediato antes de aplicar ningun tweak.
+
+**Por que el motor de optimizacion NO necesitaba refactorizacion adicional**
+
+`OptimizationService.RunAsync` ya recibia el preset como diccionario de datos (independiente de la UI). Las llamadas internas usaban `App.Logger?.Log(...)` y `App.Progress?.Set(...)` con null-conditional — no crasheaban. El problema era SOLO el Logger null en los servicios auxiliares (BackupService, GameFocusService, RamService).
+
+**Solucion**
+
+- `IAppLogger` como contrato comun. `AppLogger` (UI) y `SilentFileLogger` (archivo) lo implementan.
+- `NullLogger` singleton como default: `App.Logger` nunca es null, los ~40 `App.Logger.Log(...)` existentes en MainWindow siguen validos sin cambios.
+- En modo silencioso, `App.Logger = new SilentFileLogger(logPath)` antes de cualquier operacion → todos los pasos de optimizacion, backup y red quedan registrados en el archivo automaticamente.
+- Log por fecha: `~/.OptimizarPC/logs/silent_<yyyyMMdd_HHmmss>.log` (no se pisa entre ejecuciones).
+- Exit code: 0=OK, 1=cancelado/fallo, 2=error fatal — pasado a `Shutdown()`.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## C# Fixes — 6 bugs: VRAM real, score Red, mantenimiento/backup, tema claro, guardar perfil, toast
+
+Seis bugs de la app C# (`src-csharp/WinBoost/`). App corre elevada. Para cada uno:
+diagnostico de causa raiz y fix. Referencias contra el `.ps1` legacy.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/Services/TuningService.cs` — VRAM real desde el registro (BUG 1)
+- `src-csharp/WinBoost/Services/SystemInfoService.cs` — check RSS bilingue (BUG 2)
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — toast in-app, seccion Ajustes, feedback de perfil (BUG 3/4/5/6)
+- `src-csharp/WinBoost/MainWindow.xaml` — overlay de toast in-app (BUG 6)
+
+**BUG 1 — VRAM muestra 4GB en vez del real (bug heredado)**
+- *Causa raiz (confirmada en el equipo):* `Win32_VideoController.AdapterRAM` es un entero de
+  32 bits con signo (max ~4GB). En la RX 6700 XT (12GB) reportaba `4293918720` (~4GB) por
+  overflow. El valor real vive en el registro como QWORD de 64 bits: la subkey
+  `...Control\Class\{4d36e968-...}\0000` tenia `HardwareInformation.qwMemorySize=12868124672`
+  (~12GB).
+- *Fix:* `GetExtendedInfoAsync` ahora lee la VRAM del registro (`qwMemorySize`), recorriendo los
+  subkeys `0000/0001/...` de la clase de display y matcheando por `DriverDesc`; si no hay match,
+  toma la GPU con mas VRAM dedicada. `AdapterRAM` queda solo como fallback. Lee QWORD o binario
+  de 8 bytes. Se muestra en GB en la tab de componentes.
+- *Driver version:* verificado — `Win32_VideoController.DriverVersion` (`32.0.21043.19003`)
+  COINCIDE con el registro (`DriverVersion`) y con el Administrador de dispositivos. No requeria
+  correccion; el path de registro tambien expone el mismo valor como respaldo.
+
+**BUG 2 — Score no sube: categoria Red 2/3 (DIAGNOSTICO cruzado)**
+- *Caso:* (b) la optimizacion SI aplica el tweak, pero el SCORE no lo mide bien (check mal
+  portado). NO faltaba el tweak.
+- *Check concreto:* `TCPTuning` ("TCP/IP optimizado (RSS habilitado)"). `CheckTcpTuning`
+  parseaba `netsh int tcp show global` buscando la etiqueta en ingles "Receive-Side Scaling".
+  En Windows en espanol la salida se localiza a "Estado de escalado de lado de recepcion:
+  enabled", por lo que la regex en ingles NUNCA matcheaba -> el check daba negativo SIEMPRE,
+  dejando Red en 2/3 aunque RSS estuviera activo (confirmado: RSS = enabled en el equipo, y la
+  optimizacion aplica `netsh ... rss=enabled` correctamente).
+- *Fix:* matcheo bilingue — el token "escalado" identifica la linea de RSS en espanol (la de RSC
+  usa "fusion de segmento", sin "escalado") y "Receive-Side Scaling" la de ingles; el valor
+  "enabled"/"disabled" que emite netsh no se localiza. Mismo patron de fix que el bug de pnputil
+  documentado antes. (El mismo bug de localizacion existe en el `.ps1` legacy; fuera de alcance.)
+
+**BUG 3 — Ajustes > Mantenimiento y backup no funcionaba**
+- *Causa:* toda la seccion de mantenimiento/backup del tab Ajustes quedo SIN cablear en C#
+  (ruta vacia, "Calculando..." colgado, combo y boton muertos).
+- *Fix (`WireSettingsControls` + `LoadBackupInfoAsync`):* `lblBackupPath` se puebla con
+  `Settings.BackupRoot` real; el tamano + conteo de sesiones se calcula async (`Task.Run`,
+  recursivo) y reemplaza "Calculando..." por "N sesion(es) · X MB" (disparo lazy al entrar al
+  tab). El combo "Retener backups por" persiste a `Settings.BackupRetainDays` (7/14/30/60/0=ilim);
+  "Abrir carpeta" abre la carpeta real (creandola si falta); "Cambiar" usa `OpenFolderDialog`
+  (.NET 8) y recalcula el tamano.
+
+**BUG 4 — Cambio a tema claro no funcionaba**
+- *Causa:* `SettingsService.ApplyTheme` (que reasigna los brushes de la paleta a light/dark en
+  `window.Resources`) ya estaba portado y se aplicaba al arrancar, pero el combo `cboTheme`
+  estaba SIN cablear: cambiarlo no hacia nada.
+- *Fix:* `cboTheme` se inicializa al indice del tema persistido y su `SelectionChanged` setea
+  `Settings.Theme`, llama `ApplyTheme(this)` (los consumidores `{DynamicResource}` se actualizan
+  al instante) y guarda. Paridad con `Apply-Theme` del PS1 (solo la paleta tematizable cambia).
+
+**BUG 5 — Guardar perfil "no guardaba"**
+- *Causa:* `SaveProfile` SI escribia `opt_profile.json` correctamente (verificado en disco), pero
+  no daba feedback: solo logueaba a consola, asi que el boton parecia muerto.
+- *Fix:* se agrega el `MessageBox` de confirmacion (mirror del `btnSaveProfile` del PS1) al
+  guardar OK y otro al fallar.
+
+**BUG 6 — Toast queda estatico y no se va**
+- *Causa:* el unico "toast" era `ToastService` (NotifyIcon/balloon del tray), que en Win10/11
+  puede quedar en el Centro de actividades. No habia un toast in-app con auto-hide.
+- *Fix:* toast in-app declarativo (overlay esquina inferior derecha, `toastHost`) + `ShowToast`
+  que lo muestra y (re)arranca un `DispatcherTimer` unico de 4s; si aparece otro toast antes de
+  vencer, el `Stop()+Start()` reinicia la cuenta y no quedan colgados (mirror del timer de
+  `Show-ToastNotification`). Las dos llamadas (fin de optimizacion y de mantenimiento) usan
+  `ShowToast` en vez del NotifyIcon.
+
+`dotnet build`: 0 errores, 0 advertencias. XAML validado con ElementTree.
+
+---
+
+## C# Fixes — badge de errores, boton Limpiar de consola, bloatware fantasma + ExitCode=1
+
+Tres bugs de la app C# tras el reorden de tabs. App corre elevada (no eran permisos).
+
+**Archivos modificados**
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — cableado de `btnErrBadge.Click` y `btnClearLog.Click`
+- `src-csharp/WinBoost/Services/BloatwareService.cs` — deteccion por presencia real + remocion robusta/grace
+
+**BUG 1 — el badge "N errores" no llevaba a Consola**
+- *Causa:* el `btnErrBadge` nunca tuvo handler de click cableado (solo se le pasaba al `AppLogger`
+  para mostrar/contar). No era un indice viejo: directamente no navegaba.
+- *Fix:* `btnErrBadge.Click += (_,_) => SetActiveNav(5)` — Consola es el indice 5 en el orden
+  nuevo (Optimizar 0, Herramientas 1, Info 2, Arranque 3, Bloatware 4, Consola 5, Historial 6,
+  Ajustes 7; Licencia 8 / Tuning 9 aparte).
+- *Auditoria de indices:* se revisaron TODAS las llamadas a `SetActiveNav(n)` y las comparaciones
+  `mainTabs.SelectedIndex == n` (lazy-loads de tabs). Todas ya apuntaban a la tab correcta del
+  orden nuevo (Consola 5, Bloatware 4, Info 2, Historial 6, etc.). El unico desfasaje era el badge
+  sin cablear. No quedaron otras referencias de indice obsoletas.
+
+**BUG 2 — el boton "Limpiar" de la consola no limpiaba**
+- *Causa:* `btnClearLog` existia en el XAML pero no estaba cableado en el code-behind (boton muerto).
+- *Fix:* `btnClearLog.Click` -> `rtbLog.Document.Blocks.Clear()` + `lblLogStatus.Text="Log limpiado"`
+  (mirror del PS1). El badge de errores no se toca al limpiar (paridad con el PS1).
+- *Tambien cableado `btnExportLog` (Exportar .txt):* estaba muerto igual que Limpiar. Nuevo
+  `ExportConsoleLog()` (mirror del `btnExportLog` del PS1): vuelca el texto de la consola via
+  `TextRange(rtbLog.Document)` a `Documentos\WinBoost_Log_<fecha>.txt` (UTF-8 sin BOM), avisa por
+  MessageBox y setea `lblLogStatus`. (En el PS1 exportaba `$script:logLines`; en C# no hay esa
+  lista, asi que se lee el contenido del RichTextBox, que es equivalente.)
+
+**BUG 3 — bloatware: apps fantasma + ExitCode=1 al reintentar**
+- *Causa raiz (apps fantasma):* el scan enumeraba `Get-AppxPackage -AllUsers` sin filtrar, que
+  incluye paquetes en estado **Staged** (preparados pero no instalados para ningun usuario, p.ej.
+  tras una desinstalacion incompleta). Esos paquetes no estan presentes de verdad: reaparecian en
+  la lista y al reintentar borrarlos `Remove-AppxPackage -EA Stop` fallaba con ExitCode=1.
+- *Fix deteccion:* el scan ahora suma el usuario actual (`Get-AppxPackage`, siempre instalado) +
+  `-AllUsers` filtrado a paquetes con al menos un `PackageUserInformation.InstallState -eq
+  'Installed'`. Los staged-only dejan de listarse.
+- *Fix remocion (robusta + graceful):* `RemoveAppAsync` quita el paquete del usuario actual y de
+  todos los usuarios (`-AllUsers`, cubre staged) + el provisionado, y verifica el resultado real
+  emitiendo un marcador en vez de fiarse solo del exit code: `WB_REMOVED` (existia y se quito) y
+  `WB_NOTFOUND` (ya no estaba) -> Ok; `WB_STILL`/`WB_ERR:` -> fallo real que cae a winget. Asi un
+  reintento sobre una app ya removida da "Ya estaba desinstalada" (verde), no error rojo.
+- *winget:* el ExitCode `0x8A15002B` (NO_APPLICATIONS_FOUND = la app ya no esta) tambien se trata
+  como "Ya estaba desinstalada" (exito), no como error.
+- *Re-escaneo:* el re-scan automatico tras desinstalar ya existia (`SetActiveNav(4)` +
+  `ScanBloatwareAsync()`); con la deteccion corregida la lista ahora refleja el estado real.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
 ## C# Procesos lazy + autorefresh ON, reorden de tabs y limpieza del sidebar
 
 Tres cambios sobre la app C# (`src-csharp/WinBoost/`): procesos pesados con carga lazy y

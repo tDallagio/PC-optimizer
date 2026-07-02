@@ -116,7 +116,7 @@ public sealed class RamService
             NativeMethods.EnablePrivilege("SeProfileSingleProcessPrivilege");
             uint ntstatus = NativeMethods.PurgeStandbyList();
             if (ntstatus != 0)
-                App.Logger.Log($"Standby purge NTSTATUS: 0x{ntstatus:X8}", "skip");
+                App.Logger?.Log($"Standby purge NTSTATUS: 0x{ntstatus:X8}", "skip");
             return ntstatus == 0;
         }
         catch { return false; }
