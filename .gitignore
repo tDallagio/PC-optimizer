@@ -8,6 +8,14 @@ installer/Output/
 # Clave privada RSA para emision de licencias (nunca al repo)
 _private_key.xml
 
+# Claves privadas y generador de licencias (NUNCA subir)
+Gen-License.ps1
+*gen*license*.ps1
+*_private*.xml
+winboost_private*.xml
+*.key
+winboost_keys*/
+
 # Prompts de trabajo para Claude Code (material interno)
 prompt_*.txt
 

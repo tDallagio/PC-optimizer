@@ -42,31 +42,6 @@ internal static class NativeMethods
         IntPtr token, bool disableAll,
         ref TOKEN_PRIVILEGES newState, uint bufLen, IntPtr prev, IntPtr retLen);
 
-    // ── user32 ───────────────────────────────────────────────────────────────
-
-    [DllImport("user32.dll")]
-    internal static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
-
-    [DllImport("user32.dll")]
-    internal static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
-
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-
-    [DllImport("user32.dll")]
-    internal static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-    [DllImport("user32.dll")]
-    internal static extern IntPtr GetDesktopWindow();
-
-    [DllImport("user32.dll")]
-    internal static extern IntPtr GetShellWindow();
-
     // ── shell32 ───────────────────────────────────────────────────────────────
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
@@ -107,21 +82,6 @@ internal static class NativeMethods
         public uint Count;
         public LUID Luid;
         public uint Attributes;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct RECT
-    {
-        public int Left, Top, Right, Bottom;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    internal struct MONITORINFO
-    {
-        public int   cbSize;
-        public RECT  rcMonitor;
-        public RECT  rcWork;
-        public uint  dwFlags;
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

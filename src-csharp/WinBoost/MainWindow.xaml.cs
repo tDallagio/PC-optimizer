@@ -51,9 +51,6 @@ public partial class MainWindow : Window
     private IReadOnlyList<StartupItem>? _startupItems;
     private bool _startupLoaded = false;
 
-    // Game Focus Mode (4.4): timer de deteccion fullscreen cada 5s
-    private readonly DispatcherTimer _gamingTimer = new() { Interval = TimeSpan.FromSeconds(5) };
-
     // Historial (4.6): flag de carga lazy
     private bool _historyLoaded = false;
 
@@ -223,10 +220,6 @@ public partial class MainWindow : Window
 
         // Limpieza profunda de cache (Herramientas)
         btnDeepClean.Click += async (_, _) => await DeepCleanAsync();
-
-        // Game Focus Mode (4.4): timer de deteccion fullscreen
-        _gamingTimer.Tick += OnGamingTick;
-        _gamingTimer.Start();
 
         // Liberador de RAM (4.5) — los labels RAM los mantiene el monitor (1s);
         // solo cableamos el boton de purga.
@@ -617,10 +610,7 @@ public partial class MainWindow : Window
     {
         _monitorTimer.Stop();
         _procTimer?.Stop();
-        _gamingTimer.Stop();
         _diskCounter?.Dispose();
-        // Restaurar focus mode si la app se cierra con un juego activo
-        try { if (App.GameFocus.IsActive) App.GameFocus.Restore(); } catch { }
         base.OnClosed(e);
     }
 
@@ -2731,39 +2721,6 @@ public partial class MainWindow : Window
         lblDriverStatus.Text       = $"{ok} eliminado(s) correctamente. {fail} error(es). Ejecuta 'Escanear' para actualizar la lista.";
         lblDriverStatus.Foreground = fail == 0 ? BrushGreen : BrushYellow;
         _driverBackupDone          = false;
-    }
-
-    // ── Game Focus Mode (4.4) ────────────────────────────────────────────────
-
-    // Mirror del Add_Tick del gamingTimer del PS1 (modulo 9C).
-    private void OnGamingTick(object? sender, EventArgs e)
-    {
-        try
-        {
-            var  proc        = GameFocusService.GetFullscreenProcess();
-            bool isGame      = GameFocusService.IsKnownGame(proc);
-            bool focusActive = App.GameFocus.IsActive;
-
-            // Si el proceso en foco ya no existe, marcar inactivo sin restaurar
-            if (focusActive && App.GameFocus.ActiveProcessExited())
-            {
-                App.GameFocus.MarkInactive();
-                focusActive = false;
-                badgeGamingMode.Visibility = Visibility.Collapsed;
-            }
-
-            if (isGame && !focusActive && proc != null)
-            {
-                App.GameFocus.Apply(proc);
-                badgeGamingMode.Visibility = Visibility.Visible;
-            }
-            else if (!isGame && focusActive)
-            {
-                App.GameFocus.Restore();
-                badgeGamingMode.Visibility = Visibility.Collapsed;
-            }
-        }
-        catch { }
     }
 
     // ── Liberador de RAM (4.5) ───────────────────────────────────────────────

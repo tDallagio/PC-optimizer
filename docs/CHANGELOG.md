@@ -5,6 +5,185 @@
 
 ---
 
+## C# fix regresion: el escaneo de bloatware dejo de detectar tras el fix de desinstalacion; restaurada la deteccion sin romper los 3 intentos de uninstall.
+
+**Archivo modificado**
+- `src-csharp/WinBoost/Services/BloatwareService.cs` — DB de Xbox (3 entradas) + matching de `GetBloatwareListAsync`
+
+**Diagnostico (causa raiz real, verificada corriendo la enumeracion + matching en un harness aparte
+sobre esta maquina)**
+
+NO fue el fix anterior de `RemoveAppAsync` (los 3 intentos de desinstalacion con try/catch separado):
+`git diff` confirma que ese cambio solo toco la desinstalacion, no la enumeracion (`GetInstalledAppxMap`)
+ni el matching (`GetBloatwareListAsync`) — esas dos funciones quedaron intactas.
+
+La causa real es un gap preexistente en la DB de bloatware (heredado tal cual del `.ps1` original, sin
+cambios recientes ahi tampoco): esta maquina tiene los paquetes de Xbox con nomenclatura **legacy**, y
+la DB solo contemplaba la nomenclatura **nueva** — el `Contains` bilateral nunca matcheaba:
+- "Xbox Game Bar" buscaba `Microsoft.XboxGamingOverlay`; el paquete real instalado es
+  `Microsoft.XboxGameOverlay` (sin "ing").
+- "Xbox App" buscaba `Microsoft.GamingApp`; el paquete real instalado es `Microsoft.XboxApp` (variante
+  legacy de la app Xbox).
+- "Xbox TCUI" buscaba `Microsoft.Xbox.TCUI`; Windows lo reemplazo por `Microsoft.XboxGameCallableUI` en
+  builds mas nuevos (mismo rol — "Title/Game Callable UI" — nombre distinto).
+
+No era falta de deteccion generica: la enumeracion de AppX (81 paquetes reales en esta maquina) y el
+matching por substring seguian funcionando igual que siempre. Las apps "genericas" de la DB (Candy
+Crush, Spotify, WhatsApp, etc.) simplemente ya no estaban instaladas en esta maquina (probablemente
+desinstaladas en pruebas previas del propio removedor de bloatware) — de ahi que CUALQUIER coincidencia
+restante dependiera de las 3 entradas de Xbox, y esas 3 fallaban por el gap de nomenclatura, dando
+"Sistema limpio" con 0 detectados aunque el sistema no estuviera limpio.
+
+**Fix**
+
+- `BloatwareDbEntry.PackageId` ahora puede llevar varios alias separados por `'|'` (mismo paquete con
+  nombre distinto segun la version de Windows).
+- Las 3 entradas de Xbox pasan a `"Microsoft.XboxGamingOverlay|Microsoft.XboxGameOverlay"`,
+  `"Microsoft.GamingApp|Microsoft.XboxApp"` y `"Microsoft.Xbox.TCUI|Microsoft.XboxGameCallableUI"`.
+- El loop de matching en `GetBloatwareListAsync` itera cada alias (`entry.PackageId.Split('|')`) contra
+  el mapa de AppX instalados, en vez de comparar contra un unico `PackageId`.
+- La DB completa (55 entradas) sigue intacta; solo se agregaron alias a esas 3, no se removio ni
+  reemplazo ninguna entrada.
+- `RemoveAppAsync` (los 3 intentos de desinstalacion con try/catch separado, mensaje claro para apps
+  protegidas) no se toco: sigue operando sobre `app.PackageFN`, que es siempre el nombre REAL resuelto
+  por el matching, no el alias de la DB.
+
+**Verificacion**
+
+Harness standalone (fuera del proyecto, mismo codigo de enumeracion+matching) corrido en esta maquina
+(elevado): antes del fix, 0/45 matches contra la DB completa pese a 81 paquetes AppX reales instalados;
+despues del fix, 3 matches — exactamente los 3 paquetes de Xbox confirmados instalados (Xbox Game Bar
+como `Microsoft.XboxGameOverlay_8wekyb3d8bbwe`, Xbox App como `Microsoft.XboxApp_8wekyb3d8bbwe`, Xbox
+TCUI como `Microsoft.XboxGameCallableUI_cw5n1h2txyewy`). `dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## C# Fixes — Plan de energia (Ultimate Performance no se activaba y duplicaba) + Bloatware (mensaje claro para apps protegidas del sistema)
+
+Dos bugs reportados en la app C# (`src-csharp/WinBoost/`). App corre elevada.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/Services/OptimizationService.cs` — `PowerPlanTweaks` + nuevo helper `FindSchemeGuidByName`
+- `src-csharp/WinBoost/Services/BloatwareService.cs` — `RemoveAppAsync` (script de remocion AppX) + nuevo helper `IsProtectedPackageError`
+
+**BUG 1 — Plan de energia "Ultimate Performance": creaba pero no aplicaba, y duplicaba en cada corrida**
+
+- *Causa raiz real (confirmada corriendo `powercfg /list` en el equipo):* tanto el `.ps1` legacy
+  como el port C# verificaban "¿ya existe el plan?" buscando el GUID **semilla**
+  `e9a42b02-d5df-448d-aa00-03f14749eb61` dentro de `powercfg /list`. Pero `powercfg
+  -duplicatescheme` NO conserva ese GUID en el plan resultante: le asigna uno **nuevo y
+  aleatorio** cada vez (verificado: en este equipo el plan "Máximo rendimiento" activo tiene
+  GUID `6028fb9b-e71e-4cfa-9e79-98985b3bf5c5`, no `e9a42b02...`). Como la comparacion contra el
+  GUID semilla nunca matcheaba, la app: (a) creaba un plan nuevo en CADA corrida (duplicados
+  infinitos, porque siempre creia que "no existia"), y (b) al buscar el GUID semilla en el
+  resultado para activarlo tampoco lo encontraba, asi que activaba el fallback SCHEME_MIN (Alto
+  Rendimiento) en vez del plan Ultimate Performance recien creado — de ahi "crea pero no aplica".
+  Este bug esta presente tambien en el `.ps1` legacy (mismo patron, lineas ~2919-2924); queda
+  documentado aca pero fuera de alcance de este cambio (pedido explicitamente solo para C#).
+- *Fix:* nuevo `FindSchemeGuidByName` parsea `powercfg /list` con regex y busca el plan por
+  **nombre** (bilingue: "Ultimate Performance" / "Máximo rendimiento", tolerante al acento) en
+  vez de por el GUID semilla, devolviendo su GUID real. `PowerPlanTweaks` ahora: busca el plan
+  existente por nombre -> si no existe, duplica desde el GUID semilla y vuelve a buscar por
+  nombre para obtener el GUID real asignado -> activa ESE guid con `/setactive`. Corridas
+  repetidas detectan el plan ya creado (por nombre) y no vuelven a duplicar.
+
+**BUG 2 — Bloatware: apps que fallan al desinstalar (ej. Xbox, 0x80070002) con mensaje generico**
+
+- *Contexto:* el refresh de la lista post-desinstalacion YA re-escaneaba el estado real del
+  sistema (`ScanBloatwareAsync` llama a `GetBloatwareListAsync`, que vuelve a enumerar AppX
+  desde cero) — no habia bug ahi. El problema real estaba en el mensaje de fallo y en que el
+  script de remocion abortaba de mas.
+- *Causa raiz:* el script de PowerShell embebido envolvia los 3 intentos de remocion (usuario
+  actual, `-AllUsers`, `Remove-AppxProvisionedPackage`) en un UNICO `try/catch`. Si el primer
+  intento (`Remove-AppxPackage` para el usuario actual) fallaba con excepcion — como pasa con
+  apps protegidas/aprovisionadas por el sistema (Xbox Game Bar, Xbox Identity Provider, Xbox
+  TCUI con `0x80070002`) — el catch externo cortaba la ejecucion ANTES de intentar `-AllUsers` o
+  el paquete provisionado, y devolvia el texto crudo de la excepcion .NET como mensaje.
+- *Fix:* cada intento de remocion (usuario actual / AllUsers / Provisioned) corre ahora en su
+  propio `try/catch` interno que acumula el error sin abortar los siguientes; al final SIEMPRE
+  se verifica el estado real (`WB_STILL` si sigue instalado tras los 3 intentos). Nuevo
+  `IsProtectedPackageError` detecta `0x80070002` / "access is denied" / "acceso denegado" /
+  "denegado" en el detalle acumulado y traduce el mensaje a uno claro: "Protegida/aprovisionada
+  por el sistema - Windows no permite quitarla (comun en apps de Xbox/sistema)", en vez del
+  texto de excepcion crudo. Los fallos genuinos (no reconocidos como proteccion de sistema)
+  siguen mostrando el detalle tal cual para diagnostico.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+---
+
+## Seguridad: rotacion de claves de licencia — clave publica RSA reemplazada por par nuevo (la privada vieja quedo comprometida en repo publico); gitignore blindado contra generador y claves privadas.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/Services/LicenseService.cs` — `PublicKeyXml` (RSA-2048) reemplazada por el
+  par nuevo. Logica de verificacion (`TestSignature`, `TestLicenseKey`, `TestTechLicenseKey`) sin
+  cambios.
+- `.gitignore` (raiz) — agregado bloque para nunca subir el generador de licencias ni claves
+  privadas: `Gen-License.ps1`, `*gen*license*.ps1`, `*_private*.xml`, `winboost_private*.xml`,
+  `*.key`, `winboost_keys*/`.
+
+**Detalle**
+
+La clave privada RSA vieja quedo expuesta porque `Gen-License.ps1` (el generador) se subio al
+repo publico. Se regenero un par RSA-2048 nuevo; este cambio solo toca la clave PUBLICA (la que
+vive en la app) — la privada y el generador quedan fuera del repo, en la maquina del emisor.
+
+Verificado: la clave vieja (`1i89Gsv9...`) ya no aparece en ningun archivo de `src-csharp/`; no
+hay otro archivo con material de clave privada (`<P>`/`<D>`/`<InverseQ>`) en `src-csharp/`.
+`dotnet build`: 0 errores, 0 advertencias.
+
+**Pendiente (fuera de alcance de este cambio, reportado al usuario):**
+- `Gen-License.ps1` sigue TRACKEADO en git (esta en el indice, no solo en el gitignore nuevo) —
+  el `.gitignore` no lo va a destrackear retroactivamente. Requiere `git rm --cached
+  Gen-License.ps1` (accion de git a confirmar con el usuario) y, dado que ya estuvo publico,
+  considerar limpieza de historial si el repo es publico.
+- El `.ps1` legacy (`OptimizarPC_App.ps1`) todavia tiene la clave publica VIEJA embebida
+  (`1i89Gsv9...`) — fuera de alcance de este prompt (que pedia solo `src-csharp/`), pero como
+  el PS1 sigue siendo la version distribuida, la licencia validada por esa version seguira
+  aceptando firmas hechas con la clave privada vieja comprometida hasta que tambien se rote ahi.
+
+---
+
+## C# Game Focus Mode dado de baja (impacto marginal; Process Lasso cubre el nicho). Reemplazo por deteccion Steam + prioridad por juego queda pendiente post-migracion.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/Services/GameFocusService.cs` — eliminado (servicio completo: deteccion
+  de fullscreen, lista de juegos conocidos, mascara de nucleos fisicos, Apply/Restore)
+- `src-csharp/WinBoost/App.xaml.cs` — eliminado el singleton `App.GameFocus`
+- `src-csharp/WinBoost/Services/AppSettings.cs` — eliminada la propiedad `GameAffinityEnabled`
+- `src-csharp/WinBoost/Services/SettingsService.cs` — eliminada la copia de `GameAffinityEnabled` en `Load()`
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — eliminados el campo `_gamingTimer`, su wiring
+  (Tick/Start), el `Stop()` + `GameFocus.Restore()` en `OnClosed`, y el metodo `OnGamingTick`
+- `src-csharp/WinBoost/MainWindow.xaml` — eliminado el badge `badgeGamingMode` del header
+- `src-csharp/WinBoost/NativeMethods.cs` — eliminado el bloque `user32` completo
+  (`GetForegroundWindow`, `GetWindowRect`, `MonitorFromWindow`, `GetMonitorInfo`,
+  `GetWindowThreadProcessId`, `GetDesktopWindow`, `GetShellWindow`) y los structs `RECT`/`MONITORINFO`
+
+**Detalle**
+
+Decision de producto: la afinidad a nucleos fisicos no mostro cambio real medible y muchos
+juegos ya arrancan en prioridad alta por su cuenta; Process Lasso ya cubre este nicho mejor.
+Se remueve todo el modulo sin reemplazo inmediato.
+
+- **P/Invoke `user32` (equivalente a `Win32FS` del PS1):** se verifico que las 7 funciones y
+  los 2 structs eran de uso EXCLUSIVO de `GameFocusService` (unico archivo que las referenciaba
+  fuera de `NativeMethods.cs`) -> removidas junto con el servicio. Ningun otro modulo (monitor,
+  procesos, tuning, etc.) las usaba.
+- **Setting huerfano:** `GameAffinityEnabled` se quita del modelo `AppSettings` y de `Load()`.
+  `System.Text.Json` ignora propiedades desconocidas al deserializar por default, asi que un
+  `settings.json` existente con `"GameAffinityEnabled": true` de una version anterior carga sin
+  error (la propiedad simplemente se descarta).
+- **Sin card en Ajustes que remover:** a diferencia del PS1 (que tenia `chkGameAffinity` en una
+  card de Ajustes), la migracion a C# nunca llego a portar esa UI — el unico rastro visual era el
+  badge "GAMING MODE" del header (`badgeGamingMode`), que se elimino junto con el resto.
+- El resto de Ajustes (mantenimiento, apariencia, comportamiento, acerca de) no se toco.
+
+`dotnet build`: 0 errores, 0 advertencias. XAML validado con `ElementTree`. Smoke test:
+`WinBoost.exe` arranca y corre sin crashear (validacion completa de UI requiere clickear el UAC
+de elevacion manualmente).
+
+---
+
 ## C# modo silencioso CLI reparado: motor de optimizacion desacoplado de la UI (recibe preset como datos), NullReference resuelto; log por fecha en logs/
 
 **Archivos modificados**

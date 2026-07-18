@@ -14,7 +14,6 @@ internal sealed class AppSettings
     public string TrialStartDate      { get; set; } = "";
     public bool   TrialExpired        { get; set; } = false;
     public string TechnicianName      { get; set; } = "";
-    public bool   GameAffinityEnabled { get; set; } = false;
     public bool   FirstRunCompleted   { get; set; } = false;
 
     internal static readonly string DefaultBackupRoot = Path.Combine(

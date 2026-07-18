@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Management;
 using System.ServiceProcess;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 
 namespace WinBoost.Services;
@@ -562,18 +563,29 @@ public sealed class OptimizationService
         Log("PLAN DE ENERGIA", "head");
         App.Backup.SavePowerPlanBackup();
 
-        const string ultimateGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61";
+        // GUID "semilla" que powercfg reconoce como plantilla oculta de Ultimate Performance.
+        // OJO: -duplicatescheme NO conserva este GUID en el plan resultante -- asigna uno
+        // nuevo aleatorio cada vez. Comparar contra este GUID fijo (como hacia el codigo viejo,
+        // igual que el .ps1) nunca matchea, asi que la deteccion de "ya existe" siempre fallaba
+        // -> duplicaba en cada corrida y despues activaba el fallback SCHEME_MIN en vez del plan
+        // recien creado. El fix busca el plan YA CREADO por nombre (bilingue) en vez de por GUID.
+        const string ultimateSeedGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61";
 
         if (!isLaptop)
         {
             string list = RunProcessCapture("powercfg", "/list");
-            if (!list.Contains(ultimateGuid, StringComparison.OrdinalIgnoreCase))
-                RunProcess("powercfg", $"-duplicatescheme {ultimateGuid}");
+            string? guid = FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
 
-            list = RunProcessCapture("powercfg", "/list");
-            if (list.Contains(ultimateGuid, StringComparison.OrdinalIgnoreCase))
+            if (guid == null)
             {
-                RunProcess("powercfg", $"/setactive {ultimateGuid}");
+                RunProcess("powercfg", $"-duplicatescheme {ultimateSeedGuid}");
+                list = RunProcessCapture("powercfg", "/list");
+                guid = FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
+            }
+
+            if (guid != null)
+            {
+                RunProcess("powercfg", $"/setactive {guid}");
                 Log("Ultimate Performance activado", "ok");
             }
             else
@@ -592,6 +604,24 @@ public sealed class OptimizationService
 
         RunProcess("powercfg", "/change standby-timeout-ac 0");
         _applied++;
+    }
+
+    // Busca en la salida de "powercfg /list" un plan cuyo nombre matchee alguno de los
+    // patrones dados (regex, case-insensitive) y devuelve su GUID. Cada linea tiene la forma
+    // "<etiqueta>: <guid>  (<nombre>) [*]" en cualquier idioma; el GUID y los parentesis son
+    // el unico formato estable entre locales.
+    private static string? FindSchemeGuidByName(string powercfgListOutput, params string[] namePatterns)
+    {
+        foreach (Match line in Regex.Matches(
+            powercfgListOutput,
+            @"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s*\(([^)]+)\)"))
+        {
+            string name = line.Groups[2].Value;
+            foreach (string pattern in namePatterns)
+                if (Regex.IsMatch(name, pattern, RegexOptions.IgnoreCase))
+                    return line.Groups[1].Value;
+        }
+        return null;
     }
 
     // ── HPET ─────────────────────────────────────────────────────────────────

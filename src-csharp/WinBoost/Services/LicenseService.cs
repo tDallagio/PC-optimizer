@@ -16,12 +16,13 @@ internal sealed record LicenseStatus(bool IsActivated, string HardwareId, Licens
 // ============================================================
 internal sealed class LicenseService
 {
-    // Clave publica RSA-2048 (identica al PS1). La privada la tiene solo Gen-License.ps1.
+    // Clave publica RSA-2048 (rotada; la vieja quedo comprometida). La privada la tiene solo Gen-License.ps1.
     private const string PublicKeyXml =
-        "<RSAKeyValue><Modulus>1i89Gsv9L78TshLJGAhCSlvzoCKa2t5zk18kpC4gvzENP0yn6K8TLhCCRTaLAIO/" +
-        "ivRIpPX6UBPvkx1DAft+CqOXBc7L+hycDNIp7NYvebBoVCIFhwfLvjQloAniRIRe4bonEJffJul1y5jKUeErjSP3+" +
-        "PUgnPBO4mA2OfLcqFRyuLKllAuLsAdNE8j9ZyRJUFhQFnGnaANN8vVow9zA8AK+dWTO2s2k8WG32v3idxjlIqksnOZeqq" +
-        "GkXldyGA4z9UnLEr1PfEzItZoaic2xqPYEPB390ynfYXvaHHy2sV0U88rfarh4K2mRsBlQP/kjtXG7uxPH2wvYj0paslBE5Q==" +
+        "<RSAKeyValue><Modulus>ym5T92ZERbOkuMA0o/Acyqf2BcrCYfxH1uF0n6LPtM65a9jaJ/yBC8JEaXSgs3Ie" +
+        "A4IHThBK8nJf2IdfTpHmljOrgiMmQc8BZhgAu7K+UTGKJeHORTf2Rt3lBcee8c2gV7ev7LuCWrXWzqfh24Khgv7" +
+        "69fGWZh/iYxJFl+HDZYf+YH/ZknAN2L20ZagKrfhOfnfRjn0hr1ZmwzHJ1gXVO2AgewYXfT5W5HaBlGsqrUdIZv" +
+        "fqzVqs3LIdJNBahU7/QKgOxhb/cWN35rdIPH9fj0dXt8iT/XbkNBeg1VcHMIyhW4SXL3vSMB4VVfDCSdUwMNYS0" +
+        "lgjXbVMgiDC5jcpPQ==" +
         "</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>";
 
     private static readonly string LicensePath = Path.Combine(

@@ -6,6 +6,8 @@ namespace WinBoost.Services;
 // ── Models ────────────────────────────────────────────────────────────────────
 
 // Entrada de la base de datos de bloatware (mirror de $script:bloatwareDb)
+// PackageId puede contener varios alias separados por '|' (mismo paquete con distinto
+// nombre segun la version de Windows, ej. "Microsoft.GamingApp|Microsoft.XboxApp").
 public record BloatwareDbEntry(
     string  Name,
     string? PackageId,
@@ -51,10 +53,10 @@ public sealed class BloatwareService
         new("Farm Heroes Saga",          "king.com.FarmHeroesSaga",               null,                               "Juegos",       "appx",        "safe",    90),
         new("Bubble Witch 3 Saga",       "king.com.BubbleWitch3Saga",             null,                               "Juegos",       "appx",        "safe",    85),
         new("Microsoft Solitaire",       "Microsoft.MicrosoftSolitaireCollection",null,                               "Juegos",       "appx",        "safe",    95),
-        new("Xbox Game Bar",             "Microsoft.XboxGamingOverlay",           null,                               "Juegos",       "appx",        "caution", 50),
-        new("Xbox App",                  "Microsoft.GamingApp",                   null,                               "Juegos",       "appx",        "caution", 150),
+        new("Xbox Game Bar",             "Microsoft.XboxGamingOverlay|Microsoft.XboxGameOverlay", null,             "Juegos",       "appx",        "caution", 50),
+        new("Xbox App",                  "Microsoft.GamingApp|Microsoft.XboxApp", null,                               "Juegos",       "appx",        "caution", 150),
         new("Xbox Identity Provider",    "Microsoft.XboxIdentityProvider",        null,                               "Juegos",       "appx",        "caution", 20),
-        new("Xbox TCUI",                 "Microsoft.Xbox.TCUI",                   null,                               "Juegos",       "appx",        "caution", 15),
+        new("Xbox TCUI",                 "Microsoft.Xbox.TCUI|Microsoft.XboxGameCallableUI", null,                    "Juegos",       "appx",        "caution", 15),
         new("Xbox Speech To Text",       "Microsoft.XboxSpeechToTextOverlay",     null,                               "Juegos",       "appx",        "safe",    10),
 
         // COMUNICACION / REDES SOCIALES
@@ -129,19 +131,23 @@ public sealed class BloatwareService
                 bool    found     = false;
                 string? packageFN = null;
 
-                // Busqueda AppX
+                // Busqueda AppX (PackageId puede traer varios alias separados por '|')
                 if (entry.PackageId != null &&
                     (entry.Method == "appx" || entry.Method == "appx+winget"))
                 {
-                    string needle = entry.PackageId.ToLowerInvariant();
-                    foreach (var key in appxMap.Keys)
+                    foreach (string alias in entry.PackageId.Split('|'))
                     {
-                        if (key.Contains(needle) || needle.Contains(key))
+                        string needle = alias.ToLowerInvariant();
+                        foreach (var key in appxMap.Keys)
                         {
-                            found     = true;
-                            packageFN = appxMap[key];
-                            break;
+                            if (key.Contains(needle) || needle.Contains(key))
+                            {
+                                found     = true;
+                                packageFN = appxMap[key];
+                                break;
+                            }
                         }
+                        if (found) break;
                     }
                 }
 
@@ -200,13 +206,17 @@ public sealed class BloatwareService
                     string fragment = app.PackageFN.Split('_')[0].Replace("'", "''");
 
                     // Script de remocion robusto. Quita el paquete del usuario actual y de todos
-                    // los usuarios (incluye estado Staged), ademas del provisionado. Emite un marcador
-                    // segun el resultado real (verificado tras la remocion), en vez de depender solo
-                    // del exit code de powershell:
-                    //   WB_REMOVED  -> existia y se quito
-                    //   WB_NOTFOUND -> ya no estaba (no es error: exito efectivo)
-                    //   WB_STILL    -> sigue instalado tras intentar (fallo real)
-                    //   WB_ERR:msg  -> excepcion durante la remocion
+                    // los usuarios (incluye estado Staged), ademas del provisionado. Cada intento
+                    // corre en su PROPIO try/catch: si el de usuario actual falla (comun en apps
+                    // protegidas/aprovisionadas por el sistema, ej. Xbox con 0x80070002), los
+                    // intentos de AllUsers y Provisioned igual se ejecutan (antes, un solo try/catch
+                    // envolvia los tres pasos y un fallo en el primero abortaba el resto sin
+                    // intentarlo). Emite un marcador segun el resultado REAL (verificado tras
+                    // intentar los tres metodos), en vez de depender solo del exit code:
+                    //   WB_REMOVED     -> existia y se quito
+                    //   WB_NOTFOUND    -> ya no estaba (no es error: exito efectivo)
+                    //   WB_STILL:errs  -> sigue instalado tras intentar todo (fallo real; errs = detalle)
+                    //   WB_ERR:msg     -> excepcion inesperada fuera de los intentos de remocion
                     string psCmd =
                         "$ErrorActionPreference='Stop'; " +
                         $"$frag='{fragment}'; $pat='*'+$frag+'*'; " +
@@ -214,14 +224,17 @@ public sealed class BloatwareService
                         "  $pk=Get-AppxPackage -Name $pat -EA SilentlyContinue; " +
                         "  $pkAll=Get-AppxPackage -AllUsers -Name $pat -EA SilentlyContinue; " +
                         "  $existed=[bool]($pk -or $pkAll); " +
-                        "  if($pk){ $pk | Remove-AppxPackage -EA Stop }; " +
-                        "  if($pkAll){ $pkAll | Remove-AppxPackage -AllUsers -EA SilentlyContinue }; " +
-                        "  Get-AppxProvisionedPackage -Online -EA SilentlyContinue | " +
-                        "    Where-Object { $_.PackageName -like $pat } | " +
-                        "    Remove-AppxProvisionedPackage -Online -EA SilentlyContinue | Out-Null; " +
+                        "  $errs=@(); " +
+                        "  if($pk){ try { $pk | Remove-AppxPackage -EA Stop } catch { $errs += $_.Exception.Message } }; " +
+                        "  if($pkAll){ try { $pkAll | Remove-AppxPackage -AllUsers -EA Stop } catch { $errs += $_.Exception.Message } }; " +
+                        "  try { " +
+                        "    Get-AppxProvisionedPackage -Online -EA SilentlyContinue | " +
+                        "      Where-Object { $_.PackageName -like $pat } | " +
+                        "      Remove-AppxProvisionedPackage -Online -EA Stop | Out-Null " +
+                        "  } catch { $errs += $_.Exception.Message }; " +
                         "  $still=@(Get-AppxPackage -AllUsers -Name $pat -EA SilentlyContinue | " +
                         "    Where-Object { $_.PackageUserInformation | Where-Object { $_.InstallState -eq 'Installed' } }); " +
-                        "  if($still.Count -gt 0){ Write-Output 'WB_STILL' } " +
+                        "  if($still.Count -gt 0){ Write-Output ('WB_STILL:' + ($errs -join ' | ')) } " +
                         "  elseif($existed){ Write-Output 'WB_REMOVED' } " +
                         "  else{ Write-Output 'WB_NOTFOUND' } " +
                         "} catch { Write-Output ('WB_ERR:'+$_.Exception.Message) }";
@@ -233,11 +246,21 @@ public sealed class BloatwareService
                     if (outp.Contains("WB_NOTFOUND"))
                         return new RemoveResult(app.Name, true, "appx", "Ya estaba desinstalada");
 
-                    int errIdx = outp.IndexOf("WB_ERR:", StringComparison.Ordinal);
-                    if (errIdx >= 0)
-                        msg = $"AppX fallo: {outp[(errIdx + 7)..].Trim()}";
+                    int stillIdx = outp.IndexOf("WB_STILL:", StringComparison.Ordinal);
+                    if (stillIdx >= 0)
+                    {
+                        string detail = outp[(stillIdx + "WB_STILL:".Length)..].Trim();
+                        msg = IsProtectedPackageError(detail)
+                            ? "Protegida/aprovisionada por el sistema - Windows no permite quitarla (comun en apps de Xbox/sistema)"
+                            : (string.IsNullOrEmpty(detail) ? "AppX: el paquete sigue presente" : $"AppX fallo: {detail}");
+                    }
                     else
-                        msg = "AppX: el paquete sigue presente";
+                    {
+                        int errIdx = outp.IndexOf("WB_ERR:", StringComparison.Ordinal);
+                        msg = errIdx >= 0
+                            ? $"AppX fallo: {outp[(errIdx + 7)..].Trim()}"
+                            : "AppX: el paquete sigue presente";
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -313,6 +336,17 @@ public sealed class BloatwareService
     }
 
     // ── Helpers privados ──────────────────────────────────────────────────────
+
+    // Detecta si el detalle de error corresponde a un paquete protegido/aprovisionado
+    // por el sistema (tipico en apps de Xbox: Remove-AppxPackage falla con 0x80070002
+    // porque el paquete esta aprovisionado a nivel maquina y no se puede quitar para un
+    // usuario individual). Bilingue: el mensaje de excepcion de PowerShell viene en el
+    // idioma del SO.
+    private static bool IsProtectedPackageError(string detail) =>
+        detail.Contains("0x80070002", StringComparison.OrdinalIgnoreCase) ||
+        detail.Contains("access is denied", StringComparison.OrdinalIgnoreCase) ||
+        detail.Contains("acceso denegado", StringComparison.OrdinalIgnoreCase) ||
+        detail.Contains("denegado", StringComparison.OrdinalIgnoreCase);
 
     // Mirror de Get-InstalledAppxMap del PS1.
     // Devuelve mapa: PackageFamilyName.ToLower() -> PackageFamilyName (original)

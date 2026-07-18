@@ -632,14 +632,6 @@
                          FontSize="10" Foreground="#F59E0B"/>
             </StackPanel>
           </Border>
-          <Border x:Name="badgeGamingMode" Background="#0D1F0D" CornerRadius="4"
-                  Padding="6,2" Margin="6,0,0,0" Visibility="Collapsed">
-            <StackPanel Orientation="Horizontal">
-              <TextBlock Text="&#x25CF; " FontSize="8" Foreground="#22C55E"
-                         VerticalAlignment="Center"/>
-              <TextBlock Text="GAMING MODE" FontSize="10" Foreground="#22C55E"/>
-            </StackPanel>
-          </Border>
           <Border x:Name="badgeLicenseFree" Background="{DynamicResource BrushCtrl}" CornerRadius="4"
                   BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
                   Padding="6,2" Margin="6,0,0,0">

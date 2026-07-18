@@ -20,7 +20,6 @@ public partial class App : Application
     internal static BloatwareService    Bloatware  { get; } = new();
     internal static StartupService      StartupMgr { get; } = new();
     internal static MaintenanceService  Maintenance{ get; } = new();
-    internal static GameFocusService    GameFocus  { get; } = new();
     internal static RamService          Ram        { get; } = new();
     internal static HistoryService      History    { get; } = new();
     internal static ReportService       Report     { get; } = new();
