@@ -8,7 +8,19 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>WinBoost</AssemblyName>
+    <Product>WinBoost</Product>
+    <AssemblyTitle>WinBoost</AssemblyTitle>
+    <ApplicationIcon>..\..\WinBoost.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!--
+    RID/self-contained/single-file NO viven aca: solo se activan al publicar con el
+    profile Properties\PublishProfiles\win-x64-selfcontained.pubxml (ver
+    src-csharp\Publish-CSharp.ps1). Ponerlos en el PropertyGroup principal haria que
+    "dotnet build" (uso diario) restaure y copie el runtime de WPF completo en cada
+    compilacion de desarrollo.
+  -->
 
   <ItemGroup>
     <PackageReference Include="System.Management" Version="7.0.0" />

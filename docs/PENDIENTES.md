@@ -61,6 +61,9 @@ comportamiento del PS1 original.
 - [x] 6.1 Tuning tab: reconstruir como XAML declarativo (achica el Build-TuningTab de 1.200 lineas)
 - [x] 6.2 Sistema de diseno: tokens de espaciado/tipografia, acento unico, estados hover/pressed/disabled, transiciones
 - [ ] 6.3 Corte: jubilar el `.ps1`, actualizar README e instalador
+      (distribucion C# YA lista: publish self-contained single-file + instalador Inno Setup en
+      `src-csharp/installer/WinBoost.iss`, script `src-csharp/Publish-CSharp.ps1` — ver CHANGELOG.md.
+      Falta: jubilar el `.ps1`, actualizar README)
 
 ---
 

@@ -5,6 +5,94 @@
 
 ---
 
+## C# distribucion: build self-contained single-file + instalador Inno Setup; compatible con los flags silenciosos del auto-updater.
+
+Arma la distribucion de la app C# (`src-csharp/WinBoost/`) pedida en `prompt_distribucion_csharp.txt`:
+publish self-contained single-file + instalador. El PS1 sigue siendo la version distribuida; esto
+NO ejecuta el corte (item 6.3 de PENDIENTES.md sigue pendiente).
+
+**Archivos creados**
+- `src-csharp/WinBoost/Properties/PublishProfiles/win-x64-selfcontained.pubxml` — settings de publish
+  (RID/self-contained/single-file solo aca, no en el `.csproj` principal)
+- `src-csharp/Publish-CSharp.ps1` — script reproducible: publish + chequeo del bundle + instalador
+- `src-csharp/installer/WinBoost.iss` — instalador Inno Setup 6 para la version C#
+
+**Archivos modificados**
+- `src-csharp/WinBoost/WinBoost.csproj` — `AssemblyName`/`Product`/`AssemblyTitle`/`ApplicationIcon`
+
+**Recomendacion (parte 1 del prompt)**
+
+- *Modelo:* self-contained + single-file, `win-x64`, `IncludeNativeLibrariesForSelfExtract=true`
+  (WPF no puede cargar sus DLLs nativas directo desde el single-file; las embebe y las extrae a un
+  bundle-staging temporal en el primer arranque de cada version — comportamiento esperado, no bug),
+  `EnableCompressionInSingleFile=true` (baja el tamano de descarga). `PublishReadyToRun` queda OFF:
+  para WPF+single-file casi duplica el tamano por una mejora de arranque en frio marginal en una app
+  que se abre ocasionalmente. Es single-file "puro": el `.pubxml` fuerza que no queden DLLs sueltas
+  al lado del exe (verificado por el script, ver Verificacion).
+- *RID/self-contained solo en un publish profile, no en el `.csproj` principal:* si esas propiedades
+  quedan en el `PropertyGroup` de siempre, `dotnet build` (uso diario) tambien restaura y copia el
+  runtime completo de WPF en cada compilacion de desarrollo. Con el profile, `dotnet build` sigue
+  framework-dependent y rapido; el publish self-contained solo se dispara al pedirlo explicitamente.
+- *Instalador: se adapto el `.iss` viejo (Inno Setup), no se cambio de herramienta.* Motivos: (1)
+  Inno Setup YA soporta nativamente `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL` sin
+  configuracion extra — son switches estandar del engine, no hubo que agregar nada para la
+  restriccion no-negociable #1; (2) `PrivilegesRequired=admin` + `UsePreviousAppDir=yes` ya resuelven
+  las restricciones #2 y #3 (misma carpeta estable entre versiones); (3) con un solo exe grande
+  ya no hace falta empaquetar el XAML aparte, asi que el `.iss` se simplifica (un solo `[Files]`)
+  en vez de complicarse. No se vio ninguna ventaja real de MSIX/WiX/Squirrel para este caso que
+  justificara el cambio de herramienta y el research/setup adicional.
+
+**Implementacion (parte 2 del prompt)**
+
+- `win-x64-selfcontained.pubxml`: `RuntimeIdentifier=win-x64`, `SelfContained=true`,
+  `PublishSingleFile=true`, `IncludeNativeLibrariesForSelfExtract=true`,
+  `IncludeAllContentForSelfExtract=true`, `EnableCompressionInSingleFile=true`,
+  `PublishReadyToRun=false`, `SelfContainedDeploymentUseAppHost=true`.
+- `src-csharp/installer/WinBoost.iss`: mismo `AppId` que `installer/WinBoost.iss` (PS1) a proposito
+  — si el auto-updater instala esta version sobre una instalacion previa (PS1 o C#), Inno Setup lo
+  reconoce como upgrade del mismo producto (misma carpeta, mismo registro de Add/Remove Programs,
+  sin entradas duplicadas). `[Files]` solo declara `WinBoost.exe` (sin XAML: en C# el XAML compila a
+  BAML embebido en el assembly, no se carga externo como en el PS1). Nuevo paso `[Code]`
+  `CurStepChanged(ssPostInstall)` que borra `OptimizarPC_UI.xaml` en `{app}` si existe, para no dejar
+  huerfano el archivo que dejaba el instalador viejo al actualizar in-place. `OutputBaseFilename`
+  mantiene el mismo patron `WinBoost_Setup_{#AppVersion}` que ya usa `version.json.downloadUrl`
+  (restriccion #4). `AppVersion` se recibe por `/DAppVersion=X.Y` (lo pasa el script, leido de
+  `App.Version` en `App.xaml.cs` — no hay que tocar el `.iss` en cada release).
+- `src-csharp/Publish-CSharp.ps1`: `dotnet publish -c Release -p:PublishProfile=win-x64-selfcontained`
+  → chequeo estatico del bundle (cabecera PE valida + que no haya DLLs sueltas al lado del exe, solo
+  `.pdb` tolerado) → compila el `.iss` con ISCC si esta instalado (busca en PATH y en las dos rutas
+  default de Inno Setup 6) → imprime tamano y SHA256 de exe e instalador. No lanza el exe: WinBoost
+  requiere elevacion (`app.manifest requireAdministrator`), asi que ejecutarlo sin avisar dispararia
+  un UAC real en el escritorio del usuario desde un script automatico — el script deja como "prueba
+  manual pendiente" correrlo y aceptar el UAC, en vez de intentar automatizar algo que requiere un
+  click humano en un dialogo del sistema.
+
+**Verificacion (parte 3 del prompt, corrida en esta maquina)**
+
+- `dotnet publish`: OK. `WinBoost.exe` self-contained single-file, **68.6 MB**, SHA256
+  `314642671EBDDF3F493238995383952CE04DBB1940EC18BCF12FC5E9E7F97E32`. Carpeta de publish sin
+  dependencias sueltas (solo el `.exe`).
+  Nota: la maquina de build SI tiene .NET instalado, asi que "corre sin .NET" no se pudo confirmar
+  en una maquina limpia — pendiente de probar en un Windows sin runtime .NET si se quiere el 100%
+  de certeza (el mecanismo self-contained lo garantiza por diseno, pero no se verifico en maquina
+  limpia real).
+- Instalador (`ISCC.exe`, Inno Setup 6.7.3, ya presente en esta maquina): compilo sin errores ni
+  warnings — **63.7 MB**, SHA256 `C1EDD1FB703FC149A5C96AC35DB18496BA966C065203D704906F920741EEB295`.
+- Instalacion silenciosa real probada en esta maquina (sesion ya elevada, asi que no aparecio UAC —
+  en un usuario final normal SI aparece una vez, es el comportamiento esperado de un instalador
+  `admin`): `WinBoost_Setup_4.1.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL` → exit code 0,
+  `C:\Program Files\WinBoost\WinBoost.exe` presente, entrada de Add/Remove Programs creada
+  (`DisplayName=WinBoost versión 4.1`, `InstallLocation=C:\Program Files\WinBoost\`). Se lanzo el exe
+  instalado: abrio elevado, con ventana principal (`MainWindowTitle=WinBoost`) respondiendo, y se
+  cerro limpio. Se desinstalo con `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCANCEL` → exit 0,
+  carpeta removida — la maquina de desarrollo quedo como estaba antes de la prueba (instalacion de
+  test, no se dejo instalado a proposito).
+
+`dotnet build` (proyecto normal, sin el publish profile): sin tocar, se mantiene framework-dependent
+y rapido como antes.
+
+---
+
 ## C# fix regresion: el escaneo de bloatware dejo de detectar tras el fix de desinstalacion; restaurada la deteccion sin romper los 3 intentos de uninstall.
 
 **Archivo modificado**
