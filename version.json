@@ -1,7 +1,7 @@
 {
-  "version": "4.1",
+  "version": "4.2",
   "releaseUrl": "https://github.com/tDallagio/PC-optimizer/releases/latest",
-  "downloadUrl": "https://github.com/tDallagio/PC-optimizer/releases/download/v4.1/WinBoost_Setup_4.1.exe",
-  "sha256": "D96B983C4B824DFB1DDCBC6133F3852D2DE1E48ECC92E7F2ED739F15D2DDEA41",
-  "changelog": "v4.1 - Auto-updater corregido: instalacion silenciosa y verificacion de integridad."
+  "downloadUrl": "https://github.com/tDallagio/PC-optimizer/releases/download/v4.2/WinBoost_Setup_4.2.exe",
+  "sha256": "7D35D202C7616EA4F6CFF47C9A9DC10820E5A6AC99BBEBC6B0B9E1C81724BF99",
+  "changelog": "Version de prueba 4.2 - testeo del auto-updater. Mejoras y correcciones."
 }
