@@ -3,7 +3,7 @@ using System.Windows;
 namespace WinBoost;
 
 // Resultado de la interaccion del usuario con el dialogo de actualizacion.
-public enum ChangelogResult { Later, GitHub, Download }
+public enum ChangelogResult { Later, Download }
 
 // ============================================================
 // Show-ChangelogDialog (parte del modulo 14 - auto-updater)
@@ -35,12 +35,6 @@ public partial class ChangelogDialog : Window
     private void OnLater(object sender, RoutedEventArgs e)
     {
         Result = ChangelogResult.Later;
-        Close();
-    }
-
-    private void OnGitHub(object sender, RoutedEventArgs e)
-    {
-        Result = ChangelogResult.GitHub;
         Close();
     }
 

@@ -182,54 +182,76 @@ public sealed class OptimizationService
         // Punto de restauracion (2%)
         if (G(sel, "Startup"))
         {
-            await Task.Run(() => CreateRestorePoint(sysDrive), ct);
+            await Task.Run(() => Safe(() => CreateRestorePoint(sysDrive), "Punto de restauracion"), ct);
         }
 
         ct.ThrowIfCancellationRequested();
 
         // Limpieza (8-20%)
-        _freedMb = await Task.Run(() => CleanupTweaks(sel, hasSsd, sysDrive), ct);
+        _freedMb = await Task.Run(() => SafeD(() => CleanupTweaks(sel, hasSsd, sysDrive), "Limpieza"), ct);
 
         ct.ThrowIfCancellationRequested();
 
         // Plan de energia (30-36%)
         if (G(sel, "Power"))
-            await Task.Run(() => PowerPlanTweaks(isLaptop), ct);
+            await Task.Run(() => Safe(() => PowerPlanTweaks(isLaptop), "Plan de energia"), ct);
 
         // HPET (36-44%)
         if (G(sel, "HPET"))
-            await Task.Run(() => HpetTweaks(), ct);
+            await Task.Run(() => Safe(() => HpetTweaks(), "HPET"), ct);
 
         // Tweaks de registro (44-70%)
-        await Task.Run(() => RegistryTweaks(sel), ct);
+        await Task.Run(() => Safe(() => RegistryTweaks(sel), "Tweaks de registro"), ct);
 
         ct.ThrowIfCancellationRequested();
 
         // Red (70-75%)
-        await Task.Run(() => NetworkTweaks(sel, dnsIndex), ct);
+        await Task.Run(() => Safe(() => NetworkTweaks(sel, dnsIndex), "Red"), ct);
 
         // Servicios (82-88%)
-        await Task.Run(() => ServiceTweaks(sel, hasSsd), ct);
+        await Task.Run(() => Safe(() => ServiceTweaks(sel, hasSsd), "Servicios"), ct);
 
         ct.ThrowIfCancellationRequested();
 
         // Fast Startup (88-92%)
         if (G(sel, "FastStartup"))
-            await Task.Run(() => FastStartupTweaks(), ct);
+            await Task.Run(() => Safe(() => FastStartupTweaks(), "Fast Startup"), ct);
 
         // PageFile (91-94%)
         if (G(sel, "PageFile"))
-            await Task.Run(() => PageFileTweaks(totalRamGb, sysDrive, altDriveForPageFile, movePageFileToAlt), ct);
+            await Task.Run(() => Safe(() => PageFileTweaks(totalRamGb, sysDrive, altDriveForPageFile, movePageFileToAlt), "PageFile"), ct);
 
         // TRIM / Desfrag (94-96%)
         if (G(sel, "TrimDesfrag"))
-            await TrimTweaksAsync(hasSsd, ct);
+        {
+            try { await TrimTweaksAsync(hasSsd, ct); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { Log($"Fallo: TRIM/Desfrag ({ex.Message})", "err"); }
+        }
 
         // Efectos visuales (96%)
         if (G(sel, "Visual"))
-            await Task.Run(() => VisualTweaks(totalRamGb), ct);
+            await Task.Run(() => Safe(() => VisualTweaks(totalRamGb), "Efectos visuales"), ct);
 
         return new OptResult(_applied, _skipped, _freedMb);
+    }
+
+    // Ejecuta un paso de la optimizacion sin dejar que una excepcion no
+    // capturada frene el resto del flujo (ej. Process.Start fallando para
+    // powercfg/bcdedit/netsh en una maquina rara). Cancelacion del usuario
+    // se sigue propagando normalmente.
+    private static void Safe(Action step, string label)
+    {
+        try { step(); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { Log($"Fallo: {label} ({ex.Message})", "err"); }
+    }
+
+    private static double SafeD(Func<double> step, string label)
+    {
+        try { return step(); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { Log($"Fallo: {label} ({ex.Message})", "err"); return 0; }
     }
 
     // ── Punto de restauracion ─────────────────────────────────────────────────
@@ -429,40 +451,50 @@ public sealed class OptimizationService
         Prog(70, "Red...");
         Log("RED", "head");
 
-        if (G(sel, "DNS") || G(sel, "DisableIPv6")) App.Backup.SaveNetBackup();
-        if (G(sel, "TCP"))                          App.Backup.SaveNetshBackup();
+        if (G(sel, "DNS") || G(sel, "DisableIPv6"))
+            try { App.Backup.SaveNetBackup(); } catch (Exception ex) { Log($"Backup de red fallo: {ex.Message}", "skip"); }
+        if (G(sel, "TCP"))
+            try { App.Backup.SaveNetshBackup(); } catch (Exception ex) { Log($"Backup de netsh fallo: {ex.Message}", "skip"); }
 
         if (G(sel, "Nagle"))
         {
-            int nagleCount = 0;
-            const string ifRoot = @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces";
-            using var root = Registry.LocalMachine.OpenSubKey(ifRoot);
-            if (root != null)
+            try
             {
-                foreach (string sub in root.GetSubKeyNames())
+                int nagleCount = 0;
+                const string ifRoot = @"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces";
+                using var root = Registry.LocalMachine.OpenSubKey(ifRoot);
+                if (root != null)
                 {
-                    using var sk = root.OpenSubKey(sub, writable: false);
-                    string? ip = sk?.GetValue("DhcpIPAddress") as string;
-                    if (!string.IsNullOrEmpty(ip) && ip != "0.0.0.0")
+                    foreach (string sub in root.GetSubKeyNames())
                     {
-                        string psPath = $@"HKLM:\{ifRoot}\{sub}";
-                        SetReg(psPath, "TcpAckFrequency", RegistryValueKind.DWord, 1);
-                        SetReg(psPath, "TCPNoDelay",      RegistryValueKind.DWord, 1);
-                        nagleCount++;
+                        using var sk = root.OpenSubKey(sub, writable: false);
+                        string? ip = sk?.GetValue("DhcpIPAddress") as string;
+                        if (!string.IsNullOrEmpty(ip) && ip != "0.0.0.0")
+                        {
+                            string psPath = $@"HKLM:\{ifRoot}\{sub}";
+                            SetReg(psPath, "TcpAckFrequency", RegistryValueKind.DWord, 1);
+                            SetReg(psPath, "TCPNoDelay",      RegistryValueKind.DWord, 1);
+                            nagleCount++;
+                        }
                     }
                 }
+                Log($"Nagle OFF en {nagleCount} adaptador(es)", "ok");
             }
-            Log($"Nagle OFF en {nagleCount} adaptador(es)", "ok");
+            catch (Exception ex) { Log($"Fallo: Nagle ({ex.Message})", "err"); }
             _applied++;
         }
 
         if (G(sel, "TCP"))
         {
-            RunProcess("netsh", "int tcp set global autotuninglevel=normal");
-            RunProcess("netsh", "int tcp set global chimney=disabled");
-            RunProcess("netsh", "int tcp set global rss=enabled");
-            RunProcess("netsh", "int tcp set global fastopen=enabled");
-            Log("TCP/IP optimizado", "ok");
+            try
+            {
+                RunProcess("netsh", "int tcp set global autotuninglevel=normal");
+                RunProcess("netsh", "int tcp set global chimney=disabled");
+                RunProcess("netsh", "int tcp set global rss=enabled");
+                RunProcess("netsh", "int tcp set global fastopen=enabled");
+                Log("TCP/IP optimizado", "ok");
+            }
+            catch (Exception ex) { Log($"Fallo: TCP/IP ({ex.Message})", "err"); }
             _applied++;
         }
 
@@ -495,8 +527,12 @@ public sealed class OptimizationService
 
         if (G(sel, "DNSFlush"))
         {
-            RunProcess("ipconfig", "/flushdns");
-            Log("Cache DNS limpiada", "ok");
+            try
+            {
+                RunProcess("ipconfig", "/flushdns");
+                Log("Cache DNS limpiada", "ok");
+            }
+            catch (Exception ex) { Log($"Fallo: Flush DNS ({ex.Message})", "err"); }
             _applied++;
         }
 
@@ -561,7 +597,8 @@ public sealed class OptimizationService
     {
         Prog(30, "Plan de energia...");
         Log("PLAN DE ENERGIA", "head");
-        App.Backup.SavePowerPlanBackup();
+        try { App.Backup.SavePowerPlanBackup(); }
+        catch (Exception ex) { Log($"Backup de plan de energia fallo: {ex.Message}", "skip"); }
 
         // GUID "semilla" que powercfg reconoce como plantilla oculta de Ultimate Performance.
         // OJO: -duplicatescheme NO conserva este GUID en el plan resultante -- asigna uno
@@ -571,38 +608,44 @@ public sealed class OptimizationService
         // recien creado. El fix busca el plan YA CREADO por nombre (bilingue) en vez de por GUID.
         const string ultimateSeedGuid = "e9a42b02-d5df-448d-aa00-03f14749eb61";
 
-        if (!isLaptop)
+        try
         {
-            string list = RunProcessCapture("powercfg", "/list");
-            string? guid = FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
-
-            if (guid == null)
+            if (!isLaptop)
             {
-                RunProcess("powercfg", $"-duplicatescheme {ultimateSeedGuid}");
-                list = RunProcessCapture("powercfg", "/list");
-                guid = FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
-            }
+                string list = RunProcessCapture("powercfg", "/list");
+                string? guid = FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
 
-            if (guid != null)
-            {
-                RunProcess("powercfg", $"/setactive {guid}");
-                Log("Ultimate Performance activado", "ok");
+                if (guid == null)
+                {
+                    RunProcess("powercfg", $"-duplicatescheme {ultimateSeedGuid}");
+                    list = RunProcessCapture("powercfg", "/list");
+                    guid = FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
+                }
+
+                if (guid != null)
+                {
+                    RunProcess("powercfg", $"/setactive {guid}");
+                    Log("Ultimate Performance activado", "ok");
+                }
+                else
+                {
+                    RunProcess("powercfg", "/setactive SCHEME_MIN");
+                    Log("Alto Rendimiento activado", "ok");
+                }
+                RunProcess("powercfg", "/hibernate off");
+                Log("Hibernate desactivado", "ok");
             }
             else
             {
                 RunProcess("powercfg", "/setactive SCHEME_MIN");
-                Log("Alto Rendimiento activado", "ok");
+                Log("Alto Rendimiento activado (laptop)", "ok");
             }
-            RunProcess("powercfg", "/hibernate off");
-            Log("Hibernate desactivado", "ok");
         }
-        else
-        {
-            RunProcess("powercfg", "/setactive SCHEME_MIN");
-            Log("Alto Rendimiento activado (laptop)", "ok");
-        }
+        catch (Exception ex) { Log($"Fallo activando el plan de energia: {ex.Message}", "err"); }
 
-        RunProcess("powercfg", "/change standby-timeout-ac 0");
+        try { RunProcess("powercfg", "/change standby-timeout-ac 0"); }
+        catch (Exception ex) { Log($"Fallo: standby-timeout ({ex.Message})", "err"); }
+
         _applied++;
     }
 
@@ -630,10 +673,14 @@ public sealed class OptimizationService
     {
         Prog(36, "HPET...");
         Log("HPET / TIMER", "head");
-        RunProcess("bcdedit", "/deletevalue useplatformclock");
-        RunProcess("bcdedit", "/set useplatformtick yes");
-        RunProcess("bcdedit", "/set disabledynamictick yes");
-        Log("HPET deshabilitado - TSC activado", "ok");
+        try
+        {
+            RunProcess("bcdedit", "/deletevalue useplatformclock");
+            RunProcess("bcdedit", "/set useplatformtick yes");
+            RunProcess("bcdedit", "/set disabledynamictick yes");
+            Log("HPET deshabilitado - TSC activado", "ok");
+        }
+        catch (Exception ex) { Log($"Fallo: HPET ({ex.Message})", "err"); }
         _applied++;
     }
 
@@ -645,8 +692,12 @@ public sealed class OptimizationService
         Log("FAST STARTUP", "head");
         SetReg(@"HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power",
             "HiberbootEnabled", RegistryValueKind.DWord, 0);
-        RunProcess("powercfg", "/hibernate off");
-        Log("Fast Startup deshabilitado (HiberbootEnabled=0 + hibernate off)", "ok");
+        try
+        {
+            RunProcess("powercfg", "/hibernate off");
+            Log("Fast Startup deshabilitado (HiberbootEnabled=0 + hibernate off)", "ok");
+        }
+        catch (Exception ex) { Log($"Fallo: hibernate off ({ex.Message})", "err"); }
         _applied++;
     }
 
@@ -855,8 +906,8 @@ public sealed class OptimizationService
             }
             catch { }
             // StartupType via registro: 4 = Disabled (SetService no disponible en .NET)
-            using var key = Registry.LocalMachine.OpenSubKey(
-                $@"SYSTEM\CurrentControlSet\Services\{name}", writable: true);
+            using var key = RegistryPrivilegeHelper.OpenWritable(
+                RegistryHive.LocalMachine, $@"SYSTEM\CurrentControlSet\Services\{name}");
             key?.SetValue("Start", 4, RegistryValueKind.DWord);
             Log(label, "ok");
         }
@@ -951,16 +1002,16 @@ public sealed class OptimizationService
     private static RegistryKey? OpenOrCreateKey(string psPath)
     {
         string p = psPath.TrimEnd('\\');
-        RegistryKey root;
+        RegistryHive hive;
         string sub;
         if (p.StartsWith("HKLM:", StringComparison.OrdinalIgnoreCase))
-        { root = Registry.LocalMachine; sub = p["HKLM:".Length..].TrimStart('\\'); }
+        { hive = RegistryHive.LocalMachine; sub = p["HKLM:".Length..].TrimStart('\\'); }
         else if (p.StartsWith("HKCU:", StringComparison.OrdinalIgnoreCase))
-        { root = Registry.CurrentUser; sub = p["HKCU:".Length..].TrimStart('\\'); }
+        { hive = RegistryHive.CurrentUser; sub = p["HKCU:".Length..].TrimStart('\\'); }
         else
             throw new ArgumentException($"Hive desconocido: {psPath}");
 
-        return root.CreateSubKey(sub, writable: true);
+        return RegistryPrivilegeHelper.OpenWritable(hive, sub);
     }
 
     private static void RunProcess(string exe, string args)

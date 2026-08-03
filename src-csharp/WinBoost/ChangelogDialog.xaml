@@ -95,8 +95,6 @@
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
         <Button x:Name="btnUpdateLater" Content="Ahora no" Margin="0,0,8,0"
                 Style="{StaticResource ClBtnSec}" Click="OnLater"/>
-        <Button x:Name="btnUpdateGitHub" Content="Ver en GitHub" Margin="0,0,8,0"
-                Style="{StaticResource ClBtnSec}" Click="OnGitHub"/>
         <Button x:Name="btnUpdateDownload" Content="Descargar e instalar"
                 Style="{StaticResource ClBtnMain}" Click="OnDownload"/>
       </StackPanel>

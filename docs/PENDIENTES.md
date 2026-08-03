@@ -64,6 +64,8 @@ comportamiento del PS1 original.
       (distribucion C# YA lista: publish self-contained single-file + instalador Inno Setup en
       `src-csharp/installer/WinBoost.iss`, script `src-csharp/Publish-CSharp.ps1` — ver CHANGELOG.md.
       Falta: jubilar el `.ps1`, actualizar README)
+      Supeditado a: code signing (bloqueante de distribucion, ver mas abajo) y la pasada de
+      regresion sobre el .exe publicado (ver Pre-lanzamiento).
 
 ---
 
@@ -74,8 +76,22 @@ comportamiento del PS1 original.
       La migracion a C# elimina el falso positivo de Defender (Wacatac), pero SmartScreen
       sigue necesitando firma para reputacion. Integrar en Build.ps1 cuando se obtenga.
 
+### Resuelto
+- [x] Bug del single-file publicado: `FileNotFoundException` de `System.Text.RegularExpressions`
+      al primer Regex ejecutado (`BackupService.SaveRegBackup`), tumbaba todas las escrituras de
+      registro y el backup del plan de energia en el .exe publicado (no en `dotnet build`
+      Debug). Causa raiz: cache de extraccion parcial de `IncludeAllContentForSelfExtract`
+      (confirmado con evidencia real, no trimming). Fix: se saco ese flag del pubxml
+      (`win-x64-selfcontained.pubxml`) y se reemplazo el Regex de `SaveRegBackup` por
+      `SanitizeFileName` sin dependencia de `System.Text.RegularExpressions`. Detalle completo
+      en CHANGELOG.md.
+
 ### Pre-lanzamiento
-- [ ] Testing externo en Win10 y Win11 limpios (pasar a 2-3 personas, traer bugs al chat)
+- [ ] Testing externo en Win10 y Win11 limpios, SOBRE EL .EXE PUBLICADO (self-contained
+      single-file) de Publish-CSharp.ps1, no sobre el Debug — pasada de regresion completa:
+      optimizacion al 100%, backup/restore revierte valores reales, bloatware, licencias
+      Free/Pro/Tech, auto-updater, escaneo de driver store (usan Regex; confirmar que no fallan
+      en el publicado). Pasar a 2-3 personas, traer bugs al chat.
 - [ ] Landing page (before/after de metricas reales del reporte HTML, tweaks documentados,
       planes Free/Pro/Tecnico, boton de descarga al release, seccion "que cambia exactamente")
 - [ ] Primer feedback real (3-5 usuarios; define la siguiente version)

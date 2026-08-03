@@ -36,6 +36,14 @@ en ambos.
 - Brushes y colores desde recursos XAML tipados. (Reemplaza New-Brush.)
 - P/Invoke nativo en una clase NativeMethods dedicada.
 - Registrar cada modulo migrado en CHANGELOG.md.
+- Validacion funcional de un release candidate: SIEMPRE sobre el .exe generado por
+  `src-csharp/Publish-CSharp.ps1` (self-contained single-file), NUNCA solo sobre
+  `dotnet build` ni `dotnet run`. `dotnet build` sirve para validar que compila
+  (sintaxis) durante el desarrollo; NO sustituye la validacion funcional sobre el
+  publicado. Motivo: el single-file/self-contained cambia la carga de assemblies,
+  la resolucion de rutas y la extraccion a disco respecto del Debug — hay bugs que
+  solo existen en ese modo (ej. el FileNotFoundException de
+  System.Text.RegularExpressions por cache de extraccion parcial, ver CHANGELOG.md).
 
 ## Reglas PowerShell legacy (.ps1) — NUNCA
 - Sin operadores PS7 (`?.` `??` etc.)

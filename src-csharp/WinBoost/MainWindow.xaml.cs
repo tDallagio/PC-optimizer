@@ -2282,9 +2282,6 @@ public partial class MainWindow : Window
 
         switch (dlg.Result)
         {
-            case ChangelogResult.GitHub:
-                OpenUrl(meta.ReleaseUrl);
-                break;
             case ChangelogResult.Download:
                 _ = DownloadAndApplyAsync(meta);
                 break;

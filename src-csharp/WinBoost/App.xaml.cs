@@ -5,7 +5,7 @@ namespace WinBoost;
 
 public partial class App : Application
 {
-    internal const  string          Version  = "4.1";
+    internal const  string          Version  = "4.2";
     internal static SettingsService Settings { get; } = new();
     internal static IAppLogger        Logger   { get; set; } = Services.NullLogger.Instance;
     internal static ProgressService Progress { get; set; } = null!;

@@ -47,7 +47,7 @@ internal sealed class TuningService
     {
         EnsureBackupSession();
         App.Backup.SaveRegBackup(PriorityKeyPs, "Win32PrioritySep_backup");
-        using var k = Registry.LocalMachine.CreateSubKey(PriorityKey, writable: true);
+        using var k = RegistryPrivilegeHelper.OpenWritable(RegistryHive.LocalMachine, PriorityKey);
         k?.SetValue("Win32PrioritySeparation", value, RegistryValueKind.DWord);
     }
 
@@ -66,7 +66,7 @@ internal sealed class TuningService
     {
         EnsureBackupSession();
         App.Backup.SaveRegBackup(GraphicsKeyPs, "HAGS_backup");
-        using var k = Registry.LocalMachine.CreateSubKey(GraphicsKey, writable: true);
+        using var k = RegistryPrivilegeHelper.OpenWritable(RegistryHive.LocalMachine, GraphicsKey);
         k?.SetValue("HwSchMode", enable ? 2 : 1, RegistryValueKind.DWord);
     }
 

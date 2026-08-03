@@ -5,6 +5,322 @@
 
 ---
 
+## Documentacion: PENDIENTES.md actualizado tras el cierre del bug del single-file
+
+A partir de `3_actualizar_pendientes.txt`. Antes de editar se cotejo `docs/PENDIENTES.md`
+completo contra el historial real de `docs/CHANGELOG.md`:
+
+- **Desincronizacion detectada al momento de editar** (reportada, no corregida en silencio): el
+  prompt daba por sentado que el bug del single-file ya estaba "validado sobre el .exe
+  publicado", pero la entrada de CHANGELOG que cerro ese fix (`FIX_regex_singlefile.txt`) decia
+  "Pendiente de validar por el usuario" — esa sesion no pudo automatizar la corrida interactiva
+  con UAC. `PENDIENTES.md` se redacto en base a lo que el CHANGELOG confirmaba como hecho en ese
+  momento (causa raiz + fix aplicado + build/publish limpios), sin afirmar una validacion
+  interactiva que el registro todavia no respaldaba. El usuario confirmo despues, corriendo el
+  `.exe` publicado, que la Optimizacion completa ya no muestra el `FileNotFoundException` — esa
+  entrada de CHANGELOG se actualizo para reflejarlo (ver arriba).
+
+**Cambios en `docs/PENDIENTES.md`:**
+- Seccion "Pendientes de producto / distribucion": nueva subseccion "Resuelto" con el bug del
+  single-file como item cerrado `[x]` (causa raiz + fix, referencia al detalle en CHANGELOG.md).
+  No es un pendiente abierto, es historico.
+- "Pre-lanzamiento": se fusionaron los dos items redundantes ("Validar la suite completa... sobre
+  el publicado" + "Testing externo en Win10/Win11 limpios") en uno solo que deja explicito que el
+  testing externo se hace sobre el .exe publicado, con la pasada de regresion completa
+  (optimizacion, backup/restore, bloatware, licencias, updater, driver store).
+- FASE 6, item 6.3 (corte del `.ps1`): sigue `[ ]` sin marcar (no esta completo). Se agrego una
+  nota de que queda supeditado a code signing (ya listado como bloqueante) y a la pasada de
+  regresion sobre el publicado (Pre-lanzamiento) — sin inventar dependencias nuevas.
+
+No se reordeno ni reformateo el resto del archivo.
+
+---
+
+## Proceso: institucionalizada la regla de validar sobre el binario publicado, no sobre Debug
+
+A partir de `2_regla_validar_publicado.txt`. El bug de `System.Text.RegularExpressions` en el
+single-file (ver entradas anteriores) quedo oculto porque toda la validacion de cierre
+(backup/restore, licencias, updater, optimizacion) se habia hecho sobre `dotnet build -c Debug`,
+un artefacto distinto al que recibe el usuario. Para que no vuelva a pasar:
+
+- **`CLAUDE.md`** (seccion "Convenciones C# (src-csharp)"): nueva regla — la validacion
+  funcional de un release candidate se hace SIEMPRE sobre el .exe de
+  `src-csharp/Publish-CSharp.ps1` (self-contained single-file), nunca solo sobre
+  `dotnet build`/`dotnet run`. `dotnet build` solo valida que compila.
+- **`docs/PENDIENTES.md`** (seccion "Pre-lanzamiento"): nuevo item de checklist para validar la
+  suite completa (optimizacion, backup/restore, bloatware, licencias, auto-updater, incluyendo
+  el escaneo de driver store y de bloatware por su uso de Regex) sobre el .exe publicado.
+
+**Discrepancia con el prompt**: pedia agregar el item en `docs/PENDIENTES_LANZAMIENTO.md`, pero
+ese archivo no existe en el repo — el checklist pre-lanzamiento real vive en la seccion
+"Pre-lanzamiento" de `docs/PENDIENTES.md` (unico archivo de pendientes que referencia
+`CLAUDE.md`). Se uso ese archivo real en vez de crear uno nuevo con el nombre del prompt.
+
+---
+
+## C# limpieza: removida la instrumentacion de diagnostico temporal `[diag]`
+
+A partir de `1_remover_diag.txt`: el bug del .exe publicado (FileNotFoundException de
+`System.Text.RegularExpressions` por cache de extraccion parcial de
+`IncludeAllContentForSelfExtract`) ya quedo diagnosticado, resuelto y republicado, asi que se
+retiro toda la instrumentacion temporal agregada durante ese diagnostico.
+
+**Removido** (todo lo marcado `[diag]`/`// DIAG-REMOVE`):
+- `OptimizationService.cs`: el bloque de identidad/SID/HKCU-probe/HandleCount al inicio de
+  `RunAsync`, el log de HandleCount al final de `RunAsync`, y las marcas pre/post-backup +
+  detalle de excepcion (tipo/HRESULT/stack) en `SetReg` (vuelve a su `catch` original,
+  `catch { Log($"Fallo: {name}", "err"); }`). Los `using System.Runtime.InteropServices;` y
+  `using System.Security.Principal;` (agregados solo para esto) se quitaron por quedar sin uso.
+- `TuningService.cs`: `SetWin32PrioritySep` y `SetHagsState` vuelven a no tener try/catch propio
+  (el caller en `MainWindow.xaml.cs` ya maneja la excepcion para la UI); `ScanObsoleteDriversAsync`
+  vuelve a su forma original sin try/catch. Se quito `using System.Runtime.InteropServices;`
+  (sin uso).
+- `RegistryPrivilegeHelper.cs`: los catches de `OpenWritable` vuelven a estar vacios
+  (`catch (UnauthorizedAccessException) { }` / `catch (SecurityException) { }`, son parte del
+  mecanismo real de fallback, no del diagnostico); se quito el log de entrada de
+  `EnsureWritableAcl` y el detalle extra en su catch (el log original
+  "No se pudo tomar ownership..." se mantiene, no es diag). Se quito
+  `using System.Runtime.InteropServices;` (sin uso).
+- `NativeMethods.cs`: `EnablePrivilege` vuelve a su forma original (ya no captura ni loguea
+  `GetLastWin32Error()`/`ERROR_NOT_ALL_ASSIGNED`).
+
+**NO se toco** (no era instrumentacion): el fix real del bug single-file
+(`IncludeAllContentForSelfExtract=false` en el pubxml, `SanitizeFileName` sin Regex en
+`BackupService.SaveRegBackup`), y el wrapping `Safe`/`SafeD` por paso en
+`OptimizationService.RunAsync` (manejo de errores legitimo, no diagnostico).
+
+Busqueda final de `[diag]`/`DIAG-REMOVE` en `src-csharp/`: 0 ocurrencias.
+
+`dotnet build` y `dotnet build --no-incremental`: 0 errores, 0 advertencias.
+
+---
+
+## C# fix: el .exe publicado (single-file) fallaba TODAS las escrituras de registro y el backup del plan de energia con FileNotFoundException de System.Text.RegularExpressions
+
+Investigado a partir de `FIX_regex_singlefile.txt`. El bug NO se veia en `dotnet build -c Debug`
+(sin single-file); era exclusivo del artefacto publicado
+(`src-csharp/Publish-CSharp.ps1` / profile `win-x64-selfcontained.pubxml`).
+
+**Causa raiz de packaging (Frente 1) — CONFIRMADA con evidencia directa, no solo hipotesis:**
+- `PublishTrimmed`/`TrimMode` estan vacios en todo el arbol (no hay `Directory.Build.props`,
+  `.targets` ni `Directory.Packages.props` en ningun lado, y
+  `dotnet publish ... -getProperty:PublishTrimmed` devuelve vacio) — se descarta el trimming.
+- Se confirmo con evidencia real en esta maquina: `%TEMP%\.net\WinBoost\` tenia una carpeta de
+  extraccion de bundle **incompleta** (77 de ~258 archivos que trae un publish self-contained
+  sin trim), y le faltaba exactamente `System.Text.RegularExpressions.dll`.
+- La causa: `IncludeAllContentForSelfExtract=true` hace que TODOS los assemblies (no solo las
+  DLLs nativas de WPF) se extraigan a disco en el primer arranque, en vez de leerse del bundle
+  en memoria. Esa extraccion se marca como "hecha" con solo verificar que la carpeta exista, sin
+  chequear si esta completa: una corrida interrumpida (crash, UAC, antivirus, disco lleno) deja
+  una carpeta parcial que se reutiliza para siempre en esa build, y el primer assembly que falta
+  revienta con `FileNotFoundException` la primera vez que se necesita — que resulto ser
+  `System.Text.RegularExpressions`, usado por primera vez en el flujo real dentro de
+  `BackupService.SaveRegBackup` (llamado por `OptimizationService.SetReg` antes de cada
+  escritura).
+- Se descarto la hipotesis alternativa de un bug generico de single-file+compresion: un repro
+  minimo (consola con WPF+WinForms+`System.Management`+`System.ServiceProcess.ServiceController`,
+  mismos flags de publish, sin trim) publicado desde cero **no reprodujo el fallo** — el Regex
+  cargo bien. Esto confirma que el disparador es una cache de extraccion corrupta/incompleta, no
+  una incompatibilidad fundamental de la configuracion.
+- **Discrepancia con el prompt**: decia "3 usos de Regex en el proyecto" pero
+  `BackupService.cs` por si solo tiene 4 (`SaveRegBackup`, `SavePowerPlanBackup` — que extrae el
+  GUID del plan activo, exactamente el "backup del plan de energia" que menciona el reporte,
+  un matcher de label de HPET, y el helper generico `Match`), ademas de los 2 mencionados en
+  `OptimizationService`/`TuningService`. El conteo real es al menos 7, no 3.
+
+**Fix de packaging aplicado**: `IncludeAllContentForSelfExtract` -> `false` en
+`Properties/PublishProfiles/win-x64-selfcontained.pubxml` (con comentario explicando el porque).
+Los assemblies managed ahora se leen del bundle en memoria (sin extraccion a disco, sin cache
+parcial posible). `IncludeNativeLibrariesForSelfExtract` queda igual (`true`): las DLLs nativas
+de WPF (wpfgfx_cor3.dll, etc.) siguen extrayendose a disco, sin cambios ahi.
+
+**Frente 2 — Endurecer `SaveRegBackup` (aplicado, independiente del Frente 1):**
+`BackupService.SaveRegBackup` ya no usa `Regex.Replace` para sanitizar el nombre de archivo del
+backup; se reemplazo por `SanitizeFileName` (recorrido de chars + `StringBuilder`), con el mismo
+set de chars permitido (rango ASCII letra/digito/`_`, NO `char.IsLetterOrDigit()` porque ese es
+Unicode-aware y hubiera cambiado el comportamiento con acentos/ñ). El
+`using System.Text.RegularExpressions;` de `BackupService.cs` se mantiene: `SavePowerPlanBackup`,
+el matcher de HPET y el helper `Match` lo siguen usando (fuera de alcance de esta pasada, per
+`FIX_regex_singlefile.txt`; con el fix del Frente 1 esos otros usos ya no deberian romperse tampoco).
+
+**Verificacion:**
+- `dotnet build`: 0 errores, 0 advertencias.
+- Republicado con `src-csharp/Publish-CSharp.ps1 -SkipInstaller` (v4.2, 68.6 MB, single-file
+  real sin dependencias sueltas). Se borro la carpeta de cache corrupta previa en
+  `%TEMP%\.net\WinBoost\` antes de republicar.
+- **Validado por el usuario sobre el .exe publicado**: corrida la Optimizacion completa en el
+  binario publicado, ya no aparece el `FileNotFoundException` y las escrituras de registro +
+  el plan de energia dan OK. Bug cerrado.
+
+---
+
+## C# diagnostico: instrumentacion TEMPORAL para el "Fallo:" masivo en registro (ahora reproduce tambien en dev, no solo en Windows limpio)
+
+Investigado a partir de `DIAG_registro_limpio_1.txt`. Reporte: el fix anterior (ver entrada de
+abajo) ahora reproduce tambien en la maquina de desarrollo, y en la lista de "Fallo:" aparecen
+tanto claves HKLM como HKCU (`MouseSpeed`, `GameDVR_Enabled`, `VisualFXSetting`, etc.), lo que
+descartaria un problema puro de ACL/permisos. Esta pasada es SOLO diagnostico, sin fix
+funcional, marcada con el tag `[diag]` y comentarios `// DIAG-REMOVE` para poder retirarla
+despues.
+
+**Hallazgos del diagnostico (solo lectura, sin cambios de logica):**
+- **Git**: los cambios del fix anterior (`RegistryPrivilegeHelper` + wrapping `Safe`/`SafeD` en
+  `OptimizationService.cs`/`TuningService.cs`) siguen **sin commitear** en el working tree
+  (`git status` los muestra como `M`/`??`). Es decir, el "ahora reproduce en dev" coincide
+  exactamente con la ventana de tiempo en que ese codigo nuevo esta presente sin commit — el
+  candidato mas probable a regresion es el propio `RegistryPrivilegeHelper.OpenWritable`, que
+  ahora esta en el camino de TODAS las escrituras de `OptimizationService.OpenOrCreateKey`
+  (HKLM **y** HKCU, ya que `OpenOrCreateKey` enruta ambos hives por el mismo helper), no solo
+  las HKLM protegidas. Esto es consistente con el sintoma de que ahora fallan tambien claves
+  HKCU.
+- **ACL owner en dev**: `(Get-Acl "HKLM:\...\Tasks\Games").Owner` devuelve `NT AUTHORITY\SYSTEM`
+  en la maquina de desarrollo — el codigo de take-ownership NO mutó esa clave especifica (se
+  descarta, para esa clave puntual, la hipotesis de "ownership dañado de una corrida previa").
+- **`BackupService.SaveRegBackup`**: tiene su propio `try/catch` interno (bare `catch {}`), por
+  lo que NO puede ser la causa de un throw no capturado dentro de `SetReg` — se descarta la
+  hipotesis del prompt de que el primer `App.Backup.SaveRegBackup(psPath, name)` es lo que
+  tira.
+- **`NativeMethods.EnablePrivilege`**: ignoraba el resultado de `AdjustTokenPrivileges` y
+  siempre devolvia `true`, sin revisar `ERROR_NOT_ALL_ASSIGNED`. Si el privilegio no se llega a
+  habilitar realmente (por ejemplo, no esta en el token en esa maquina), el codigo de
+  ownership seguia adelante creyendo que si, y fallaba mas abajo con un `UnauthorizedAccessException` distinto. Instrumentado para ver el `Marshal.GetLastWin32Error()` real.
+
+**Call graph confirmado (Paso 1 del prompt), con lineas:**
+- `OptimizationService.SetReg` (linea ~879) llama a `OpenOrCreateKey` (linea ~1000), que ahora
+  devuelve `RegistryPrivilegeHelper.OpenWritable(hive, sub)` (linea ~1014) para HKLM **y**
+  HKCU.
+- `OptimizationService.DisableSvc` (linea ~891) usa `RegistryPrivilegeHelper.OpenWritable`
+  directo (linea ~909).
+- `TuningService.SetWin32PrioritySep` (linea 46) y `SetHagsState` (linea 65) usan
+  `RegistryPrivilegeHelper.OpenWritable` (antes usaban `Registry.LocalMachine.CreateSubKey`
+  directo).
+- Unicos call sites de `RegistryPrivilegeHelper.OpenWritable`/`EnsureWritableAcl` en todo
+  `src-csharp/WinBoost/`: los 4 de arriba. No hay ningun otro.
+
+**Instrumentacion `[diag]` agregada (temporal, tag `// DIAG-REMOVE`):**
+- `Services/OptimizationService.cs`
+  - `SetReg`: marcas `[diag]` antes/despues de `SaveRegBackup` (para aislar si el throw cae ahi
+    o despues), y en el `catch` ahora loguea tipo de excepcion completo (`GetType().FullName`),
+    HRESULT (`Marshal.GetHRForException`) y `ex.ToString()` con stack trace.
+  - `RunAsync`: al arrancar, loguea `WindowsIdentity.GetCurrent().Name`, el SID, un probe de
+    `Registry.CurrentUser.OpenSubKey("Environment")` (para confirmar que HKCU es accesible bajo
+    la identidad real del proceso) y el `HandleCount` del proceso; al terminar, vuelve a loguear
+    `HandleCount` para comparar contra el del arranque.
+- `Services/TuningService.cs`: `SetWin32PrioritySep`, `SetHagsState` y
+  `ScanObsoleteDriversAsync` ahora loguean `HandleCount` al entrar y, en su `catch`, tipo +
+  HRESULT + stack completo de la excepcion real, y vuelven a relanzar (`throw;`) — no cambia el
+  comportamiento observable, solo agrega detalle al log.
+- `Services/RegistryPrivilegeHelper.cs`: `OpenWritable` loguea si el primer intento de
+  `CreateSubKey` fallo (y con que tipo de excepcion) antes de caer al fallback de
+  take-ownership; `EnsureWritableAcl` loguea al entrar y, si el take-ownership falla, agrega
+  tipo + HRESULT + stack al mensaje de error que ya existia.
+- `NativeMethods.cs`: `EnablePrivilege` ahora loguea, inmediatamente despues de
+  `AdjustTokenPrivileges` (antes de que el `CloseHandle` del `finally` pise
+  `GetLastWin32Error`), el privilegio pedido, si `AdjustTokenPrivileges` devolvio true/false y
+  el codigo de error real (marca si es `1300`/`ERROR_NOT_ALL_ASSIGNED`).
+
+**Como leer el log (usuario):**
+- Modo interactivo (UI normal): correr la optimizacion/tuning/scan de drivers, ir a la pestaña
+  Consola y usar el boton "Exportar log" -> vuelca a
+  `Documentos\WinBoost_Log_<fecha>.txt` (UTF-8). Buscar `[diag]` en ese archivo.
+- Modo silencioso (`--silent`/preset): el log ya se escribe solo en
+  `%USERPROFILE%\.OptimizarPC\logs\silent_<timestamp>.log`. Buscar `[diag]` ahi.
+- Filtrar: `Select-String "\[diag\]" archivo.txt` (PowerShell) o cualquier grep/buscar de texto.
+
+`dotnet build` y `dotnet build --no-incremental`: 0 errores, 0 advertencias.
+
+**Sin fix funcional en esta pasada** (pedido explicito del prompt). Con el log `[diag]` real de
+una corrida en la maquina de desarrollo (donde ahora reproduce) se puede confirmar si la causa
+es la regresion del `RegistryPrivilegeHelper` sin commitear, un tema de identidad/token, o algo
+distinto, y recien ahi decidir el fix.
+
+---
+
+## C# fix: la optimizacion se frenaba a mitad de camino (~30%, "plan de energia") en Windows limpio y fallaba varios tweaks de registro HKLM protegidos por ACL en frio.
+
+Investigado a partir de `prompt_fix_privilegio_optimizacion.txt`. La hipotesis inicial (que
+`TuningService` habilitaba un privilegio de token / take-ownership antes de escribir
+`PriorityControl`/`GraphicsDrivers`, y que por eso "tocar Tuning primero" arreglaba la
+optimizacion) **no se confirmo leyendo el codigo**: `TuningService` no llamaba a
+`NativeMethods.EnablePrivilege` en ningun lado; sus `Set*` escribian el registro igual de
+"en frio" que `OptimizationService`. La causa real eran dos bugs distintos de robustez:
+
+1. **El freno al ~30%**: `RunAsync` (orquestador de la optimizacion) invocaba
+   `PowerPlanTweaks`, `HpetTweaks`, `NetworkTweaks`, `ServiceTweaks`, `FastStartupTweaks` y
+   `VisualTweaks` con `Task.Run` SIN try/catch alrededor. Estos metodos llaman a
+   `Process.Start` (powercfg/bcdedit/netsh/ipconfig) sin envolver cada llamada; una sola
+   excepcion no capturada (ej. `Process.Start` fallando en una maquina rara) se propagaba
+   sin frenos hasta `WorkRunner.RunAsync`, que aborta TODO el flujo con un solo
+   `catch (Exception)` generico. Como "Plan de energia" es el primer paso con llamadas a
+   `Process.Start` sin blindar (30-36% del progreso), un fallo ahi explica el freno
+   reportado al 30%.
+2. **Accesos denegados en registro HKLM protegido en frio**: algunas claves (ej. la de GPU
+   Priority en `SystemProfile\Tasks\Games`) pueden traer de fabrica una ACL que ni
+   Administradores puede escribir sin tomar ownership primero, en instalaciones limpias de
+   Windows.
+
+**Archivos creados**
+- `src-csharp/WinBoost/Services/RegistryPrivilegeHelper.cs` — punto unico compartido:
+  `OpenWritable(hive, subKey)` intenta abrir/crear la clave normal y, solo si falla por ACL
+  (`UnauthorizedAccessException`/`SecurityException`), habilita
+  `SeTakeOwnershipPrivilege`/`SeRestorePrivilege` (via `NativeMethods.EnablePrivilege`, que
+  ya existia), toma ownership de la clave y agrega `FullControl` para
+  `BUILTIN\Administrators`, y reintenta. Cachea por proceso las claves ya arregladas.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/Services/OptimizationService.cs`
+  - `OpenOrCreateKey` (usado por `SetReg`, que ya escribe con try/catch por valor) y
+    `DisableSvc` ahora pasan por `RegistryPrivilegeHelper.OpenWritable` en vez de
+    `RegistryKey.CreateSubKey`/`OpenSubKey` directo.
+  - `RunAsync`: cada paso de alto nivel ahora pasa por `Safe`/`SafeD` (helpers nuevos) que
+    capturan cualquier excepcion (excepto `OperationCanceledException`, que sigue
+    propagandose para que Cancelar funcione), loguean `"Fallo: <paso> (mensaje)"` y dejan
+    que el resto de la optimizacion continue.
+  - `PowerPlanTweaks`, `HpetTweaks`, `FastStartupTweaks` y los bloques de `NetworkTweaks`
+    (Nagle/TCP/DNSFlush) ahora envuelven sus llamadas a `Process.Start` en try/catch
+    individuales, para que si un `powercfg`/`bcdedit`/`netsh` puntual falla, el resto de
+    comandos del mismo paso (ej. "hibernate off" despues de que fallo activar el plan) se
+    sigan aplicando en vez de abortar el metodo entero.
+- `src-csharp/WinBoost/Services/TuningService.cs` — `SetWin32PrioritySep` y `SetHagsState`
+  usan `RegistryPrivilegeHelper.OpenWritable` en vez de `Registry.LocalMachine.CreateSubKey`
+  directo (mismo mecanismo compartido que `OptimizationService`, por si esas claves
+  llegan a estar ACL-protegidas en alguna maquina). No se agrego try/catch ahi: el caller en
+  `MainWindow.xaml.cs` ya envuelve ambas llamadas y usa la excepcion para mostrar el error
+  en la UI (`lblPrioStatus`/`lblHagsResult`); atraparla adentro hubiera roto ese feedback.
+
+`dotnet build`: 0 errores, 0 advertencias.
+
+**Pendiente de validar**: no hay una maquina Windows limpia disponible en esta sesion para
+reproducir el freno original; el fix se valido leyendo el flujo completo (`RunAsync` ->
+`WorkRunner.RunAsync` -> UI) y confirmando que ya no hay una excepcion no capturada capaz de
+abortar el proceso a mitad de camino, mas el mecanismo de ownership para el caso de ACL
+realmente restrictiva. Recomendado probar en la maquina limpia real antes del proximo release.
+
+---
+
+## C# updater: removido el boton "Ver en GitHub" del dialogo de actualizacion (no aporta valor al usuario final; el flujo es descargar e instalar directo).
+
+**Archivos modificados**
+- `src-csharp/WinBoost/ChangelogDialog.xaml` — quitado `btnUpdateGitHub`; quedan solo "Ahora no"
+  y "Descargar e instalar" en el `StackPanel` de botones (sin hueco, misma alineacion a la derecha).
+- `src-csharp/WinBoost/ChangelogDialog.xaml.cs` — quitado el valor `GitHub` de `ChangelogResult`
+  y el handler `OnGitHub`.
+- `src-csharp/WinBoost/MainWindow.xaml.cs` (`OnUpdateBadgeClick`) — quitado el `case
+  ChangelogResult.GitHub` del switch. El helper `OpenUrl` NO se toco: sigue en uso en los
+  fallbacks existentes (descarga no disponible, hash faltante, etc.) que abren
+  `meta.ReleaseUrl` fuera del dialogo.
+
+**Detalle**
+
+Decision de producto: el boton mandaba al usuario final (gamers, no devs) a una pagina tecnica
+en ingles de GitHub justo al momento de actualizar, ademas de apuntar a `/releases` (que ignora
+pre-releases y puede llevar al release equivocado). Se quita el boton sin tocar la logica del
+updater (check/download/verify/apply).
+
+`dotnet build`: 0 errores, 0 advertencias. XAML validado con `ElementTree`.
+
+---
+
 ## C# distribucion: build self-contained single-file + instalador Inno Setup; compatible con los flags silenciosos del auto-updater.
 
 Arma la distribucion de la app C# (`src-csharp/WinBoost/`) pedida en `prompt_distribucion_csharp.txt`:

@@ -61,7 +61,7 @@ public sealed class BackupService
                 .Replace(@"HKCC:\", @"HKCC\");
 
             int    idx      = _actions.Count(a => a.Type == "reg");
-            string safeName = Regex.Replace(label, @"[^a-zA-Z0-9_]", "_");
+            string safeName = SanitizeFileName(label);
             string file     = $"reg_{idx:D3}_{safeName}.reg";
             string outFile  = Path.Combine(_path, file);
 
@@ -810,6 +810,20 @@ public sealed class BackupService
     {
         var m = Regex.Match(input, pattern, RegexOptions.IgnoreCase);
         return m.Success ? m.Groups[1].Value.ToLowerInvariant() : fallback;
+    }
+
+    // Reemplaza el Regex.Replace(label, "[^a-zA-Z0-9_]", "_") que usaba SaveRegBackup
+    // (FIX_regex_singlefile.txt): mismo set de chars permitido (ASCII letra/digito/'_'),
+    // sin depender de System.Text.RegularExpressions. Ojo: char.IsLetterOrDigit() es
+    // Unicode-aware (deja pasar acentos/ñ) y NO es equivalente al regex original --
+    // por eso la comparacion es por rango ASCII explicito, no por esa API.
+    private static string SanitizeFileName(string s)
+    {
+        var sb = new StringBuilder(s.Length);
+        foreach (char c in s)
+            sb.Append((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+                ? c : '_');
+        return sb.ToString();
     }
 
     private static string NowTs() => DateTime.Now.ToString("HH:mm:ss");
