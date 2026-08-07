@@ -2,6 +2,6 @@
   "version": "4.3",
   "releaseUrl": "https://github.com/tDallagio/PC-optimizer/releases/latest",
   "downloadUrl": "https://github.com/tDallagio/PC-optimizer/releases/download/v4.3/WinBoost_Setup_4.3.exe",
-  "sha256": "9ED44D231A104819498079870353B98D049001BEBD94126220026FEAF5C6289A",
+  "sha256": "9ED44D231A104819498079870353B98D049001BEBD94126220026FEAF5C6289AA",
   "changelog": "Version de prueba 4.3 - testeo del auto-updater. Mejoras y correcciones."
 }
