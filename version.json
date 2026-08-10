@@ -1,7 +1,7 @@
 {
-  "version": "4.3",
+  "version": "4.2",
   "releaseUrl": "https://github.com/tDallagio/PC-optimizer/releases/latest",
-  "downloadUrl": "https://github.com/tDallagio/PC-optimizer/releases/download/v4.3/WinBoost_Setup_4.3.exe",
-  "sha256": "9ED44D231A104819498079870353B98D049001BEBD94126220026FEAF5C6289A",
-  "changelog": "Version de prueba 4.3 - testeo del auto-updater. Mejoras y correcciones."
+  "downloadUrl": "https://github.com/tDallagio/PC-optimizer/releases/download/v4.2/WinBoost_Setup_4.2.exe",
+  "sha256": "73C29E9C75EC87CACE53643C995EEAD8B1DA20A78CD61E37B135D6C1C2B5CC1D",
+  "changelog": "Version 4.2 Migracion completa a C#"
 }
