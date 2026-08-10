@@ -1,6 +1,7 @@
 # Binarios compilados
-dist/
-installer/Output/
+legacy/dist/
+legacy/installer/Output/
+src-csharp/installer/Output/
 
 # Archivos locales de Claude Code
 .claude/

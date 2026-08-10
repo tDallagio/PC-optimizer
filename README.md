@@ -16,11 +16,11 @@ modo CLI.
 
 WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
 
-> **Nota sobre antivirus:** el ejecutable se compila con `ps2exe`, lo que puede
-> generar un falso positivo en Windows Defender / SmartScreen (patron de script
-> empaquetado). No es malware. Se esta trabajando en la firma con un certificado de
-> code signing para eliminarlo. Si Defender lo bloquea, podes restaurarlo desde el
-> historial de proteccion.
+> **Nota sobre antivirus:** el ejecutable es un .exe C#/.NET 8 nativo (self-contained
+> single-file), lo que elimina el falso positivo que daba la version PowerShell anterior
+> (empaquetada con `ps2exe`, detectada como Wacatac). SmartScreen todavia puede mostrar una
+> advertencia de "editor desconocido" hasta que el instalador tenga firma de codigo (en
+> progreso, ver `docs/PENDIENTES.md`). No es malware.
 
 ---
 
@@ -68,11 +68,6 @@ WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
 - Ciclo standalone: temp, recycle, DNS flush, TRIM
 - Log JSON con historial de los ultimos 30 runs
 
-### Game Focus Mode
-- Deteccion automatica de proceso fullscreen cada 5s (39 juegos conocidos)
-- Eleva prioridad, silencia notificaciones, restaura al salir del juego
-- Afinidad de CPU opcional: restringe el proceso a nucleos fisicos (sin SMT)
-
 ### Tuning avanzado
 - Win32PrioritySeparation expuesto solo en esta seccion, con los unicos valores cuyo
   efecto es real y cada trade-off explicado honestamente. WinBoost no ofrece valores
@@ -111,49 +106,50 @@ Genera log en `%USERPROFILE%\.OptimizarPC\logs\` y notifica via toast al termina
 
 ## Requisitos
 
-- Windows 10 / 11
-- PowerShell 5.1
+- Windows 10 / 11 (x64)
 - Permisos de administrador
+
+No requiere tener .NET instalado: el ejecutable es self-contained (incluye el runtime).
 
 ---
 
 ## Desarrollo
 
 ```powershell
-# Ejecutar desde fuente (sin compilar)
-.\EJECUTAR_COMO_ADMIN.bat   # como administrador
+# Compilar (dotnet build valida que compila, no reemplaza la validacion funcional)
+dotnet build src-csharp\WinBoost\WinBoost.csproj
 
-# Compilar a .exe
-.\Build.ps1                 # compilar + firmar con cert autofirmado
-.\Build.ps1 -SkipSign       # solo compilar
+# Publicar el .exe self-contained single-file + instalador (Inno Setup)
+.\src-csharp\Publish-CSharp.ps1
+.\src-csharp\Publish-CSharp.ps1 -SkipInstaller   # solo el .exe
 ```
 
-Requiere el modulo `ps2exe` (se instala automaticamente). El instalador se genera con
-Inno Setup 6 a partir de `installer\WinBoost.iss`.
+La validacion funcional de una release candidate se hace siempre sobre el `.exe` publicado
+por `Publish-CSharp.ps1`, nunca solo sobre `dotnet build`/`dotnet run` (ver `CLAUDE.md`). El
+instalador se genera con Inno Setup 6 a partir de `src-csharp\installer\WinBoost.iss`.
 
 ---
 
 ## Estructura del proyecto
 
 ```
-OptimizarPC_App.ps1      logica principal (10400+ lineas)
-OptimizarPC_UI.xaml      interfaz WPF (2550+ lineas)
-Build.ps1                compilar a exe + firmar
-Create-Icon.ps1          genera WinBoost.ico
-Gen-License.ps1          emision de licencias (uso interno)
-EJECUTAR_COMO_ADMIN.bat  launcher para desarrollo
-version.json             metadata para auto-actualizacion
-installer\WinBoost.iss   script Inno Setup 6
-docs\CHANGELOG.md        historial de implementaciones
-docs\PENDIENTES.md       estado del roadmap
+src-csharp\WinBoost\            proyecto C#/.NET 8 WPF (unica version oficial)
+src-csharp\Publish-CSharp.ps1   publish self-contained single-file + instalador
+src-csharp\installer\WinBoost.iss  script Inno Setup 6
+Create-Icon.ps1                 genera WinBoost.ico
+Gen-License.ps1                 emision de licencias (uso interno, no trackeado)
+version.json                    metadata para auto-actualizacion
+docs\CHANGELOG.md               historial de implementaciones
+docs\PENDIENTES.md              estado del roadmap
+legacy\                         version PowerShell descontinuada (ver legacy\README.md)
 ```
 
 ---
 
 ## Stack tecnico
 
-- PowerShell 5.1 — sin operadores PS7
-- WPF + XAML cargado desde archivo externo
-- `Get-CimInstance` (no WMI legacy)
-- Sin threading — todo en hilo UI con `Flush-UI` entre pasos
-- `ps2exe` para compilar a exe nativo con elevacion UAC (`requireAdmin`)
+- C# / .NET 8, WPF
+- async/await + `Task.Run` para trabajo pesado — la UI no se bloquea
+- `System.Management` (WMI) para info de sistema, P/Invoke nativo (`NativeMethods`) para el resto
+- Publish self-contained single-file (win-x64), elevacion UAC via `app.manifest`
+  (`requireAdministrator`)

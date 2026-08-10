@@ -1,18 +1,20 @@
 # WinBoost — PENDIENTES
 
 > **Instruccion para Claude Code:** Leer este archivo al arrancar cada sesion.
-> El desarrollo v4.x en PowerShell esta COMPLETO (41/41). El trabajo ACTIVO ahora es
-> la migracion a C#/WPF (carpeta `src-csharp/`). Implementar los items EN ORDEN por su
-> identificador (0.4, 0.5, 1.1, ...). Marcar [x] al completar. Al terminar un item,
-> actualizar tambien CHANGELOG.md. Reglas C# en CLAUDE.md.
+> El desarrollo v4.x en PowerShell esta COMPLETO (41/41) y jubilado a `legacy/` (corte 6.3).
+> La migracion a C#/WPF (carpeta `src-csharp/`) tambien esta COMPLETA: es la unica version
+> oficial y distribuida. El trabajo ACTIVO ahora es la seccion "Pendientes de producto /
+> distribucion" mas abajo (code signing, rediseno del modelo de licencias, pre-lanzamiento).
+> Marcar [x] al completar. Al terminar un item, actualizar tambien CHANGELOG.md. Reglas C# en
+> CLAUDE.md.
 
 ---
 
-## Migracion a C# / WPF — TRABAJO ACTIVO
+## Migracion a C# / WPF — COMPLETA (corte 6.3)
 
-El `.ps1` (10.400 lineas) migra a C#/WPF de forma incremental. El XAML se reusa. El PS1
-sigue siendo la version distribuida hasta paridad. Validar cada modulo contra el
-comportamiento del PS1 original.
+El `.ps1` original (10.400 lineas) migro a C#/WPF de forma incremental y la migracion cerro
+con el corte 6.3: `src-csharp/` es la unica version oficial y distribuida, el `.ps1` fue
+jubilado a `legacy/`. Fases historicas de la migracion (referencia, todas completas):
 
 ### FASE 0 — Andamiaje + infraestructura
 - [x] 0.1 Proyecto C# WPF (.NET 8) en `src-csharp/`
@@ -60,12 +62,17 @@ comportamiento del PS1 original.
 ### FASE 6 — Tuning tab + pulido estetico + corte
 - [x] 6.1 Tuning tab: reconstruir como XAML declarativo (achica el Build-TuningTab de 1.200 lineas)
 - [x] 6.2 Sistema de diseno: tokens de espaciado/tipografia, acento unico, estados hover/pressed/disabled, transiciones
-- [ ] 6.3 Corte: jubilar el `.ps1`, actualizar README e instalador
-      (distribucion C# YA lista: publish self-contained single-file + instalador Inno Setup en
-      `src-csharp/installer/WinBoost.iss`, script `src-csharp/Publish-CSharp.ps1` — ver CHANGELOG.md.
-      Falta: jubilar el `.ps1`, actualizar README)
-      Supeditado a: code signing (bloqueante de distribucion, ver mas abajo) y la pasada de
-      regresion sobre el .exe publicado (ver Pre-lanzamiento).
+- [x] 6.3 Corte: jubilar el `.ps1`, actualizar README e instalador
+      `.ps1` + cadena legacy (`OptimizarPC_App.ps1`, `OptimizarPC_UI.xaml`, `Build.ps1`,
+      `installer/WinBoost.iss`, `EJECUTAR_COMO_ADMIN.bat`, `dist/`) movidos a `legacy/` (con
+      `legacy/README.md` documentando el descontinuo y la clave RSA vieja embebida, ya rotada).
+      C# (`src-csharp/`) queda como unica version oficial y distribuida. README.md principal y
+      CLAUDE.md reescritos para describir la app C#. Detalle completo en CHANGELOG.md.
+      Nota: el item decia estar supeditado tambien a "code signing", que sigue pendiente (ver
+      Bloqueante de distribucion, mas abajo, todavia sin resolver) — el corte del PS1 se ejecuto
+      igual porque es independiente de la firma (retira el binario viejo y la clave RSA
+      comprometida asociada; no afecta ni resuelve la advertencia de SmartScreen del instalador
+      C#, que sigue abierta).
 
 ---
 
@@ -75,6 +82,16 @@ comportamiento del PS1 original.
 - [ ] **Code signing** — certificado OV (~100-200 USD/ano; Sectigo, DigiCert o GlobalSign).
       La migracion a C# elimina el falso positivo de Defender (Wacatac), pero SmartScreen
       sigue necesitando firma para reputacion. Integrar en Build.ps1 cuando se obtenga.
+      - [ ] Verificacion de firma Authenticode en el updater. Tras descargar el instalador y antes de
+            ApplyUpdate, verificar que este firmado con el certificado de WinBoost (p. ej.
+            Get-AuthenticodeSignature en el helper, o WinVerifyTrust), y abortar si la firma no es
+            valida o el firmante no es el esperado. Depende de: code signing (item padre). Motivo:
+            hoy la integridad del update se apoya solo en el SHA256, que sale del mismo version.json
+            que el DownloadUrl y por lo tanto no protege contra un repo comprometido; el instalador
+            se ejecuta en silencio y elevado. Archivo afectado: Services/UpdateService.cs
+            (ApplyUpdate) y el flujo de MainWindow que orquesta Check/Download/Verify/Apply. Resto
+            del ciclo (Check, Download, gate SHA256, Apply+relaunch) validado OK en la regresion
+            sobre el .exe publicado — lo unico pendiente aca es la verificacion de firma.
 
 ### Resuelto
 - [x] Bug del single-file publicado: `FileNotFoundException` de `System.Text.RegularExpressions`
@@ -85,6 +102,38 @@ comportamiento del PS1 original.
       (`win-x64-selfcontained.pubxml`) y se reemplazo el Regex de `SaveRegBackup` por
       `SanitizeFileName` sin dependencia de `System.Text.RegularExpressions`. Detalle completo
       en CHANGELOG.md.
+
+### Modelo de licencias (rediseño pendiente)
+Hallazgos de la regresion de licencias sobre el .exe publicado (parte criptografica validada OK:
+firma RSA-2048, Pro atado a HWID, rechazo de claves invalidas/HWID ajeno, persistencia tras
+reinicio). Dos debilidades de DISEÑO del modelo actual, no se arreglan ahora — el modelo de
+licencias no es el definitivo, se va a redisenar antes del lanzamiento final. Quedan registradas
+para que el rediseño no repita los patrones:
+
+- [ ] Trial sin proteccion de integridad (validacion client-side burlable). El estado del trial
+      vive en settings.json (TrialStartDate / TrialExpired) en texto plano, sin firma ni anclaje.
+      Vectores confirmados en testeo: (a) fecha futura -> cientos de dias de trial; (b) borrar
+      settings.json -> trial nuevo repetible; (c) resetear la fecha a hoy -> trial eterno; (d)
+      atrasar el reloj del sistema -> el trial no avanza. Un trial client-side es intrinsecamente
+      burlable sin servidor. Resolucion objetivo: anclar la integridad del trial al proxy backend
+      (el mismo previsto para la IA) cuando exista; como mitigacion intermedia sin servidor, HMAC
+      del estado + anclaje redundante (registro/archivo) + anti-rollback de reloj. Decision de
+      alcance pendiente para el modelo definitivo.
+- [ ] Clave Tech es una llave maestra global (firma sobre constante, sin variable). La firma RSA
+      de la clave Tech es sobre la constante "WINBOOST-TECH", sin HWID ni identificador de
+      comprador, por lo que Gen-License.ps1 genera SIEMPRE la misma cadena: una sola clave
+      desbloquea la app en cualquier PC, para siempre, sin revocacion posible. Si se filtra o se
+      revende, se pierde el tier entero. Regla de diseno a adoptar en el modelo definitivo: toda
+      clave que valga dinero firma sobre algo UNICO (minimo el HWID, idealmente HWID +
+      comprador/ID de compra); una firma sobre constante solo es aceptable para uso
+      interno/testing. Destino previsto de Tech: degradar a clave de testing interna, O
+      reconstruir como tier de pago unico ("lifetime"/ULTRA) firmando sobre
+      WINBOOST-<TIER>-<HWID>(-<comprador>) en vez de una constante. Decidir en el rediseño.
+
+  Nota (direccion tentativa, no accionable todavia): degradar Tech (ver arriba), posible tier
+  nuevo por encima de Pro (nombre tentativo ULTRA) — requiere pasar el gating de booleanos
+  IS_PRO/IS_TECH a niveles ordenables y un mensaje de firma propio por tier —, y bajar el trial de
+  14 a 3-7 dias (evaluar junto con que otorga el trial, ya que hoy da Pro completo).
 
 ### Pre-lanzamiento
 - [ ] Testing externo en Win10 y Win11 limpios, SOBRE EL .EXE PUBLICADO (self-contained

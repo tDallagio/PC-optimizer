@@ -5,6 +5,129 @@
 
 ---
 
+## Corte 6.3: migracion PS1 -> C# cerrada, C# como unica version oficial, PS1 jubilado a legacy/
+
+A partir de `6_corte_6_3.txt`. Ultimo item de la migracion a C#/WPF (`docs/PENDIENTES.md`,
+FASE 6). WinBoost C#/.NET 8 WPF (`src-csharp/`) pasa a ser la UNICA version oficial y
+distribuida; el `.ps1` legacy (`OptimizarPC_App.ps1` + `OptimizarPC_UI.xaml` + su cadena de
+build) queda descontinuado.
+
+**Diagnostico previo (solo lectura, antes de mover nada):**
+- Sin acople real entre la distribucion C# y el PS1: `src-csharp/Publish-CSharp.ps1` y
+  `src-csharp/installer/WinBoost.iss` resuelven todas sus rutas dentro de `src-csharp/`. La
+  unica referencia cruzada de `OptimizarPC_UI.xaml` en el instalador C# es en `[UninstallDelete]`
+  (borra el archivo huerfano que dejaba el instalador PS1 viejo en `{app}` del usuario) — no es
+  una dependencia de build sobre el archivo del repo.
+- `WinBoost.ico` es un asset COMPARTIDO: `src-csharp/WinBoost/WinBoost.csproj`
+  (`ApplicationIcon`) y `src-csharp/installer/WinBoost.iss` (`SetupIconFile`) lo referencian como
+  `..\..\WinBoost.ico` / `..\..\WinBoost.ico` relativo a la raiz del repo. Se dejo en la raiz,
+  NO se movio a `legacy/`. `Create-Icon.ps1` (genera ese .ico) tampoco depende del PS1, asi que
+  tambien se dejo en la raiz.
+- El XAML del C# (`src-csharp/WinBoost/MainWindow.xaml`, 2645 lineas) ya diverge del XAML legacy
+  (`OptimizarPC_UI.xaml`, 2551 lineas) y no hay ningun `Link`/copia en el `.csproj` — dejaron de
+  compartirse en algun punto anterior de la migracion, antes de este corte.
+- Desincronizaciones encontradas y reportadas (no corregidas por fuera de este corte):
+  - El item 6.3 en PENDIENTES.md decia estar "supeditado a" code signing y a la pasada de
+    regresion sobre el publicado. La regresion ya se valido OK en sesiones previas; code signing
+    SIGUE pendiente (item abierto en "Bloqueante de distribucion"). Se ejecuto el corte igual
+    porque retirar el PS1 (y la clave RSA comprometida que lleva embebida) es independiente de la
+    firma del instalador C# — no la reemplaza ni la resuelve.
+  - El nodo "Pendiente" del CHANGELOG sobre `Gen-License.ps1` decia que seguia trackeado en el
+    indice de git; en el estado actual del repo YA NO esta en `git ls-files` (se destrackeo en un
+    commit anterior, `f1ac5a9`/"fixes pre migration c#"). Sigue existiendo en el HISTORIAL de git
+    (commit `7fa247e`), asi que la evaluacion de limpieza de historial (si el repo es publico)
+    sigue siendo un pendiente manual real; el `git rm --cached` en si ya no aplica.
+  - PENDIENTES.md 4.4 (Game Focus Mode) esta marcado `[x]`, pero una entrada posterior de este
+    mismo CHANGELOG ("C# Game Focus Mode dado de baja...") registra que la feature se removio del
+    C# por decision de producto — confirmado tambien en codigo (`GameFocusService` no existe en
+    `src-csharp/`). No se toco ese checkbox (fuera de alcance de este corte); se saco la seccion
+    "Game Focus Mode" del README.md principal para no anunciar una feature que el C# no tiene.
+  - Hallazgo nuevo de higiene de repo, no bloqueante: `.gitignore` tenia `installer/Output/`
+    (ancla solo a la raiz) sin cubrir `src-csharp/installer/Output/`, que termino con instaladores
+    `.exe` trackeados por accidente en git (visto en `git status`:
+    `src-csharp/installer/Output/WinBoost_Setup_4.2.exe` modificado + `4.1.exe` sin trackear). Se
+    corrigio el patron para adelante (ver mas abajo); destrackear los `.exe` ya versionados
+    (`git rm --cached`) queda como pendiente manual del usuario, igual que la evaluacion de
+    limpieza de historial.
+
+**Ejecutado:**
+- `git mv` de la cadena legacy a `legacy/`: `OptimizarPC_App.ps1`, `OptimizarPC_UI.xaml`,
+  `Build.ps1`, `EJECUTAR_COMO_ADMIN.bat`, `installer/WinBoost.iss` -> `legacy/installer/`.
+  `installer/Output/` (instaladores viejos, ya ignorados por git) y `dist/` (artefactos de
+  `ps2exe`, ya ignorados) se movieron con `mv` a `legacy/installer/Output/` y `legacy/dist/`.
+  `installer/` en la raiz quedo vacio y se elimino.
+- `legacy/README.md` nuevo: marca la version PS1 como descontinuada/sin soporte, y documenta
+  explicitamente el aviso de seguridad de la clave publica RSA vieja embebida (rotada por la
+  filtracion de la privada via `Gen-License.ps1`) — no redistribuir ni reactivar ese codigo. Este
+  aviso es el cierre formal del incidente: mientras el PS1 fuera distribuible, la clave privada
+  filtrada podia seguir firmando licencias validas contra esa version.
+- `.gitignore`: `dist/` -> `legacy/dist/`, `installer/Output/` -> `legacy/installer/Output/`, mas
+  `src-csharp/installer/Output/` nuevo (cierra el gap de higiene encontrado en el diagnostico).
+- `README.md` (raiz): reescrito para describir la app C#/.NET 8 WPF como unica version oficial.
+  Nota de antivirus actualizada (ya no ps2exe/Wacatac; SmartScreen pendiente de firma). Seccion
+  "Desarrollo" reemplazada por `dotnet build` + `src-csharp/Publish-CSharp.ps1`. "Estructura del
+  proyecto" y "Stack tecnico" reescritos para C#. Se saco la seccion "Game Focus Mode" (feature
+  dada de baja, ver arriba).
+- `CLAUDE.md`: reescrito para reflejar la migracion cerrada — "Archivos del proyecto" apunta a
+  `src-csharp/` como version oficial y a `legacy/` como descontinuada; se retiraron las reglas
+  PS5.1 (`Get-Ctrl`/`Flush-UI`/variables `$script:`/numeracion de modulos 1A-15B), que ya no
+  aplican a desarrollo activo, dejando solo un puntero a `docs/CHANGELOG.md` por si algun dia hay
+  que tocar `legacy/`. Se mantuvieron "Estilo visual" (tokens de color/tipografia, siguen
+  aplicando al XAML activo en C#) y "Orden de tabs", pero esta ultima se corrigio: el orden
+  documentado (0=Optimizar...9=Tuning) era el del PS1 y NO coincide con el orden real de
+  `SetActiveNav` en `src-csharp/WinBoost/MainWindow.xaml.cs` (0=Optimizar, 1=Herramientas,
+  2=Info del sistema, 3=Arranque, 4=Bloatware, 5=Consola, 6=Historial, 7=Ajustes, 8=Licencia,
+  9=Tuning) — desincronizacion real encontrada al verificar, corregida al valor actual en vez de
+  copiarse a ciegas.
+- `docs/PENDIENTES.md`: 6.3 marcado `[x]` con el detalle de lo movido y las notas de las
+  desincronizaciones encontradas (code signing sigue abierto; ver arriba). Nota superior y titulo
+  de la seccion de migracion actualizados de "TRABAJO ACTIVO" a "COMPLETA".
+
+**Pendientes manuales del usuario (acciones de git, no ejecutadas por Claude Code):**
+- Evaluar limpieza de historial de git para el contenido viejo de `Gen-License.ps1` (commits
+  `7fa247e` en adelante), si el repo es publico — el `git rm --cached` en si ya no aplica (no
+  esta en el indice actual).
+- `git rm --cached` de los instaladores `.exe` bajo `src-csharp/installer/Output/` que quedaron
+  trackeados por accidente (ver hallazgo de higiene arriba), antes de que el `.gitignore`
+  corregido tenga efecto sobre lo ya versionado.
+
+**Verificacion:** `dotnet build` sobre `src-csharp/WinBoost/WinBoost.csproj` sin tocar rutas de
+`src-csharp/` (el corte no movio nada dentro de esa carpeta); `src-csharp/installer/WinBoost.iss`
+y `src-csharp/Publish-CSharp.ps1` no referencian ningun path movido (confirmado por lectura,
+segun el diagnostico de acople de mas arriba).
+
+---
+
+## Documentacion: registrado el sub-item de verificacion de firma Authenticode del instalador en el updater
+
+A partir de `5_registrar_authenticode_updater.txt`. En la regresion del auto-updater sobre el .exe
+publicado se valido OK el ciclo completo (Check, Download, gate SHA256, Apply+relaunch). Se
+identifico una debilidad de SEGURIDAD de diseno (no un bug): el SHA256 y el DownloadUrl salen
+ambos del mismo `version.json`, por lo que el hash no protege contra un repositorio/cuenta de
+GitHub comprometidos — un atacante que modifique `version.json` cambia instalador y hash juntos, y
+`ApplyUpdate` correria ese instalador en silencio y elevado. Se agrego en `docs/PENDIENTES.md`,
+como sub-item dependiente del item de code signing ya existente, la verificacion de firma
+Authenticode del instalador antes de `ApplyUpdate` (Services/UpdateService.cs). Solo cambio de
+documentacion, sin tocar codigo.
+
+---
+
+## Documentacion: registradas dos debilidades de diseno del modelo de licencias halladas en la regresion sobre el publicado
+
+A partir de `4_registrar_hallazgos_licencias.txt`. Durante la regresion de licencias sobre el .exe
+publicado se valido OK la parte criptografica (firma RSA-2048, Pro atado a HWID, rechazo de claves
+invalidas/HWID ajeno, persistencia tras reinicio). Se encontraron dos debilidades de DISEÑO del
+modelo actual (no de la criptografia): trial sin proteccion de integridad (client-side, burlable
+por fecha futura/borrado de settings/reset de fecha/atraso de reloj) y clave Tech como llave
+maestra global (firma sobre la constante "WINBOOST-TECH", sin HWID, sin revocacion posible). No se
+corrigen ahora — el modelo de licencias no es el definitivo, se va a redisenar antes del
+lanzamiento final. Quedan documentadas en `docs/PENDIENTES.md` (nueva seccion "Modelo de licencias
+(rediseño pendiente)") como pendientes abiertos, junto con una nota de la direccion tentativa del
+rediseño (degradar Tech, posible tier ULTRA por encima de Pro, acortar el trial de 14 a 3-7 dias),
+para que el rediseño no repita los mismos patrones. Solo cambio de documentacion, sin tocar codigo.
+
+---
+
 ## Documentacion: PENDIENTES.md actualizado tras el cierre del bug del single-file
 
 A partir de `3_actualizar_pendientes.txt`. Antes de editar se cotejo `docs/PENDIENTES.md`
