@@ -1,0 +1,13 @@
+<Page x:Class="WpfUiSpike.Views.AvanzadoPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      mc:Ignorable="d"
+      Title="AvanzadoPage">
+    <StackPanel Margin="24">
+        <TextBlock Text="Avanzado" FontSize="28" FontWeight="SemiBold" />
+        <TextBlock Text="Página de relleno — solo para evaluar la navegación del sidebar."
+                   Opacity="0.7" Margin="0,8,0,0" />
+    </StackPanel>
+</Page>

@@ -1,0 +1,72 @@
+<Page x:Class="WpfUiSpike.Views.DashboardPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      mc:Ignorable="d"
+      d:DesignHeight="600" d:DesignWidth="800"
+      Title="DashboardPage">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="24">
+        <StackPanel MaxWidth="760" HorizontalAlignment="Stretch">
+
+                <TextBlock Text="Optimizar"
+                           FontSize="28" FontWeight="SemiBold"
+                           Margin="0,0,0,4" />
+                <TextBlock Text="Spike de evaluación de WPF-UI — no es la UI real de WinBoost."
+                           Opacity="0.7" Margin="0,0,0,20" />
+
+                <!-- Cards con metricas -->
+                <UniformGrid Columns="2" Rows="1" Margin="0,0,0,16">
+                    <ui:Card Margin="0,0,8,0" Padding="20">
+                        <StackPanel>
+                            <TextBlock Text="Score del sistema" Opacity="0.7" FontSize="13" />
+                            <TextBlock Text="87" FontSize="40" FontWeight="Bold"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock Text="Bueno — 3 optimizaciones pendientes" FontSize="12" Opacity="0.7" />
+                        </StackPanel>
+                    </ui:Card>
+                    <ui:Card Margin="8,0,0,0" Padding="20">
+                        <StackPanel>
+                            <TextBlock Text="Boot time" Opacity="0.7" FontSize="13" />
+                            <TextBlock Text="18.4s" FontSize="40" FontWeight="Bold" />
+                            <TextBlock Text="-4.2s vs. antes de optimizar" FontSize="12" Foreground="#22C55E" />
+                        </StackPanel>
+                    </ui:Card>
+                </UniformGrid>
+
+                <!-- Toggle -->
+                <ui:Card Margin="0,0,0,16" Padding="20">
+                    <DockPanel>
+                        <ui:ToggleSwitch x:Name="TweakToggle"
+                                         DockPanel.Dock="Right"
+                                         IsChecked="True"
+                                         OnContent="On"
+                                         OffContent="Off" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="Prioridad de red para juegos" FontWeight="SemiBold" />
+                            <TextBlock Text="Componente ToggleSwitch de WPF-UI (item 3 del rediseño)."
+                                       FontSize="12" Opacity="0.7" />
+                        </StackPanel>
+                    </DockPanel>
+                </ui:Card>
+
+                <!-- Botones -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <ui:Button Content="Aplicar optimización"
+                               Appearance="Primary"
+                               Icon="{ui:SymbolIcon Rocket24}"
+                               Margin="0,0,12,0" />
+                    <ui:Button Content="Ver detalle"
+                               Appearance="Secondary"
+                               Icon="{ui:SymbolIcon Info24}"
+                               Margin="0,0,12,0" />
+                    <ui:Button Content="Abrir diálogo de prueba"
+                               Appearance="Danger"
+                               Click="OnOpenDialogClick" />
+                </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -56,9 +56,8 @@ WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
 ### Herramientas
 - Monitor en tiempo real: CPU, RAM, disco, temperatura CPU/GPU (barras verticales)
 - Procesos pesados: CPU% real (sin Sleep), RAM, botones Terminar con triple validacion de seguridad
-- Analisis de espacio en disco: top 10 carpetas mas pesadas con barras proporcionales (async)
-- Benchmark rapido de disco
-- Dispositivos con problemas y inventario de drivers con filtro por clase
+- Espacio en disco: vista de discos del equipo con barra usado/libre por unidad, estilo Windows
+- Dispositivos con problemas (Win32_PnPEntity con error de configuracion)
 - Limpieza profunda: Explorer cache, WER, logs CBS/DISM, shader cache (NVIDIA/AMD)
 - Limpieza del Driver Store: detecta duplicados obsoletos, exporta backup antes de eliminar
 - Liberador de RAM con purga de Standby List via `NtSetSystemInformation`

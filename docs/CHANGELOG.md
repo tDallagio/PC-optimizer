@@ -5,6 +5,112 @@
 
 ---
 
+## Spike WPF-UI: resuelto el crash de navegación (ContentDialogHost por página)
+
+A partir de `12_fix_crash_navegacion_spike.txt`. Fix aplicado al spike de evaluación
+(`spike/WpfUiSpike/`): el `ContentDialogHost` pasó de vivir en `DashboardPage` a ser único a nivel
+`MainWindow` (patrón que WPF-UI espera y que se replicará al integrar en WinBoost), eliminando el
+choque de registro que crasheaba al volver a "Optimizar". Validado sobre el .exe publicado (40
+navegaciones sin crash). Se sacó la instrumentación de logging de navegación; se dejó a propósito
+la captura global de excepciones. Detalle y aprendizajes para la integración en
+`spike/WpfUiSpike/README.md`.
+
+---
+
+## Spike WPF-UI: diagnóstico del crash de navegación (sin fix aplicado)
+
+A partir de `11_diag_crash_navegacion_spike.txt`. Se agregó captura global de excepciones +
+logging de navegación al spike de evaluación (`spike/WpfUiSpike/`) para diagnosticar el crash al
+cambiar de sección reportado sobre el publicado; causa raíz encontrada y reproducida (choque de
+`ContentDialogHost` al recrearse `DashboardPage` en cada navegación). Solo diagnóstico, detalle en
+`spike/WpfUiSpike/README.md`.
+
+---
+
+## Spike: evaluación de WPF-UI (lepoco/wpfui) para el rediseño
+
+A partir de `10_spike_wpfui.txt`. Proyecto aislado y descartable en `spike/WpfUiSpike/` (no toca
+`src-csharp/WinBoost`), evaluando `NavigationView`/`ToggleSwitch`/`Card`/`ContentDialog` con la
+marca de WinBoost aplicada, verificado sobre el .exe publicado self-contained single-file. Veredicto
+GO condicionado (marca conforme, overhead ~2.4 MB, publicado sin `FileNotFoundException`; riesgo
+abierto de íconos faltantes en Win10 según el símbolo). Detalle completo en `spike/WpfUiSpike/README.md`.
+
+---
+
+## Documentacion: corregidas en README.md tres features desactualizadas y sincronizado el item 2.5 de PENDIENTES.md
+
+A partir de `8_corregir_readme_y_2_5.txt`, siguiendo a la sync anterior. Verificado cada
+reemplazo contra el CHANGELOG real (no se asumio la redaccion sugerida por el prompt) antes de
+escribir.
+
+**`README.md` (seccion Herramientas):**
+- "Analisis de espacio en disco: top 10 carpetas mas pesadas..." -> "Espacio en disco: vista de
+  discos del equipo con barra usado/libre por unidad, estilo Windows" (la entrada "C# Info sistema
+  — panel de espacio en disco: de 'top 10 carpetas' a vista de discos" confirma el reemplazo real:
+  `PopulateDiskPanel` sobre `DriveInfo.GetDrives()`, ya no hay scan de carpetas).
+- "Benchmark rapido de disco" — eliminado del README. La entrada "C# Fixes... + benchmark
+  descartado" confirma que nunca se migro (CrystalDiskMark cubre el caso) y el cuadrante quedo
+  oculto (`Visibility="Collapsed"`) en la tab Herramientas; `docs/PENDIENTES.md` ya lo tenia en
+  "Descartado / No implementar".
+- "Dispositivos con problemas y inventario de drivers con filtro por clase" -> "Dispositivos con
+  problemas (Win32_PnPEntity con error de configuracion)". La entrada "C# Herramientas — removido
+  el inventario de drivers" confirma que el inventario se removio por decision de producto y que
+  Dispositivos con problemas se conserva intacto.
+- No se toco "Limpieza del Driver Store: detecta duplicados obsoletos..." (feature distinta del
+  inventario de drivers eliminado; se verifico que sigue presente en `TuningService.cs` /
+  `MainWindow.xaml(.cs)` antes de dejarla).
+
+**`docs/PENDIENTES.md`:** item 2.5 pasa de `[x]` entero a `[~]`, misma convencion que 4.4:
+inventario de drivers implementado y luego removido (no activo), "Dispositivos con problemas" se
+conserva y sigue vigente.
+
+**Cotejo adicional:** se repaso el resto del CHANGELOG buscando otras remociones/descartes
+(`removido`/`eliminado`/`descartado`) que pudieran afectar afirmaciones de Score, Bloatware,
+Mantenimiento, Reporte HTML, CLI o Licencias en el README — no se encontro ninguna otra
+desincronizacion en esta pasada.
+
+---
+
+## Documentacion: sincronizado PENDIENTES.md tras el corte 6.3 (item 4.4 y nota obsoleta del 6.3)
+
+A partir de `7_sync_pendientes_post_corte.txt`. Cotejados los checkboxes de `docs/PENDIENTES.md`
+contra `docs/CHANGELOG.md` real antes de editar.
+
+- **Item 4.4 (Game Focus Mode):** estaba `[x]` a secas, lo cual era enganoso — el CHANGELOG tiene
+  una entrada posterior ("C# Game Focus Mode dado de baja...") que registra su remocion completa
+  (decision de producto: afinidad a nucleos fisicos sin impacto medible, Process Lasso cubre el
+  nicho). Se cambio a `[~]` con el detalle de que fue implementado y luego removido, que no esta
+  activo en la app actual, y que el reemplazo (deteccion Steam + prioridad por juego) queda
+  pendiente post-migracion.
+- **Nota del item 6.3:** ya habia sido corregida en el corte mismo (sesion anterior) para no
+  confundir 6.3 como pendiente — aclara que "code signing" sigue bloqueando la DISTRIBUCION, no
+  el corte (que ya esta hecho). No hizo falta editarla de nuevo.
+
+**Otras desincronizaciones encontradas al cotejar (reportadas, NO corregidas — fuera del alcance
+declarado de este prompt, que pedia tocar solo las dos zonas de arriba):**
+- Item 2.5 ("Dispositivos con problemas + inventario de drivers") sigue `[x]` entero, pero una
+  entrada del CHANGELOG ("C# Herramientas — removido el inventario de drivers") registra que el
+  inventario de drivers se removio por decision de producto (sin valor accionable frente a
+  GeForce Experience/Adrenalin/Windows Update); "Dispositivos con problemas" si se conserva
+  intacto. El `[x]` de 2.5 hoy afirma como vigentes dos cosas de las que solo una lo esta.
+- `README.md` (raiz, reescrito en el corte 6.3) tiene al menos tres afirmaciones de producto que
+  ya no son ciertas para el C# actual, ninguna tocada en el corte porque no eran evidentes sin
+  cotejar contra el CHANGELOG completo:
+  - "Dispositivos con problemas y inventario de drivers con filtro por clase" — mismo caso que
+    2.5, el inventario ya no existe.
+  - "Analisis de espacio en disco: top 10 carpetas mas pesadas con barras proporcionales (async)"
+    — la entrada "C# Info sistema — panel de espacio en disco: de 'top 10 carpetas' a vista de
+    discos" registra que se reemplazo por una vista de discos usado/libre estilo Windows; ya no
+    lista carpetas.
+  - "Benchmark rapido de disco" — la entrada "C# Fixes... + benchmark descartado" registra que
+    nunca se migro (CrystalDiskMark ya cubre el caso) y el cuadrante quedo oculto
+    (`Visibility="Collapsed"`) en Herramientas. `docs/PENDIENTES.md` ya lo tenia bien clasificado
+    en "Descartado / No implementar"; el README no reflejaba ese descarte.
+
+Estas quedan para una pasada de sync separada (README + PENDIENTES 2.5) si el usuario la pide.
+
+---
+
 ## Corte 6.3: migracion PS1 -> C# cerrada, C# como unica version oficial, PS1 jubilado a legacy/
 
 A partir de `6_corte_6_3.txt`. Ultimo item de la migracion a C#/WPF (`docs/PENDIENTES.md`,
