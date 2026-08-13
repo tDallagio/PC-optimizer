@@ -5,6 +5,180 @@
 
 ---
 
+## C# fix: borde del CheckBox marcado quedaba "apagado" al destildar y volver a tildar
+
+Bug reportado por el usuario sobre el publicado: la primera vez que se tilda una casilla el
+borde se ve en acento (bien), pero si se destilda y se vuelve a tildar la misma casilla, el
+borde queda gris/apagado en vez de acento — el relleno sí se comporta bien, solo el borde falla.
+
+**Causa raíz**: el diseño de las dos entradas anteriores (relleno solido → translúcido)
+animaba `Background`/`BorderBrush` con `ColorAnimation` vía `Storyboard.TargetName`, pero
+tenía **dos triggers independientes animando la misma propiedad** (`chkBrd.Color`): el de
+`IsChecked` y un `MultiTrigger` de hover (con condición `IsChecked="False"` pensada
+justamente para que nunca compitieran). El problema: al hacer click, el mouse siempre está
+encima de la casilla — `IsMouseOver` ya es `True` en el momento exacto en que `IsChecked`
+cambia, así que el `MultiTrigger` de hover también dispara sus `EnterActions`/`ExitActions`
+en el mismo instante que el trigger de `IsChecked`. Dos `Storyboard` sin nombre animando la
+misma propiedad al mismo tiempo (`HandoffBehavior.Compose` por default) no tienen un ganador
+determinista — cuál de los dos queda "sostenido" (`FillBehavior.HoldEnd`) depende del orden
+de evaluación interno de WPF, no es controlable desde el XAML. Por eso funcionaba la primera
+vez (temporizaciones distintas al cargar la página) y fallaba en el segundo ciclo.
+
+**Fix**: se sacó la animación por completo del borde y el fondo — se volvió al patrón
+**determinista** que ya usaba el diseño original de este mismo `CheckBox` (antes de la
+adopción WPF-UI): `Setter` planos con `TargetName="chkBorder"` apuntando directo a las
+propiedades `Background`/`BorderBrush` del `Border` (un `FrameworkElement` real, no un
+`SolidColorBrush` con nombre). A diferencia de los `Storyboard` compitiendo, la precedencia de
+WPF entre `Setter`s de múltiples triggers activos a la vez SÍ está garantizada y es
+determinista: gana el último trigger declarado en `ControlTemplate.Triggers` para esa
+propiedad. Orden final: `IsMouseOver` primero (tiñe el borde solo si no está marcado), luego
+`IsChecked` (si está marcado, su `Setter` de `BorderBrush` gana sobre el de hover — asegura
+que un checkbox marcado+hover se vea con el borde solido de acento, nunca el tinte de hover),
+y `IsEnabled=False` al final (gana sobre todo). Se sacaron los pinceles nombrados `chkBg`/
+`chkBrd` (ya no hacen falta sin animación) — el `Border` vuelve a tener `Background`/
+`BorderBrush` como valores literales directos. El color final del relleno marcado
+(translúcido `#4D00C8FF`) y del borde (`{StaticResource BrushAccent}`, sólido) no cambiaron,
+solo el mecanismo que los aplica.
+
+**Verificación**: `dotnet build` (0 errores), publish con `Publish-CSharp.ps1 -SkipInstaller`,
+corrida sobre el .exe publicado con capturas `PrintWindow` confirmando el estado por defecto
+(marcado = relleno vidrio + borde solido; desmarcado = caja oscura). El ciclo exacto que
+reportó el bug (destildar y volver a tildar la MISMA casilla) no se pudo automatizar de forma
+confiable en esta sesión — la simulación de clicks por coordenadas y UI Automation no
+localizaban los `CheckBox` de forma consistente sobre este `FluentWindow` (limitación de la
+herramienta de testing, no ambigüedad sobre la causa del bug: el mecanismo de `Storyboard`
+compitiendo es una causa raíz real y documentada de WPF, no una hipótesis). Le pedimos al
+usuario repetir a mano el repro exacto (tildar, destildar, tildar de nuevo la misma casilla,
+con el mouse sin moverse) sobre el publicado en
+`src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`.
+
+---
+
+## C# ajuste: relleno del CheckBox marcado pasa a translúcido ("vidrio" cyan)
+
+Feedback del usuario tras ver el relleno sólido de acento (ver entrada anterior): pidió un
+efecto más translúcido, "como si fuera un vidrio transparente de color cyan". Cambio en
+`MainWindow.xaml`, mismo `ControlTemplate` de `CheckBox`: la `ColorAnimation` de `chkBg` en el
+trigger `IsChecked="True"` pasa de `{StaticResource AccentColor}` (opaco) a un `Color` literal
+con canal alfa reducido — iterado en dos pasadas con el usuario: primero `#D900C8FF` (~85%
+alfa, casi opaco, insuficiente) y despues `#4D00C8FF` (~30% alfa, confirmado) — de forma que se
+vea el fondo oscuro de la card por debajo (efecto vidrio). El borde (`chkBrd`) se dejó en
+`{StaticResource AccentColor}` sólido a propósito, sin alfa: da el contorno definido que
+mantiene la casilla legible como "marcada" incluso con el relleno casi transparente. El resto
+del template (caja 16x16, sin checkmark, transición con `DurFast`, hover, disabled) no cambió.
+
+**Verificación — sobre el PUBLICADO**: `dotnet build` (0 errores) y publish con
+`Publish-CSharp.ps1 -SkipInstaller` en cada iteración; capturas `PrintWindow` del .exe real
+confirmando el efecto vidrio (pixel-sample sobre la captura: color efectivo notablemente mas
+oscuro/apagado que el acento puro, consistente con el blend de alfa) antes de pedir la
+confirmación visual final del usuario.
+
+---
+
+## C# fix: checkmark del CheckBox mal centrado — se saca el glyph, queda solo el relleno de acento
+
+Feedback del usuario tras confirmar visualmente el paso 1 de adopción (CheckBox) sobre el
+publicado: el trazo del checkmark no quedaba centrado dentro de la casilla. En vez de ajustar
+las coordenadas del `Path` (`chkMark`, `Data="M 3,8.2 L 6.4,11.6 L 13,4"`), se sacó el glyph
+por completo — el estado marcado se comunica solo con el relleno sólido de acento (`#00C8FF`)
+de la casilla, sin nada dibujado encima. Cambio quirúrgico sobre `MainWindow.xaml`:
+
+- Se removió el `<Path x:Name="chkMark" .../>` del `ControlTemplate` de `CheckBox` y la
+  `DoubleAnimation` de `Opacity` que lo desvanecía in/out en los triggers de `IsChecked`
+  (entrance y exit). El resto del template (caja `chkBorder` 16x16, pinceles animables
+  `chkBg`/`chkBrd`, transición de color con `DurFast` al marcar/desmarcar, hover con
+  `MultiTrigger` condicionado a `IsChecked="False"`, estado deshabilitado) queda igual.
+- Sigue siendo el mismo `Style` implícito (sin `x:Key`): no se tocó ninguna de las 79
+  declaraciones de `CheckBox`.
+
+**Verificación — sobre el PUBLICADO**: `dotnet build` (0 errores), publish con
+`Publish-CSharp.ps1 -SkipInstaller`, corrida real del .exe con captura `PrintWindow` —
+confirmado en tab Optimizar (categorías Privacidad, Red, Servicios): las casillas marcadas se
+ven como pastilla sólida de acento sin ningún trazo encima, las desmarcadas conservan la caja
+oscura vacía. Usuario confirmó visualmente sobre el publicado.
+
+---
+
+## C# rediseño Módulo 1, adopción WPF-UI paso 1: CheckBox estilizados
+
+A partir de `15_adopcion_paso1_checkbox.txt`, sobre la fundación WPF-UI + dark-only + fix de
+ComboBox ya commiteados. Alcance estricto: solo `CheckBox` de selección — ni botones
+(`BtnMain`/`BtnSec`/`BtnNav`/`BtnToggleOn`/`BtnToggleOff`) ni el modelo de interacción
+(selección múltiple + botón "Aplicar") se tocaron.
+
+**Discrepancia con el prompt, verificada contra el repo real antes de tocar nada** (regla del
+proyecto: los "HECHOS DEL CÓDIGO REAL" del prompt son para verificar, no para asumir): el
+prompt daba por sentado que los 79 `CheckBox` eran default (pintados por el estilo implícito
+de WPF-UI, "no hay estilos custom que desmontar"). Falso: `MainWindow.xaml` ya tenía un
+`<Style TargetType="CheckBox">` **implícito** (sin `x:Key`) con `ControlTemplate` propio desde
+antes de la fundación WPF-UI — la misma entrada de CHANGELOG de la fundación ya lo registraba
+como "preservado por diseño" (un estilo implícito en `FluentWindow.Resources`, scope más
+cercano, le gana al implícito de WPF-UI mergeado en `Application.Resources`). No había nada que
+"desmontar" de WPF-UI; el trabajo real fue upgradear ese `ControlTemplate` custom existente.
+
+**Enfoque elegido** (`MainWindow.xaml`, mismo `<Style TargetType="CheckBox">` sin `x:Key`,
+líneas ~156-217): se mantuvo **implícito a propósito** — es la opción de menor riesgo posible,
+porque se aplica automáticamente a las 79 casillas sin tocar ninguna de sus 79 declaraciones
+(ninguna tiene `Style` local que le gane). Cambios visuales sobre el `ControlTemplate`:
+- Caja de 14x14 a 16x16, `CornerRadius` de 3 fijo a `{StaticResource RadiusSm}` (4, token
+  compartido) — más redondeada, más cerca de la convención Fluent/WinUI que sigue WPF-UI.
+- Estado marcado: de "caja oscura + trazo de acento" a **relleno solido de acento** con
+  checkmark blanco/oscuro (`#0D0D0D`, el mismo tono que usa `BtnMain` para texto sobre fondo de
+  acento — reuso de una convención de color ya establecida) — es el look Fluent/WinUI real que
+  sigue WPF-UI (casilla-pastilla rellena, no un contorno).
+- Transiciones de color animadas (fondo, borde y fade-in del checkmark) reusando el patrón y el
+  token `DurFast` (0.13s) que ya usan `BtnMain`/`BtnSec` — mismo lenguaje de micro-interacción
+  ya establecido en el proyecto, antes ausente en el CheckBox (los triggers eran swaps
+  instantáneos sin animar).
+- Lección del ComboBox aplicada: los pinceles del check (`chkBg`, `chkBrd`) son
+  `SolidColorBrush` con nombre, sin congelar, targeteados por `Storyboard.TargetName` (igual
+  que `bgMain`/`bgSec`/`bdSec` de los botones) — **no** por `Setter.TargetName` directo: se
+  probó y WPF no resuelve `Setter.TargetName` contra un `Freezable` con nombre (error de build
+  `MC4111`, "no se puede encontrar el destino"), solo `Storyboard.TargetName` lo soporta. Los 3
+  triggers (`IsChecked`, hover, `IsEnabled`) usan `Storyboard`/`ColorAnimation` por esto.
+- Bug de diseño encontrado y corregido antes de que llegara a build: si el trigger de hover
+  hubiera estado activo también con la casilla marcada, competiría por la misma propiedad
+  `Color` con la animación (sostenida via `FillBehavior.HoldEnd`) del trigger de `IsChecked` —
+  al sacar el mouse de una casilla marcada, el hover-exit la hubiera dejado con el borde gris
+  de "sin marcar" en vez de acento. Fix: el trigger de hover es un `MultiTrigger` con condición
+  extra `IsChecked="False"`, así nunca está activo al mismo tiempo que el de `IsChecked="True"`
+  — sin carrera entre animaciones, sin necesidad de la `MultiTrigger` combinada
+  checked+hover que tenía el diseño anterior.
+- Ningún `CheckBox` de las 79 declaraciones se tocó: `Content`, `IsChecked` (defaults
+  `True`/`False` actuales), `x:Name`, `Margin` y los `ToolTip` embebidos (incluidos los
+  `Foreground="#EF4444"` de impacto alto, ej. `chkEventLogs`) quedan exactamente iguales — se
+  verificó con `grep` que ningún `<CheckBox>` tiene `Style` local (nada puede pisarle el
+  implícito) y que el contenido de `chkEventLogs` no cambió una letra.
+- Único caso especial encontrado: `chkMaintTRIM` es la única casilla que el code-behind
+  deshabilita en runtime (`MainWindow.xaml.cs`, `UpdateMaintUIAsync` — no hay SSD), y siempre
+  lo hace junto con `IsChecked = false` en la misma línea, así que el combo
+  marcado+deshabilitado (que competiría de forma similar al bug de hover de arriba) no ocurre
+  nunca en la práctica; no se agregó manejo extra para un caso que no existe en el código real.
+
+**Verificación — sobre el PUBLICADO**:
+- `dotnet build`: 0 errores, 0 advertencias (incluyendo el intento fallido con `Setter.TargetName`
+  que primero tiró `MC4111`, corregido antes de continuar).
+- `src-csharp\Publish-CSharp.ps1 -SkipInstaller`: publish OK, single-file real (70.9 MB).
+- **Corrida real del .exe publicado**, capturas `PrintWindow` + UI Automation: confirmado en
+  tab Optimizar (categorías "Limpieza de archivos", "Sistema y rendimiento", "Privacidad y
+  telemetria" — checkmark blanco sobre pastilla de acento, cajas vacías consistentes para las
+  desmarcadas, sin recorte ni grillas descolocadas) y en tab Bloatware (CheckBox dentro de la
+  fila del listado, mismo estilo, sin romper el layout de la grilla). Funcional: "Seleccionar
+  todo"/"Deseleccionar" siguen tildando/destildando las 79 casillas correctamente, incluida la
+  exclusión de `chkEventLogs` de "Seleccionar todo" (contador de acciones se actualiza acorde).
+  Tooltips: contenido verificado igual en el XAML (no se tocó ninguna declaración); no se pudo
+  confirmar visualmente el popup en la captura automatizada porque `PrintWindow` no incluye
+  ventanas de popup superpuestas (limitación de la herramienta de captura, no del cambio). El
+  usuario hará la confirmación visual final de los tooltips y del resto de pantallas
+  (Mantenimiento, Red, Ajustes) — .exe en
+  `src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`.
+
+No se marcó ningún item de `docs/PENDIENTES.md` (el rediseño del Módulo 1 avanza por pasos, se
+marca cuando el conjunto esté completo). Botones y demás controles quedan para pasos
+posteriores de adopción.
+
+---
+
 ## C# dark-only + fix de los ComboBox recortados por WPF-UI
 
 A partir de `14_darkonly_y_fix_dropdowns.txt`, siguiendo a la fundación WPF-UI. Dos cambios
