@@ -87,6 +87,16 @@ internal sealed class SettingsService
                 brush.Freeze();
                 window.Resources[key] = brush;
             }
+
+            // Reconcilia el tema de WPF-UI (fundacion) con el swap propio de WinBoost: los
+            // controles con estilo implicito de WPF-UI (ComboBox/CheckBox/etc. en ventanas sin
+            // override local, ScrollBar de los dialogos secundarios) siguen la paleta
+            // claro/oscuro de la libreria, no solo la de arriba. updateAccent:false para no
+            // perder el acento de marca fijado en App.xaml.cs.
+            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                theme == "light" ? Wpf.Ui.Appearance.ApplicationTheme.Light : Wpf.Ui.Appearance.ApplicationTheme.Dark,
+                Wpf.Ui.Controls.WindowBackdropType.None,
+                updateAccent: false);
         }
         catch { }
     }

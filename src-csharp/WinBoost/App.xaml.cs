@@ -1,11 +1,13 @@
 using System.Windows;
+using System.Windows.Media;
+using Wpf.Ui.Appearance;
 using WinBoost.Services;
 
 namespace WinBoost;
 
 public partial class App : Application
 {
-    internal const  string          Version  = "4.2";
+    internal const  string          Version  = "4.3";
     internal static SettingsService Settings { get; } = new();
     internal static IAppLogger        Logger   { get; set; } = Services.NullLogger.Instance;
     internal static ProgressService Progress { get; set; } = null!;
@@ -34,6 +36,17 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Fundacion WPF-UI: tema oscuro fijo (igual al default actual de la app) + acento de
+        // marca #00C8FF. updateAccent:false porque el accent se fija a mano justo abajo — no
+        // dejar que ApplicationThemeManager lo pise con el accent de Windows. El swap
+        // claro/oscuro propio de WinBoost (SettingsService.ApplyTheme) reconcilia esto en
+        // runtime cuando el usuario cambia de tema.
+        ApplicationThemeManager.Apply(ApplicationTheme.Dark, Wpf.Ui.Controls.WindowBackdropType.None, updateAccent: false);
+        ApplicationAccentColorManager.Apply(
+            (Color)ColorConverter.ConvertFromString("#00C8FF"),
+            ApplicationTheme.Dark);
+
         var args = CliArgs.Parse(e.Args);
 
         if (args.ShowHelp)

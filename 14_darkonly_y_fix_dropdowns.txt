@@ -1,0 +1,92 @@
+CONTEXTO
+========
+Tras integrar WPF-UI (fundación), la confirmación visual sobre el .exe publicado dejó dos problemas.
+Decisión de producto ya tomada: WinBoost es DARK-ONLY. El tema claro (que además estaba roto de
+antes) se elimina, no se arregla. En el futuro se podría ofrecer "temas" pero como VARIANTES dark
+con distinta paleta de acento, nunca un tema claro/white — eso NO se implementa ahora, solo se deja
+la puerta abierta a nivel arquitectura (no cablear nada de variantes todavía).
+
+Este prompt hace dos cosas: (1) degradar el tema claro dejando la app fija en oscuro, y (2) arreglar
+los ComboBox/dropdowns que WPF-UI rompió.
+
+LEER PRIMERO (fuente de verdad = repo real)
+===========================================
+- src-csharp/WinBoost/Services/SettingsService.cs — ApplyTheme(Window) arma un diccionario de
+  brushes (BrushAppBg, BrushSidebar, BrushCard, BrushDeep, BrushElev, BrushCtrl, BrushBorder,
+  BrushFg1/2, BrushFgMuted, BrushFgDim) según Current.Theme ("light"/"dark"/"auto"; "auto" lee el
+  registro de Windows y resuelve a light o dark) y los reasigna a window.Resources en runtime.
+- Dónde se setea Current.Theme y dónde vive el selector de tema de la UI (pantalla Ajustes:
+  "Tema de la aplicacion: Oscuro / Claro / Automatico").
+- Cómo quedó reconciliado el ApplicationThemeManager de WPF-UI con el swap propio en la fundación
+  (Claude Code lo mencionó como SettingsService/ApplyTheme <-> WPF-UI). Hay que dejar WPF-UI fijo en
+  Dark también.
+- Cómo está definido el estilo del ComboBox hoy y qué le hizo WPF-UI (ver más abajo).
+
+PARTE 1 — DEGRADAR EL TEMA CLARO (dark-only)
+============================================
+Objetivo: la app queda SIEMPRE en oscuro, sin ramas de light ni auto que puedan resolver a light.
+No dejar puntas sueltas. Concretamente:
+
+1. En SettingsService.ApplyTheme: eliminar la rama "light" del diccionario de paleta y el modo
+   "auto" (que resuelve a light leyendo el registro). Dejar SIEMPRE la paleta oscura. El método
+   puede simplificarse a aplicar directamente la paleta dark (mantené los brushes dark actuales
+   exactamente con los mismos valores: BrushAppBg #0D0D0D, BrushCard #161616, etc.).
+2. WPF-UI: asegurar que su ApplicationTheme quede fijo en Dark y no se cambie en runtime a Light por
+   ningún camino (ni por seguir el tema de Windows, ni por el selector de la UI).
+3. Selector de tema en Ajustes ("Oscuro / Claro / Automatico"): NO quitarlo y NO reacomodar la card.
+   Dejar el selector en su lugar con UNA sola opción, "Oscuro", y DESHABILITADO (grayed out), para
+   comunicar "esto existe, más temas próximamente" sin prometer nada — mismo criterio que el ítem
+   "Idioma" de esa card ("Proximamente: ingles, portugues y mas"). Opcional: agregarle un subtítulo
+   consistente tipo "Mas temas proximamente". Quitar/neutralizar el binding/handler para que no
+   dispare ningún cambio de tema (siempre dark). Esto preserva la arquitectura para sumar variantes
+   dark a futuro sin tener que reconstruir la card. NO reacomodar el layout de la card.
+4. Current.Theme / settings.json: si el campo Theme queda sin uso, dejalo por compatibilidad de
+   settings viejos pero que NO tenga efecto (siempre dark), o removelo del modelo si es limpio
+   hacerlo sin romper la deserialización de settings existentes. Elegí el camino más limpio y
+   reportá cuál tomaste.
+5. Verificá que al eliminar el light no quede ningún control referenciando un brush que solo existía
+   en la rama light (no debería, los keys son los mismos en ambas ramas, pero confirmalo).
+
+Nota de arquitectura (NO implementar ahora, solo no cerrarse la puerta): a futuro se podrían ofrecer
+variantes dark con distinto acento. No cablees nada de eso; solo evitá hardcodear de forma que
+después sea imposible. El AccentColor ya está centralizado en App.xaml, así que con eso alcanza.
+
+PARTE 2 — ARREGLAR LOS COMBOBOX/DROPDOWNS CORTADOS
+==================================================
+Síntoma (confirmado en el publicado, en varias pantallas: Ajustes, Mantenimiento, Red, Tuning): los
+ComboBox aparecen RECORTADOS — campo angosto y texto tapado (se ve "?scuro", "?loudflare",
+"?ada 3 segundos", "?emanal"; el primer carácter/parte del texto queda cortado). Empezó con la
+integración de WPF-UI; antes andaban.
+
+NO parchear a ciegas. Diagnosticá primero:
+1. Determiná por qué WPF-UI cortó el ComboBox: ¿la app usa el ComboBox default (que WPF-UI reestiló
+   con su template implícito) o tiene un estilo propio? El template de ComboBox de WPF-UI puede
+   traer un Padding/MinWidth/toggle-area distinto que recorta el contenido.
+2. Según el diagnóstico, la solución correcta (elegí con criterio y justificá):
+   - Si la app usaba el ComboBox default y WPF-UI lo reestiló mal para este uso: darle a los
+     ComboBox un estilo/override que corrija el ancho y el padding para que el contenido entre
+     completo (respetando la paleta de marca), O ajustar el Padding/MinWidth donde se recorta.
+   - Preferir una solución CONSISTENTE (un estilo de ComboBox aplicado a todos) sobre parches de
+     width caso por caso, para que no quede cada dropdown con un ancho distinto.
+3. El resultado: todos los ComboBox de la app muestran su texto completo, sin recorte, con aspecto
+   consistente y coherente con el tema oscuro.
+
+VERIFICACIÓN — sobre el PUBLICADO
+=================================
+- `dotnet build` sin errores (cerrar la app antes de compilar).
+- Publicar con Publish-CSharp.ps1 y correr el .EXE PUBLICADO.
+- Confirmar sobre el publicado: (a) la app arranca siempre en oscuro, no hay forma de caer en light;
+  el selector de tema quedó con "Oscuro" fijo y deshabilitado, sin hueco en la card; (b) los ComboBox
+  de todas las pantallas (Ajustes, Mantenimiento, Red, Tuning, y cualquier otra) muestran el texto
+  completo sin recorte. El usuario hará la confirmación visual final; indicá dónde queda el .exe y
+  qué revisar.
+
+REGISTRO
+========
+Registrar en docs/CHANGELOG.md: se degradó el tema claro (WinBoost pasa a dark-only; eliminadas las
+ramas light/auto de ApplyTheme y el selector de tema; WPF-UI fijo en Dark) y se corrigieron los
+ComboBox que WPF-UI recortaba (con el detalle de la causa y la solución). Nota: a futuro se evaluarán
+variantes dark con distinto acento (no implementado).
+
+Guardar los cambios directamente en los archivos correspondientes de src-csharp/WinBoost/ y en
+docs/CHANGELOG.md. No imprimir el contenido en el chat.

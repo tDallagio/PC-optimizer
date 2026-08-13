@@ -5,6 +5,141 @@
 
 ---
 
+## C# fundación WPF-UI: integrada al producto real (MainWindow → FluentWindow), paridad funcional/visual preservada
+
+A partir de `13_fundacion_wpfui.txt`, siguiendo el veredicto GO condicionado del spike (ver
+entradas de abajo). Primera integración de WPF-UI en `src-csharp/WinBoost` (no en el spike
+descartable). Deliberadamente conservador: solo el paquete + el chrome de la ventana + el
+theming de marca sobre la librería. NO se agregó el sidebar (`NavigationView`), NO se cambió
+la navegación por tabs, NO se rediseñó ninguna pantalla — eso queda para los prompts
+siguientes del Módulo 1, uno por vez.
+
+**Archivos modificados**
+- `src-csharp/WinBoost/WinBoost.csproj` — `PackageReference` a `WPF-UI 4.3.0` (misma versión
+  validada en el spike).
+- `src-csharp/WinBoost/App.xaml` — `Application.Resources` pasó de lista plana a
+  `ResourceDictionary` con `ResourceDictionary.MergedDictionaries` (`ui:ThemesDictionary
+  Theme="Dark"` + `ui:ControlsDictionary`) mergeados PRIMERO, seguidos de los tokens propios
+  de WinBoost (`AccentColor`, `Brush*`, `Font*`, `Space*`, `Radius*`, `DurFast`) sin tocar:
+  una `ResourceDictionary` siempre resuelve sus entradas directas antes que las de sus
+  `MergedDictionaries`, así que los tokens propios ganan por diseño sin necesidad de reordenar
+  nada.
+- `src-csharp/WinBoost/App.xaml.cs` — en `OnStartup`, antes de cualquier rama (silencioso o
+  UI): `ApplicationThemeManager.Apply(ApplicationTheme.Dark, WindowBackdropType.None,
+  updateAccent: false)` + `ApplicationAccentColorManager.Apply(#00C8FF, ApplicationTheme.Dark)`
+  — fija el acento de marca antes de que WPF-UI lo pise con el accent de Windows.
+- `src-csharp/WinBoost/MainWindow.xaml` — root `<Window>` → `<ui:FluentWindow
+  ExtendsContentIntoTitleBar="True">` (mismo flag que el spike, ya validado). Se agregó una
+  fila `Auto` nueva arriba con `<ui:TitleBar Title="WinBoost"/>` como chrome de reemplazo (ver
+  "Por qué el TitleBar no es opcional" abajo); el `<Grid>` de contenido original (4 filas: TOP
+  BAR de marca propia, sidebar+tabs, barra de progreso, footer) pasó a ser la fila `*` de
+  abajo, sin tocar ni una línea de su contenido. `Window.Resources` → `FluentWindow.Resources`
+  (obligatorio: el nombre del property-element XAML tiene que matchear el tag del root).
+- `src-csharp/WinBoost/MainWindow.xaml.cs` — clase base `: Window` → `:
+  Wpf.Ui.Controls.FluentWindow` (totalmente calificado, SIN `using Wpf.Ui.Controls;` — ver
+  "Namespace clash evitado" abajo).
+- `src-csharp/WinBoost/Services/SettingsService.cs` (`ApplyTheme`) — al final, después de
+  aplicar la paleta de brushes propia de WinBoost, reconcilia el tema de WPF-UI con el switch
+  claro/oscuro de la app: `ApplicationThemeManager.Apply(Light/Dark según `theme`,
+  WindowBackdropType.None, updateAccent: false)`. Sin esto, los controles con estilo implícito
+  de WPF-UI (ver abajo) se hubieran quedado fijos en oscuro aunque el usuario cambiara el tema
+  de WinBoost a claro.
+
+**Por qué el `ui:TitleBar` NO es opcional (verificado en el código fuente de WPF-UI 4.3.0, no
+asumido)**: la intención inicial era la migración más conservadora posible — `FluentWindow`
+sin `ExtendsContentIntoTitleBar` ni `TitleBar`, para no tocar el chrome en absoluto. Se
+verificó en el `Wpf.Ui.dll`/fuente de `FluentWindow.cs` que esto es inviable:
+`FluentWindow.SetWindowChrome()` aplica SIEMPRE (con o sin `ExtendsContentIntoTitleBar`,
+incluso con `WindowBackdropType.None`) `WindowChrome` con `CaptionHeight = 0` y
+`UseAeroCaptionButtons = false` — el titlebar nativo (ícono, texto, minimizar/maximizar/cerrar)
+queda inerte apenas la clase hereda de `FluentWindow`, no es un efecto de `Mica` ni de extender
+contenido. Sin un `ui:TitleBar` (u otro reemplazo) la ventana queda sin forma de
+mover/minimizar/maximizar/cerrar. Se agregó como fila `Auto` propia, separada del "TOP BAR" de
+marca (logo/versión/badges/salud) que ya existía como CONTENIDO — quedan dos barras apiladas
+(chrome Fluent arriba, marca propia abajo), consistente con "el chrome puede cambiar, el
+contenido no".
+
+**Namespace clash evitado**: `Wpf.Ui.Controls` redefine versiones propias de casi todos los
+controles WPF estándar que este archivo usa sin calificar (`Button`, `CheckBox`, `ComboBox`,
+`TextBox`, `ProgressBar`, `ListBox`, etc. — confirmado contra el listado real de carpetas de
+`src/Wpf.Ui/Controls` del repo de la librería). Un `using Wpf.Ui.Controls;` a nivel de archivo
+en `MainWindow.xaml.cs` hubiera vuelto ambiguas decenas de referencias existentes (`Button[]
+_navButtons`, `Dictionary<int, CheckBox>`, etc. — error CS0104). Se evitó agregando el using y
+calificando `FluentWindow` completo (`Wpf.Ui.Controls.FluentWindow`) solo en la declaración de
+la clase.
+
+**Auditoría de paridad visual (item 5 del prompt) — qué controles reestiló WPF-UI y cómo se
+resolvió**, verificado leyendo cada XAML de `src-csharp/WinBoost/` (no asumido) y confirmando
+contra el código fuente real de `Wpf.Ui.Controls.*` (ej. `CheckBox.xaml` del paquete 4.3.0
+tiene un estilo `x:Key="DefaultCheckBoxStyle"` + una `<Style TargetType="{x:Type CheckBox}"
+BasedOn="{StaticResource DefaultCheckBoxStyle}"/>` implícita — mismo patrón para
+ComboBox/TextBox/ProgressBar/RichTextBox/ScrollBar/etc.):
+- **Preservados sin cambio (por diseño, no por override nuevo)**: `CheckBox`, `TabItem`,
+  `ProgressBar` y `ScrollBar` ya tenían un `<Style TargetType="...">` implícito (sin `x:Key`)
+  declarado en `MainWindow.xaml` → `Window.Resources` (ahora `FluentWindow.Resources`). La
+  resolución de recursos de WPF busca primero en el scope más cercano al elemento (recursos de
+  la ventana) antes que en `Application.Resources` (donde quedaron los diccionarios de
+  WPF-UI), así que estos 4 tipos siguen usando el estilo propio de WinBoost sin que haga falta
+  ningún cambio adicional. `ComboBox` (`ComboDark`) y `TextBox` (`TxtDark`) ya usaban un
+  `Style="{StaticResource ...}"` explícito en las 10 + 1 instancias del archivo — un `Style`
+  asignado localmente siempre gana sobre cualquier estilo implícito, sin importar el scope.
+  `Button` está 100% cubierto: las 56 instancias reales de `<Button>` en `MainWindow.xaml`
+  (auditadas una por una) asignan `Style` o `Template` local (`BtnMain`/`BtnSec`/`BtnPreset`/
+  `BtnDanger`/`BtnNav`/`BtnNavActive`/`BtnNavLicense`/`BtnErrBadge`, o un `Button.Template`
+  inline para `btnTrialUpgrade`) — cero riesgo de reestilo implícito.
+- **Expuestos a WPF-UI pero sin impacto visual observado**: `RichTextBox` (`rtbLog` en
+  Consola, `rtbRestoreLog` en Historial) no tiene protección local ni de WinBoost ni de
+  WPF-UI para ese tipo — pero `Background`, `BorderThickness="0"` y `Padding` están fijados
+  como valores locales en el propio elemento, que ganan sobre cualquier `Template` del estilo
+  implícito. Verificado sobre el publicado: la Consola se ve igual que antes.
+- **Reestilo de WPF-UI aceptado (bajo riesgo, confinado)**: los 5 diálogos secundarios
+  (`CompareDialog`, `ConfirmOptimizationDialog`, `FinishOptimizationDialog`,
+  `OnboardingDialog`, `ChangelogDialog`) son `<Window>` propios sin el override local de
+  `ScrollBar` que sí tiene `MainWindow`; sus `ScrollViewer` van a tomar el scrollbar delgado
+  estilo Fluent de WPF-UI en vez del scrollbar gris por defecto de Windows. Cambio menor,
+  confinado a esos diálogos, no evaluado como negativo — queda a criterio del usuario si se
+  homologa a mismo trato en un pase posterior.
+- **`TextBlock`**: confirmado en el código fuente que el estilo implícito de WPF-UI para
+  `TextBlock` está vacío (`<Style TargetType="{x:Type TextBlock}" />`, sin setters) — cero
+  riesgo pese a los cientos de `TextBlock` sin `Style` explícito en toda la app.
+- **Corner rounding automático**: `FluentWindow.WindowCornerPreference` por defecto es
+  `Round` (aplicado automáticamente en `OnSourceInitialized`, no hace falta setearlo) — la
+  ventana ahora tiene esquinas superiores redondeadas estilo Windows 11. Es un cambio de
+  chrome, no de contenido; se dejó el default en vez de forzar `DoNotRound` porque es
+  consistente con la dirección "premium" del Módulo 1 y no afecta el contenido.
+- **NO se habilitó Mica** (`WindowBackdropType` se dejó en `None` explícito, a diferencia del
+  spike que usó `Mica` solo para la evaluación): mantiene el fondo solido
+  `{DynamicResource BrushAppBg}` sin cambios, evita el riesgo de Mica no confirmado
+  visualmente en Windows 10 real (ver limitación abierta en el spike), y respeta el "NO
+  rediseño" del prompt. Queda como decisión disponible para un pase de rediseño posterior del
+  Módulo 1.
+
+**Verificación — sobre el PUBLICADO, no solo Debug** (regla del proyecto):
+- `dotnet build`: 0 errores, 0 advertencias.
+- `src-csharp/Publish-CSharp.ps1 -SkipInstaller`: publish OK, single-file real sin
+  dependencias sueltas (bundle check del script). **70.9 MB** (vs. 68.6 MB de la build previa
+  sin WPF-UI — overhead ~2.3 MB, consistente con los ~2.4 MB medidos en el spike).
+- **Corrida real del `.exe` publicado** (elevado, esta máquina de desarrollo ya corría como
+  Administrador): arrancó sin `FileNotFoundException` ni recurso faltante (el tipo de bug que
+  motivó la regla de validar sobre publicado — ver entradas de `System.Text.RegularExpressions`
+  más abajo), proceso responsive, título de ventana `"WinBoost v4.2"`. Capturas directas de la
+  ventana (`PrintWindow`, no screenshot de escritorio — evita falsos negativos por ventanas
+  superpuestas) confirmaron visualmente: `ui:TitleBar` con minimizar/maximizar/cerrar estilo
+  Fluent + esquinas redondeadas arriba, el "TOP BAR" de marca (logo, v4.2, badge PRO, SALUD
+  87%, Windows 10 Pro) intacto debajo, sidebar de 10 tabs intacto, navegación entre tabs
+  (`Herramientas`, `Licencia`) funcionando vía UI Automation sin crashear el proceso, y
+  contenido de cada tab pixel-a-pixel consistente con el diseño original: `CheckBox` con el
+  glyph propio (no el de WPF-UI), botones primarios/secundarios/danger con sus colores y
+  radios de siempre, `TextBox` del HWID con el estilo `TxtDark`. Falta la confirmación visual
+  del usuario en su propia máquina (y en Windows 10, no solo Windows 10 Pro de esta VM/PC de
+  desarrollo) antes de dar el paso por cerrado para producción.
+
+**No se marcó ningún item de `docs/PENDIENTES.md`** (el item 1 del Módulo 1 — sidebar — no se
+tocó en este paso, sigue `[ ]`). Esta fundación es un precursor del Módulo 1, no uno de sus
+items.
+
+---
+
 ## Spike WPF-UI: resuelto el crash de navegación (ContentDialogHost por página)
 
 A partir de `12_fix_crash_navegacion_spike.txt`. Fix aplicado al spike de evaluación

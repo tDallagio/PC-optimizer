@@ -15,7 +15,7 @@ using BackupSessionInfo = WinBoost.Services.BackupSessionInfo;
 
 namespace WinBoost;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 {
     private readonly DispatcherTimer _monitorTimer = new() { Interval = TimeSpan.FromSeconds(1) };
 

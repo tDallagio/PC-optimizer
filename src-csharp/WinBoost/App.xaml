@@ -2,9 +2,22 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              xmlns:local="clr-namespace:WinBoost"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- Base de WPF-UI (fundacion): diccionarios de la libreria PRIMERO, para que
+                     los tokens propios de WinBoost de mas abajo (mismo nivel, no merged) los
+                     puedan sobrescribir por nombre — una ResourceDictionary siempre resuelve
+                     sus entradas directas antes que las de sus MergedDictionaries. Tema oscuro
+                     fijo para igualar el default actual de la app (el swap claro/oscuro propio
+                     de WinBoost sigue via SettingsService.ApplyTheme, reconciliado con
+                     ApplicationThemeManager en App.xaml.cs). -->
+                <ui:ThemesDictionary Theme="Dark" />
+                <ui:ControlsDictionary />
+            </ResourceDictionary.MergedDictionaries>
 
         <!-- ===================================================================
              SISTEMA DE DISENO — tokens compartidos por toda la app y los dialogos
@@ -61,5 +74,6 @@
         <!-- Duracion estandar de transiciones de estado -->
         <Duration x:Key="DurFast">0:0:0.13</Duration>
 
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
