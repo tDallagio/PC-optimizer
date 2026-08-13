@@ -488,6 +488,8 @@
           <ControlTemplate TargetType="ComboBox">
             <Grid>
               <ToggleButton x:Name="tgl" Focusable="False"
+                            Style="{x:Null}"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                             IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                             ClickMode="Press">
                 <ToggleButton.Template>
@@ -2061,15 +2063,13 @@
                   <StackPanel>
                     <TextBlock Text="Tema de la aplicacion" FontSize="13"
                                Foreground="{DynamicResource BrushFg2}" FontWeight="SemiBold"/>
-                    <TextBlock Text="Oscuro, claro o automatico segun Windows"
+                    <TextBlock Text="Mas temas proximamente"
                                FontSize="11" Foreground="{DynamicResource BrushFgDim}" Margin="0,3,0,0"/>
                   </StackPanel>
                   <ComboBox x:Name="cboTheme" Grid.Column="1"
                             Style="{StaticResource ComboDark}"
-                            Width="160" SelectedIndex="0">
-                    <ComboBoxItem Content="Oscuro (por defecto)"/>
-                    <ComboBoxItem Content="Claro"/>
-                    <ComboBoxItem Content="Automatico (Windows)"/>
+                            Width="160" IsEnabled="False" SelectedIndex="0">
+                    <ComboBoxItem Content="Oscuro"/>
                   </ComboBox>
                 </Grid>
 

@@ -49,37 +49,22 @@ internal sealed class SettingsService
         catch { }
     }
 
+    // WinBoost es dark-only (decision de producto): no hay ramas light/auto. Ver
+    // docs/CHANGELOG.md para el detalle. A futuro podrian sumarse VARIANTES dark con
+    // distinto acento (nunca un tema claro), pero eso no esta cableado aca todavia.
     internal void ApplyTheme(Window window)
     {
         try
         {
-            string theme = Current.Theme;
-            if (theme == "auto")
+            var palette = new Dictionary<string, string>
             {
-                using var key = Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                theme = key?.GetValue("AppsUseLightTheme") is int v && v == 1 ? "light" : "dark";
-            }
-
-            var palette = theme == "light"
-                ? new Dictionary<string, string>
-                {
-                    ["BrushAppBg"]   = "#F5F5F5", ["BrushSidebar"] = "#EBEBEB",
-                    ["BrushCard"]    = "#FFFFFF",  ["BrushDeep"]   = "#F0F0F0",
-                    ["BrushElev"]    = "#E8E8E8",  ["BrushCtrl"]   = "#E0E0E0",
-                    ["BrushBorder"]  = "#DDDDDD",
-                    ["BrushFg1"]     = "#111111",  ["BrushFg2"]    = "#333333",
-                    ["BrushFgMuted"] = "#666666",  ["BrushFgDim"]  = "#888888",
-                }
-                : new Dictionary<string, string>
-                {
-                    ["BrushAppBg"]   = "#0D0D0D", ["BrushSidebar"] = "#111111",
-                    ["BrushCard"]    = "#161616",  ["BrushDeep"]   = "#0A0A0A",
-                    ["BrushElev"]    = "#1A1A1A",  ["BrushCtrl"]   = "#1E1E1E",
-                    ["BrushBorder"]  = "#2A2A2A",
-                    ["BrushFg1"]     = "#EEEEEE",  ["BrushFg2"]    = "#CCCCCC",
-                    ["BrushFgMuted"] = "#888888",  ["BrushFgDim"]  = "#555555",
-                };
+                ["BrushAppBg"]   = "#0D0D0D", ["BrushSidebar"] = "#111111",
+                ["BrushCard"]    = "#161616",  ["BrushDeep"]   = "#0A0A0A",
+                ["BrushElev"]    = "#1A1A1A",  ["BrushCtrl"]   = "#1E1E1E",
+                ["BrushBorder"]  = "#2A2A2A",
+                ["BrushFg1"]     = "#EEEEEE",  ["BrushFg2"]    = "#CCCCCC",
+                ["BrushFgMuted"] = "#888888",  ["BrushFgDim"]  = "#555555",
+            };
 
             foreach (var (key, hex) in palette)
             {
@@ -90,11 +75,11 @@ internal sealed class SettingsService
 
             // Reconcilia el tema de WPF-UI (fundacion) con el swap propio de WinBoost: los
             // controles con estilo implicito de WPF-UI (ComboBox/CheckBox/etc. en ventanas sin
-            // override local, ScrollBar de los dialogos secundarios) siguen la paleta
-            // claro/oscuro de la libreria, no solo la de arriba. updateAccent:false para no
-            // perder el acento de marca fijado en App.xaml.cs.
+            // override local, ScrollBar de los dialogos secundarios) quedan fijos en oscuro
+            // tambien. updateAccent:false para no perder el acento de marca fijado en
+            // App.xaml.cs.
             Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
-                theme == "light" ? Wpf.Ui.Appearance.ApplicationTheme.Light : Wpf.Ui.Appearance.ApplicationTheme.Dark,
+                Wpf.Ui.Appearance.ApplicationTheme.Dark,
                 Wpf.Ui.Controls.WindowBackdropType.None,
                 updateAccent: false);
         }

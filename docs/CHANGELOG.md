@@ -5,6 +5,115 @@
 
 ---
 
+## C# dark-only + fix de los ComboBox recortados por WPF-UI
+
+A partir de `14_darkonly_y_fix_dropdowns.txt`, siguiendo a la fundación WPF-UI. Dos cambios
+independientes sobre lo que dejó esa integración: (1) degradar el tema claro (decisión de
+producto: WinBoost pasa a dark-only) y (2) corregir los ComboBox que WPF-UI recortaba en el
+publicado.
+
+**PARTE 1 — Dark-only (`Services/SettingsService.cs`, `MainWindow.xaml`,
+`MainWindow.xaml.cs`)**
+
+- `SettingsService.ApplyTheme`: se eliminaron la rama `"light"` (paleta clara) y la resolución
+  `"auto"` (leía `AppsUseLightTheme` del registro de Windows). El método ahora aplica siempre
+  la paleta oscura (mismos valores hex de antes: `BrushAppBg` `#0D0D0D`, `BrushCard` `#161616`,
+  etc.) y fija `ApplicationThemeManager.Apply(..., ApplicationTheme.Dark, ...)` de WPF-UI sin
+  condicional — WPF-UI queda fijo en oscuro sin ninguna rama que pueda resolver a claro.
+- `MainWindow.xaml` (card "Tema de la aplicacion", tab Ajustes): el `ComboBox cboTheme` pasó de
+  3 opciones (Oscuro/Claro/Automatico) a una sola (`"Oscuro"`), con `IsEnabled="False"` y el
+  subtitulo cambiado a "Mas temas proximamente" — mismo patrón ya usado por el item "Idioma" de
+  la misma card (deshabilitado, un solo valor real, comunica "existe, viene despues" sin
+  prometer nada). No se tocó el layout de la card.
+- `MainWindow.xaml.cs` (`WireSettingsControls`): se quitó el bloque que fijaba
+  `cboTheme.SelectedIndex` desde `Current.Theme` y el `SelectionChanged` que reescribía
+  `Current.Theme`/llamaba `ApplyTheme`/guardaba settings — el combo ya no puede disparar
+  cambios (`IsEnabled="False"`), no hace falta handler.
+- `AppSettings.Theme`: se dejó el campo tal cual (no se removió del modelo). Camino elegido:
+  compatibilidad de lectura de `settings.json` viejos (instalaciones previas al dark-only
+  pueden tener `"light"`/`"auto"` grabado) sin que tenga ningún efecto — `ApplyTheme` ya no lo
+  lee. Se prefirió esto a remover el campo por ser el cambio de menor riesgo (deserializar un
+  campo desconocido con `System.Text.Json` no rompe nada, pero remover una propiedad que
+  settings.json viejos SI tienen podria interactuar mal con el resto del loader si algun dia se
+  vuelve a leer).
+- Verificado que ningun control referencia un brush que solo existiera en la rama light: las
+  keys del diccionario (`BrushAppBg`, `BrushSidebar`, `BrushCard`, `BrushDeep`, `BrushElev`,
+  `BrushCtrl`, `BrushBorder`, `BrushFg1/2`, `BrushFgMuted`, `BrushFgDim`) son las mismas en
+  ambas ramas, ahora solo queda la oscura.
+- Nota de arquitectura (no implementada, solo no cerrada la puerta): el `AccentColor` ya vive
+  centralizado en `App.xaml`, asi que variantes dark con distinto acento a futuro no requieren
+  tocar `ApplyTheme` de nuevo.
+
+**PARTE 2 — Fix de los ComboBox recortados (`MainWindow.xaml`, estilo `ComboDark`)**
+
+Diagnóstico (no se parcheó a ciegas): el síntoma reportado — primer caracter del texto del
+ComboBox tapado por una franja angosta — se reprodujo visualmente sobre el .exe publicado
+(capturas `PrintWindow` reales, no una hipótesis) en varios ComboBox de distintos tabs
+(`cboPrio` en Tuning Avanzado, `cboDNSProvider` en Optimizar). En los tres casos se veía la
+misma forma: un "pill" redondeado de ~24px de ancho (el fondo/borde del control) superpuesto
+sobre el arranque del texto, mientras el texto en sí (mucho más ancho) se renderizaba completo
+por fuera de ese fondo — es decir, no era el texto el que se recortaba, era el CHROME (fondo +
+borde + flecha) del ComboBox el que colapsaba a un ancho mínimo.
+
+Causa raíz confirmada leyendo el `ControlTemplate` de `ComboDark` (`MainWindow.xaml`, dentro de
+`FluentWindow.Resources`): el `ToggleButton x:Name="tgl"` que da el fondo/borde al control tiene
+un `ToggleButton.Template` local (por eso su aspecto visual — Border redondeado, flecha — nunca
+cambió), pero NO tenía ningún `Style` local asignado. Antes de WPF-UI, sin ningún `Style`
+implícito de `ToggleButton` en scope, el `ToggleButton` usaba el default de WPF
+(`HorizontalAlignment="Stretch"` por herencia de `FrameworkElement`) y ocupaba todo el ancho del
+`ComboBox`. Con la fundación WPF-UI, `ui:ControlsDictionary` (mergeado en
+`Application.Resources`) aporta un `Style` implícito para `ToggleButton` sin `x:Key` — al no
+haber ningún `Style` implícito de `ToggleButton` más cercano en `FluentWindow.Resources` que lo
+tape, ese estilo de WPF-UI pasó a aplicarse a `tgl`. Ese estilo fija (entre otras cosas)
+`HorizontalAlignment="Left"`, que rompe el layout por una razón específica de WPF: el
+`ToggleButton.Template` interno tiene un `Grid` con columnas `*`/`24` (la `*` para el fondo, la
+`24` para la flecha) sin ningún otro elemento que fuerce un ancho — cuando un `FrameworkElement`
+dentro de una celda de `Grid` sin columnas propias pasa de `Stretch` a `Left`, WPF lo mide con
+ancho disponible infinito, y en esa pasada las columnas `*` de su contenido se miden como si
+valieran `0` (las `*` solo reciben ancho real en el paso de `Arrange`, no en `Measure`) — el
+`ToggleButton` termina con un ancho "auto" de exactamente los 24px de la columna de la flecha,
+que es el pill angosto observado. El `TextBlock x:Name="cp"` (el texto del valor seleccionado)
+no tiene este problema porque es hermano del `ToggleButton` en el `Grid` externo y sigue
+alineado `Left` con `Margin` fijo — por eso el texto se veía completo y solo el fondo quedaba
+recortado.
+
+Se descartó la hipótesis de un `Padding`/`MinWidth` distinto en el estilo de WPF-UI (la causa
+real es de alineación + colapso de columnas `*`, no de tamaño mínimo) y la de que el `ComboBox`
+en sí se hubiera achicado (su `ActualWidth` es el mismo de siempre — columna `*`/`Width` fijo
+según la instancia — solo el `ToggleButton` interno colapsaba).
+
+**Fix aplicado** (consistente: un solo cambio en el `ControlTemplate` compartido de
+`ComboDark`, no parches de ancho por instancia): al `ToggleButton x:Name="tgl"` se le agregó
+`Style="{x:Null}"` (lo desconecta de cualquier estilo implícito, presente o futuro, de
+`ToggleButton` que aporte cualquier librería mergeada) más `HorizontalAlignment="Stretch"
+VerticalAlignment="Stretch"` como valores locales — un valor local siempre gana sobre cualquier
+`Style`, sea implícito o explícito, así que esto queda blindado independientemente de qué haga
+WPF-UI en el futuro. Como todos los `ComboBox` de la app comparten el mismo `Style
+x:Key="ComboDark"`, el fix corrige los ~11 ComboBox de una sola vez (Ajustes, DNS, Mantenimiento,
+Bloatware, Tuning, etc.).
+
+**Verificación — sobre el PUBLICADO**:
+- `dotnet build`: 0 errores, 0 advertencias (build limpio antes y después de cada cambio).
+- `src-csharp\Publish-CSharp.ps1 -SkipInstaller`: publish OK, single-file real (70.9 MB, sin
+  dependencias sueltas).
+- **Corrida real del .exe publicado** con capturas `PrintWindow` directas de la ventana (no
+  screenshot de escritorio): confirmado ANTES/DESPUÉS sobre `cboPrio` (tab Tuning Avanzado,
+  "Responsividad (0x24) - prioridad al proceso activo") — antes, el pill de ~24px tapaba la
+  "R" inicial con el resto del texto renderizado sin fondo; después, el control se ve como un
+  campo completo con borde, fondo y flecha ocupando todo el ancho de la columna, sin recorte.
+  Confirmado también sobre `cboDNSProvider` (tab Optimizar, "Cloudflare -- 1.1.1.1 / 1.0.0.1")
+  y `cboBackupRetention` (tab Ajustes, "7 dias") — mismo resultado, control completo sin
+  recorte. Falta la confirmación visual final del usuario sobre el resto de las pantallas
+  (Mantenimiento, Bloatware) y sobre el selector de tema fijo/deshabilitado en Ajustes; el
+  fix es al `ControlTemplate` compartido, no por instancia, así que el mismo mecanismo aplica
+  a todas por igual. El .exe queda en
+  `src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`.
+
+Nota: a futuro se evaluarán variantes dark con distinto acento sobre este dark-only (no
+implementado en esta pasada).
+
+---
+
 ## C# fundación WPF-UI: integrada al producto real (MainWindow → FluentWindow), paridad funcional/visual preservada
 
 A partir de `13_fundacion_wpfui.txt`, siguiendo el veredicto GO condicionado del spike (ver

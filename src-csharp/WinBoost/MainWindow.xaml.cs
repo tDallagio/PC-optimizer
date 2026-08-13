@@ -291,25 +291,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // nada, la ruta de backups estaba vacia y el tamano se colgaba en "Calculando...".
     private void WireSettingsControls()
     {
-        // --- Tema (BUG 4) ---
-        // Fijar el indice ANTES de suscribir el handler para no dispararlo en el init.
-        cboTheme.SelectedIndex = App.Settings.Current.Theme switch
-        {
-            "light" => 1,
-            "auto"  => 2,
-            _       => 0,
-        };
-        cboTheme.SelectionChanged += (_, _) =>
-        {
-            App.Settings.Current.Theme = cboTheme.SelectedIndex switch
-            {
-                1 => "light",
-                2 => "auto",
-                _ => "dark",
-            };
-            App.Settings.ApplyTheme(this);   // reasigna los brushes de la paleta en runtime
-            App.Settings.Save();
-        };
+        // --- Tema: dark-only, selector fijo en "Oscuro" y deshabilitado (XAML) ---
+        // WinBoost no tiene rama light/auto (decision de producto, ver CHANGELOG.md);
+        // sin handler porque el combo no puede disparar cambios (IsEnabled="False").
 
         // --- Ruta de sesiones de backup (BUG 3) ---
         lblBackupPath.Text = App.Settings.Current.BackupRoot;
