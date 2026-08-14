@@ -31,6 +31,7 @@ internal sealed class TuningService
     // GUIDs de la politica termica del sistema (subgrupo + ajuste).
     private const string CoolSub     = "54533251-82be-4824-96c1-47b60b740d00";
     private const string CoolSetting = "94d3a615-a899-4ac5-ae2b-e4d8f634367f";
+    private const string PowerSchemesKey = @"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes";
 
     // ── Scheduler de CPU (Win32PrioritySeparation) ────────────────────────────
     internal int GetWin32PrioritySep()
@@ -72,22 +73,27 @@ internal sealed class TuningService
 
     // ── Politica termica (Cooling Policy) ─────────────────────────────────────
     // -1 = no disponible / plan personalizado, 0 = Pasiva, 1 = Activa.
+    // Lee el valor directo del registro (ACSettingIndex bajo el esquema activo) en vez
+    // de parsear texto de "powercfg /query": esa salida se localiza segun el idioma de
+    // Windows (ej. "Current AC Power Setting Index" en ingles vs "Indice de configuracion
+    // de corriente alterna actual" en espanol) y buscar el texto en ingles fallaba en
+    // cualquier Windows no-ingles, devolviendo siempre -1 (switch mostrado como OFF pase
+    // lo que pase el valor real). El registro guarda el indice ya numerico, sin texto.
     internal int GetCoolingPolicyState()
     {
         try
         {
-            string raw  = RunCapture("powercfg", $"/query SCHEME_CURRENT {CoolSub} {CoolSetting}");
-            string? line = raw.Split('\n')
-                .FirstOrDefault(l => l.Contains("Current AC Power Setting Index"));
-            if (line != null)
-            {
-                int idx = line.IndexOf("0x", StringComparison.OrdinalIgnoreCase);
-                if (idx >= 0)
-                    return Convert.ToInt32(line[(idx + 2)..].Trim(), 16);
-            }
+            using var schemesKey = Registry.LocalMachine.OpenSubKey(PowerSchemesKey);
+            string? activeScheme = schemesKey?.GetValue("ActivePowerScheme") as string;
+            if (string.IsNullOrEmpty(activeScheme)) return -1;
+            activeScheme = activeScheme.Trim('{', '}');
+
+            using var settingKey = Registry.LocalMachine.OpenSubKey(
+                $@"{PowerSchemesKey}\{activeScheme}\{CoolSub}\{CoolSetting}");
+            object? value = settingKey?.GetValue("ACSettingIndex");
+            return value != null ? Convert.ToInt32(value) : -1;
         }
-        catch { }
-        return -1;
+        catch { return -1; }
     }
 
     internal bool SetCoolingPolicy(int value) // 0 = Pasiva, 1 = Activa

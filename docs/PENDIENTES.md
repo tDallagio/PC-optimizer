@@ -204,6 +204,17 @@ en el rediseño:
       Pendiente: revisar las ~55 entradas contra `Get-AppxPackage` en un Win11 limpio y actualizado,
       aceptar alias `viejo|nuevo` donde aplique, verificar categoría y flag de riesgo. Una detección
       que se pierde apps mina la confianza (el usuario ve "sistema limpio" cuando no lo está).
+- [ ] **Auditoría de parseo de salidas de CLI independiente de idioma.** El código lee la salida de
+      comandos (`powercfg`, `pnputil`, `netsh`, `sc`, etc.) y en varios lugares matchea TEXTO
+      LOCALIZADO en inglés (o inglés+español a mano), lo que falla en Windows en otros idiomas —
+      crítico para el mercado LATAM (español y portugués/Brasil): funciona en dev (inglés), falla en
+      la máquina del usuario real. Ya corregido: `GetCoolingPolicyState` (política térmica) ahora lee
+      del registro, independiente de idioma. Pendiente: barrer TODO el código en busca de parseos de
+      CLI dependientes de idioma y hacerlos robustos (leer del registro/valores numéricos, o parsear
+      por estructura/patrón, no por el texto de la etiqueta). Caso conocido a arreglar: `ParsePnpUtil()`
+      (`pnputil /enum-drivers`) matchea inglés+español a mano y falla en portugués u otro locale.
+      Revisar también cualquier otro `RunCapture`/parseo de stdout. Validar idealmente en un Windows
+      en español y otro en portugués.
 - [ ] **Landing page:** before/after de métricas reales (las genera el reporte HTML de WinBoost),
       lista de tweaks documentados, estructura de planes (Free/Pro/[ULTRA]) con precios, botón de
       descarga al release de GitHub, sección "Qué cambia exactamente" (desarma el escepticismo de

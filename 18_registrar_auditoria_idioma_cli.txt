@@ -1,0 +1,42 @@
+CONTEXTO
+========
+Arreglando el bug de la política térmica (GetCoolingPolicyState fallaba en Windows en español porque
+parseaba el texto localizado de powercfg y devolvía default OFF), se destapó una CLASE de bug más
+amplia: el código parsea salidas de comandos CLI de formas que dependen del IDIOMA del SO, y esos
+fallos solo se manifiestan en Windows NO en inglés — es decir, en el mercado objetivo real (LATAM:
+español y portugués), nunca en un entorno de desarrollo en inglés.
+
+Hallazgo concreto ya detectado: ParsePnpUtil() (TuningService.cs) matchea inglés+español A MANO para
+pnputil /enum-drivers, pero un Windows en portugués u otro locale seguiría fallando ahí. Es el mismo
+patrón "funciona en inglés, se rompe en el idioma del usuario" — y el parche de hardcodear dos
+idiomas es frágil (se rompe en el tercero).
+
+Este prompt SOLO REGISTRA el pendiente (no arregla nada de código). Es documentación.
+
+TAREA
+=====
+Agregá a docs/PENDIENTES.md, en la sección "Pre-lanzamiento" (junto al ítem de auditar la base de
+datos de bloatware, con el que es hermano: ambos son "funciona en dev, falla en la máquina del
+usuario real"), un ítem nuevo. Respetá el formato de checkboxes y el estilo del archivo; no
+reordenes el resto.
+
+Texto sugerido (ajustá al estilo real del archivo):
+- [ ] Auditoría de parseo de salidas de CLI independiente de idioma. El código lee la salida de
+      comandos (powercfg, pnputil, netsh, sc, etc.) y en varios lugares matchea TEXTO LOCALIZADO en
+      inglés (o inglés+español a mano), lo que falla en Windows en otros idiomas — crítico para el
+      mercado LATAM (español y portugués/Brasil). Ya corregido: GetCoolingPolicyState (política
+      térmica) ahora lee del registro, independiente de idioma. Pendiente: barrer TODO el código en
+      busca de parseos de CLI dependientes de idioma y hacerlos robustos (leer del registro/valores
+      numéricos, o parsear por estructura/patrón, no por el texto de la etiqueta). Caso conocido a
+      arreglar: ParsePnpUtil() (pnputil /enum-drivers) matchea inglés+español a mano y falla en
+      portugués u otro locale. Revisar también cualquier otro RunCapture/parseo de stdout. Validar
+      idealmente en un Windows en español y otro en portugués.
+
+REGISTRO
+========
+Dejá una línea en docs/CHANGELOG.md: se registró en PENDIENTES.md la auditoría de parseo de CLI
+independiente de idioma (clase de bug detectada al arreglar la política térmica; afecta al mercado
+LATAM), con ParsePnpUtil identificado como caso conocido pendiente.
+
+Guardar los cambios directamente en docs/PENDIENTES.md y docs/CHANGELOG.md. No imprimir el contenido
+en el chat.

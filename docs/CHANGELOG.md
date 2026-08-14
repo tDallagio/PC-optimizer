@@ -5,6 +5,180 @@
 
 ---
 
+## Fix: lectura de Política Térmica fallaba en Windows no-inglés (17_fix_termica_idioma.txt)
+
+**Bug**: en Tuning Avanzado, el switch de Política Térmica escribía bien (verificado con
+`powercfg`: ON deja el índice AC/DC en `0x1`) pero al reabrir la app/pestaña siempre
+aparecía en OFF, sin importar el valor real del sistema.
+
+**Causa raíz confirmada** (leyendo `GetCoolingPolicyState()` en `TuningService.cs`): el
+método ejecutaba `powercfg /query` y buscaba en la salida la línea `"Current AC Power
+Setting Index"` en inglés. En Windows en español esa línea sale como `"Índice de
+configuración de corriente alterna actual"` — el `Contains` en inglés nunca matchea, la
+línea queda `null` y el método cae al default `-1` ("no disponible"), que la UI muestra
+como OFF. Bug de producto: afecta a **cualquier Windows no-inglés**, es decir prácticamente
+todo el mercado objetivo (LATAM).
+
+**Fix, independiente del idioma**: en vez de parsear el texto de `powercfg` (localizado),
+`GetCoolingPolicyState()` ahora lee el índice directo del registro, donde `powercfg` lo
+persiste sin texto: `ActivePowerScheme` en
+`HKLM\SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes` da el GUID del esquema
+activo; el valor `ACSettingIndex` (DWORD) bajo
+`...\PowerSchemes\<esquema>\54533251-82be-4824-96c1-47b60b740d00\94d3a615-a899-4ac5-ae2b-e4d8f634367f`
+es el índice AC de la política térmica. Verificado leyendo la clave real en la máquina de
+desarrollo: coincide con el valor que reporta `powercfg`. Elegido sobre parsear
+`powercfg` de forma resiliente al idioma (por patrón `0x...` en vez de por etiqueta)
+porque evita spawnear un proceso y parsear texto por completo — más simple y sin
+superficie para romperse con un locale nuevo. `SetCoolingPolicy` (la escritura, vía
+`powercfg /setacvalueindex` + `/setdcvalueindex`) no se tocó, ya funcionaba bien.
+
+**Otro parseo de texto localizado encontrado (no tocado en este fix)**: `ParsePnpUtil()`
+en el mismo archivo (scan de Driver Store obsoleto, `pnputil /enum-drivers`) ya matchea
+manualmente inglés y español (`Published Name`/`Nombre publicado`, etc.) — mitigación
+parcial existente, pero solo cubre esos dos idiomas; un Windows en portugués u otro locale
+seguiría fallando ahí. Queda pendiente si se prioriza soporte a otros locales.
+
+Verificado: `dotnet build` OK, publicado con `Publish-CSharp.ps1`
+(`src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`). Falta la confirmación final del
+usuario sobre el .exe publicado en su máquina (Windows en español): ON → cerrar → reabrir
+→ debe mostrar ON; OFF → cerrar → reabrir → debe mostrar OFF; cruzar contra `powercfg`.
+
+---
+
+## Registro: auditoría de parseo de CLI independiente de idioma (18_registrar_auditoria_idioma_cli.txt)
+
+Se agregó a `docs/PENDIENTES.md` (sección Pre-lanzamiento, junto a la auditoría de bloatware) un
+ítem pendiente: auditar todo el código en busca de parseos de salida de CLI (`powercfg`, `pnputil`,
+`netsh`, `sc`, etc.) que dependan de texto localizado — clase de bug detectada al arreglar la
+política térmica (ver entrada anterior), afecta al mercado LATAM (Windows en español/portugués).
+Caso conocido pendiente: `ParsePnpUtil()` matchea inglés+español a mano y fallaría en portugués u
+otro locale. Solo documentación, sin cambios de código.
+
+---
+
+## C# Módulo 1, cambio funcional: Tuning Avanzado migrado a 3 ui:ToggleSwitch (16B_tuning_toggleswitch.txt)
+
+Los 3 pares de botones Activar/Desactivar de la pestaña Tuning Avanzado (Scheduler de CPU,
+HAGS, Política Térmica) se reemplazaron por 3 `ui:ToggleSwitch` de WPF-UI. Cambio funcional,
+no solo cosmético: cada switch inicializa reflejando el estado REAL del sistema (lee los
+getters existentes de `TuningService`) y togglearlo aplica el tweak de verdad. La lógica de
+`Set*`/backup de `TuningService` no se tocó — solo el control de UI y su cableado.
+
+**Discrepancia con el prompt, verificada contra el código real antes de tocar nada**: el
+prompt asumía que los 3 controles ya eran pares de botones `BtnToggleOn`/`BtnToggleOff`.
+Falso: `BtnToggleOn`/`BtnToggleOff` son estilos definidos en `MainWindow.xaml` pero **sin
+ningún uso real** en el archivo (dead styles). Los 3 controles actuales eran: HAGS y Política
+Térmica con pares `BtnMain`/`BtnSec` (Activar/Desactivar, Política Activa/Pasiva); Scheduler de
+CPU **no era un par de botones** — era un `ComboBox` (`cboPrio`) con 3 opciones (Windows
+default 0x26, Consistencia 0x16, Responsividad 0x24) + botón "Aplicar" único. Ese `ComboBox`
+y sus 3 opciones se eliminaron por completo: el prompt pide un Scheduler binario ON=0x28/OFF=2
+(decisión del usuario, reemplaza la vieja opción "Responsividad" de 0x24 — el usuario testeó
+mejores 1% low con 0x28 en su hardware).
+
+**API real de `Wpf.Ui.Controls.ToggleSwitch` (WPF-UI 4.3.0), verificada por reflexión antes de
+cablear nada**: NO es la API estilo WinUI (`IsOn`/`Toggled`) que asumía el prompt — hereda de
+`System.Windows.Controls.Primitives.ToggleButton`, expone `IsChecked` (`bool?`) y los eventos
+`Checked`/`Unchecked` (más `OnContent`/`OffContent`/`LabelPosition` propios para las etiquetas
+a los costados). Cableado con `IsChecked` + `Checked`/`Unchecked` en vez de `IsOn`/`Toggled`.
+
+**Inicialización sin auto-aplicar**: flag de sincronización `_tuningSyncing` (campo de
+`MainWindow`, patrón "flag de cargando" sugerido en el prompt). Los 3 `Update*Ui` (que fijan
+tanto el texto de estado como `swX.IsChecked`) envuelven el `set` de `IsChecked` con
+`_tuningSyncing = true/false`; los handlers `Checked`/`Unchecked` chequean el flag primero y
+no llaman al `Set*` real si está en `true`. Mismo mecanismo cubre dos casos: la carga inicial
+del tab (`LoadTuningTabAsync`) y el revert del switch si el `Set*` real falla (excepción o
+`false`) — la UI nunca queda mostrando un estado que no se pudo aplicar de verdad (antes,
+con los pares de botones, un fallo tampoco avanzaba el estado mostrado; ahora hace falta
+revertir el switch explícitamente porque `IsChecked` ya cambió con el click antes de que
+corra el handler).
+
+**Semántica de cada switch**:
+- HAGS: ON = habilitado (`HwSchMode` 2), OFF = deshabilitado (1). Directo, sin casos raros.
+- Scheduler CPU: ON = 0x28 (40), OFF = default de Windows (2). Estado desconocido (registro
+  con un valor que no es ni 2 ni 0x28 — ej. el 0x24 heredado del viejo ComboBox, visto en esta
+  máquina de desarrollo) se muestra **OFF** ("Personalizado (valor, 0x..) - no reconocido,
+  mostrado como inactivo"), sin crashear.
+- Política Térmica: ON = "Activa" (1), OFF = "Pasiva" (0). Estado -1 (no disponible / plan
+  personalizado) se muestra OFF por el mismo criterio conservador.
+
+**Copy del Scheduler ajustado** (pedido del usuario, punto 5 del prompt): se sacó la nota "el
+efecto medible... no es una palanca de rendimiento real" y se fusionó en una descripción única
+y neutral bajo el switch — describe qué hace (prioriza el proceso en foco), aclara que el
+efecto varía según sistema/juego, sin prometer ganancias ni desaconsejar el tweak. El usuario
+mantiene 0x28 por evidencia propia (mejores 1% low vs 0x24).
+
+**Layout**: los 3 cards quedaron con la misma estructura (título + descripción a la izquierda,
+switch a la derecha, alineados) — antes HAGS ya tenía esa forma con los 2 botones apilados;
+Scheduler y Política Térmica se alinearon al mismo patrón.
+
+**Verificación**: `dotnet build` (0 errores). Publish con `Publish-CSharp.ps1 -SkipInstaller`,
+corrida del `.exe` publicado con captura de pantalla real confirmando: los 3 switches reflejan
+el estado real leído del sistema al abrir la pestaña (incluido el caso "Personalizado 0x24, no
+reconocido" real de esta máquina), la pestaña no auto-aplica nada al cargar (footer en "Listo
+para optimizar", sin logs nuevos), y el layout quedó simétrico. **No se togglearon los switches
+en esta sesión** — Scheduler/HAGS/Política Térmica escriben registro real y powercfg con
+elevación real (el `.exe` requiere admin vía `app.manifest`); dejar esa prueba funcional
+(togglear cada uno, verificar el valor en registro/powercfg, cerrar y reabrir para confirmar
+persistencia) para el usuario, tal como pide el propio prompt. El `.exe` queda en
+`src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`.
+
+---
+
+## C# pulido Módulo 1: tokens centralizados en los estilos de botón (16A_pulir_tokens_botones.txt)
+
+Higiene de mantenibilidad, sin cambio visual: los 9 estilos de botón de `MainWindow.xaml`
+(`BtnMain`, `BtnSec`, `BtnPreset`, `BtnDanger`, `BtnToggleOn`, `BtnToggleOff`, `BtnNav`,
+`BtnNavActive`, `BtnNavLicense`) tenían colores hex hardcodeados que duplicaban valores ya
+centralizados como recursos en `App.xaml`/`MainWindow.xaml`. Se reemplazaron por esos recursos
+donde el valor coincidía exactamente; el resultado renderizado es idéntico al anterior.
+
+**Centralizados** (por valor hex → recurso, `StaticResource` para tokens de `App.xaml` que no
+cambian con el tema — mismo patrón que ya usaba `BrushAccent` en el archivo — y `DynamicResource`
+para los pinceles de superficie de `MainWindow.xaml`, que `SettingsService.ApplyTheme` reemplaza
+en `window.Resources` en cada arranque, igual que el resto del archivo ya los consume):
+- `#0D0D0D` → `BrushAppBg` (Foreground de `BtnMain`, el mismo tono oscuro que usa como texto
+  sobre el fondo de acento).
+- `#2A2A2A` → `BrushBorder` (`BtnMain` disabled, `BtnPreset` borde).
+- `#1E1E1E` → `BrushCtrl` (`BtnPreset` hover).
+- `#161616` → `BrushCard` (`BtnPreset` fondo, `BtnSec`/`BtnDanger` disabled).
+- `#555555` → `BrushFgDim` (`BtnMain` disabled).
+- `#CCCCCC` → `BrushFg2` (`BtnSec` foreground, `BtnNav` hover foreground).
+- `#EEEEEE` → `BrushFg1` (`BtnPreset` hover foreground).
+- `#1A1A1A` → `BrushElev` (`BtnNav` hover fondo).
+- `#EF4444` → `BrushErr` (`BtnDanger` foreground/hover borde, `BtnToggleOn` foreground).
+- `#22C55E` → `BrushOk` (`BtnToggleOff` foreground).
+- `#F59E0B` → `BrushWarn` (`BtnNavLicense` foreground).
+
+**Token nuevo agregado a `App.xaml`**: `CtrlColor` (`#1E1E1E`) y `BorderColor` (`#2A2A2A`), tipo
+`Color` (no `Brush`). Necesarios porque `BtnSec` anima estos dos valores con `ColorAnimation`
+sobre pinceles inline con nombre (`bgSec`/`bdSec`, patrón obligado por WPF para animar
+`Storyboard.TargetName` — no se puede animar un recurso `Brush` directamente, ver la lección ya
+documentada más abajo en este historial sobre el `CheckBox`). Mismo valor que `BrushCtrl`/
+`BrushBorder`, pero como `Color` para que la animación los pueda consumir.
+
+**Se dejaron literales** (sin recurso equivalente exacto, o color one-off no repetido): `#AAAAAA`
+(`BtnPreset` foreground), `#2A0A0A`/`#4A1A1A`/`#3D1212` (`BtnDanger` fondo/borde/hover, tinte rojo
+propio sin token), `#2A1212`/`#3D1A1A` (`BtnToggleOn` fondo/borde/hover), `#122A12`/`#1A3D1A`
+(`BtnToggleOff` fondo/borde/hover), `#444444` (`BtnSec`/`BtnDanger` disabled foreground, no
+coincide con `BrushFgDim` #555555), `#777777` (`BtnNav` foreground), `#00C8FF10`/`#00C8FF18`/
+`#00C8FF40` (variantes de acento con alfa custom por estado — no existe un recurso con esos
+canales alfa exactos).
+
+**Verificación**: `dotnet build` (0 errores) — confirma además que las referencias `StaticResource`
+hacia adelante (`CtrlColor`/`BorderColor` definidos en `App.xaml`, un dictionary distinto, sin
+problema de orden) y dentro del mismo `ControlTemplate` (contenido diferido de `Style`, se resuelve
+en runtime) compilan bien. Publish con `Publish-CSharp.ps1 -SkipInstaller`, corrida del .exe
+publicado con captura de pantalla real (`CopyFromScreen`, `PrintWindow` devolvió en blanco en esta
+sesión — problema conocido de WPF con render acelerado, no relacionado al cambio) confirmando la
+pestaña Tuning Avanzado sin diferencias visuales (`BtnMain`/`BtnSec` normal y disabled). No se
+automatizó el recorrido completo de las demás pestañas/estados hover por límites de la
+herramienta de UI automation en esta sesión (un click simulado no aterrizó en la ventana de
+WinBoost). Falta la confirmación visual del usuario sobre el resto de los estilos (`BtnPreset`,
+`BtnDanger`, `BtnToggleOn/Off`, `BtnNav*`) en las pestañas Optimizar/Herramientas/Bloatware/
+Licencia del publicado en `src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`.
+
+---
+
 ## C# fix: borde del CheckBox marcado quedaba "apagado" al destildar y volver a tildar
 
 Bug reportado por el usuario sobre el publicado: la primera vez que se tilda una casilla el

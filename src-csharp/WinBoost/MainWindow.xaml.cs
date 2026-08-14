@@ -69,6 +69,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // Tuning Avanzado (6.1): carga lazy + estado del Driver Store
     private bool _tuningLoaded = false;
+    // true mientras se setea IsChecked de los ToggleSwitch por codigo (init o revert tras error):
+    // los handlers Checked/Unchecked lo chequean primero para no auto-aplicar el tweak (16B).
+    private bool _tuningSyncing = false;
     private IReadOnlyList<DriverPackage> _driverPackages = [];
     private readonly List<CheckBox> _driverChecks = [];
     private bool _driverBackupDone = false;
@@ -248,12 +251,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnCheckUpdatesSettings.Click += async (_, _) => await CheckForUpdatesAsync(manual: true);
         _ = CheckForUpdatesAsync(manual: false);
 
-        // Tuning Avanzado (6.1, modulo F2.18/F2.19)
-        btnApplyPrio.Click    += (_, _) => ApplyPrioritySeparation();
-        btnHagsOn.Click       += (_, _) => SetHags(true);
-        btnHagsOff.Click      += (_, _) => SetHags(false);
-        btnCoolActive.Click   += async (_, _) => await SetCoolingPolicyAsync(1);
-        btnCoolPassive.Click  += async (_, _) => await SetCoolingPolicyAsync(0);
+        // Tuning Avanzado (6.1, modulo F2.18/F2.19) — 3 ui:ToggleSwitch (16B, ex pares de
+        // botones Activar/Desactivar). Wpf.Ui.Controls.ToggleSwitch hereda de ToggleButton:
+        // no tiene IsOn/Toggled (API de WinUI), se cablea con IsChecked + Checked/Unchecked.
+        // _tuningSyncing evita que el set programatico de IsChecked (carga inicial o revert
+        // tras error) dispare el Set* real — ver Update*Ui, que es quien lo prende/apaga.
+        swPrio.Checked   += (_, _) => { if (!_tuningSyncing) SetPrio(true); };
+        swPrio.Unchecked += (_, _) => { if (!_tuningSyncing) SetPrio(false); };
+        swHags.Checked   += (_, _) => { if (!_tuningSyncing) SetHags(true); };
+        swHags.Unchecked += (_, _) => { if (!_tuningSyncing) SetHags(false); };
+        swCool.Checked   += async (_, _) => { if (!_tuningSyncing) await SetCoolingPolicyAsync(1); };
+        swCool.Unchecked += async (_, _) => { if (!_tuningSyncing) await SetCoolingPolicyAsync(0); };
         btnScanDrvStore.Click += async (_, _) => await ScanObsoleteDriversAsync();
         btnDriverBackup.Click += async (_, _) => await ExportDriverBackupAsync();
         btnDriverDelete.Click += async (_, _) => await DeleteSelectedDriversAsync();
@@ -2375,66 +2383,59 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     }
 
     // ── Tuning Avanzado (6.1, modulos F2.18/F2.19) ───────────────────────────
+    // 3 ui:ToggleSwitch (16B). Convencion comun a los 3 Update*Ui: setean SIEMPRE el
+    // texto de estado + el IsChecked del switch (bajo _tuningSyncing=true, asi el
+    // Checked/Unchecked que dispara nunca re-entra a Set*) — se llaman tanto en la
+    // carga inicial (LoadTuningTabAsync) como para revertir el switch si el Set* real
+    // tira excepcion o devuelve false, para que la UI nunca muestre un estado que no
+    // se pudo aplicar de verdad.
 
-    private sealed record PrioOption(string Label, int Value, string Desc);
-
-    // Mirror de $prioOptions del PS1 (Win32PrioritySeparation).
-    private static readonly PrioOption[] PrioOptions =
-    {
-        new("Windows default (0x26) - sin cambio", 38,
-            "Comportamiento estandar de Windows. La mayoria de usuarios no notara diferencia vs los otros valores."),
-        new("Consistencia (0x16) - prioridad igual a todos los procesos", 22,
-            "Reduce la ventaja de CPU del proceso en primer plano. Util bajo carga extrema multitarea."),
-        new("Responsividad (0x24) - prioridad al proceso activo", 36,
-            "Da mas CPU al proceso en foco. Puede mejorar la sensacion de fluidez en el escritorio."),
-    };
-
-    // Carga lazy del tab: combo + estados + info de componentes (off-UI lo pesado).
+    // Carga lazy del tab: los 3 estados reales del sistema (Politica termica es la
+    // unica que pega afuera del proceso -powercfg-, off-UI-thread).
     private async Task LoadTuningTabAsync()
     {
-        // Scheduler de CPU
-        cboPrio.Items.Clear();
-        foreach (var opt in PrioOptions)
-            cboPrio.Items.Add(new ComboBoxItem { Content = opt.Label, Tag = opt.Value });
-
-        int cur    = App.Tuning.GetWin32PrioritySep();
-        int selIdx = 0;
-        for (int i = 0; i < PrioOptions.Length; i++)
-            if (PrioOptions[i].Value == cur) { selIdx = i; break; }
-
-        cboPrio.SelectionChanged += (_, _) =>
-        {
-            if (cboPrio.SelectedIndex >= 0)
-                lblPrioDesc.Text = PrioOptions[cboPrio.SelectedIndex].Desc;
-        };
-        cboPrio.SelectedIndex    = selIdx;
-        lblPrioDesc.Text         = PrioOptions[selIdx].Desc;
-        lblPrioStatus.Text       = $"Valor actual en registro: {cur} (0x{cur:X})";
-        lblPrioStatus.Foreground = BrushLicFree;
-
-        // HAGS (registro, rapido)
+        UpdatePrioUi(App.Tuning.GetWin32PrioritySep());
         UpdateHagsUi(App.Tuning.GetHagsState());
 
-        // Politica termica (powercfg): off-UI-thread.
-        // (La info de componentes se movio a la tab Info del sistema.)
         int cool = await Task.Run(() => App.Tuning.GetCoolingPolicyState());
         UpdateCoolingUi(cool);
     }
 
-    // Mirror del btnApplyPrio.
-    private void ApplyPrioritySeparation()
+    // Scheduler de CPU (Win32PrioritySeparation). ON = 0x28 (decision del usuario,
+    // reemplaza el viejo preset "Responsividad" 0x24 - mejores 1% low en su hardware).
+    // OFF = default de Windows (2). Estado desconocido (valor tocado por fuera, ni 2 ni
+    // 0x28) se muestra OFF: no hay forma honesta de representarlo como "activo" y no
+    // debe crashear ni mentir sobre que tweak esta aplicado.
+    private void UpdatePrioUi(int value)
     {
-        if (cboPrio.SelectedIndex < 0) return;
-        int newVal = PrioOptions[cboPrio.SelectedIndex].Value;
+        bool isResp = value == 0x28;
+        string label = value switch
+        {
+            0x28 => "Responsividad (0x28) - prioridad al proceso activo",
+            2    => "Default de Windows (2) - sin cambio",
+            _    => $"Personalizado ({value}, 0x{value:X}) - valor no reconocido, mostrado como inactivo",
+        };
+        lblPrioState.Text       = $"Estado: {label}";
+        lblPrioState.Foreground = isResp ? BrushGreen : BrushLicFree;
+        _tuningSyncing = true;
+        try { swPrio.IsChecked = isResp; } finally { _tuningSyncing = false; }
+    }
+
+    // Mirror del ex btnApplyPrio (ahora Checked/Unchecked de swPrio).
+    private void SetPrio(bool on)
+    {
+        int newVal = on ? 0x28 : 2;
         try
         {
             App.Tuning.SetWin32PrioritySep(newVal);
+            UpdatePrioUi(newVal);
             lblPrioStatus.Text       = $"Aplicado: {newVal} (0x{newVal:X}) - efectivo al reiniciar sesion.";
             lblPrioStatus.Foreground = BrushGreen;
             App.Logger.Log($"Win32PrioritySeparation -> {newVal} (0x{newVal:X})", "ok");
         }
         catch (Exception ex)
         {
+            UpdatePrioUi(App.Tuning.GetWin32PrioritySep()); // revierte el switch al valor real
             lblPrioStatus.Text       = $"Error al aplicar: {ex.Message}";
             lblPrioStatus.Foreground = BrushRed;
         }
@@ -2444,11 +2445,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         lblHagsState.Text       = state ? "Estado: Activo" : "Estado: Inactivo";
         lblHagsState.Foreground = state ? BrushGreen : BrushLicFree;
-        btnHagsOn.IsEnabled     = !state;
-        btnHagsOff.IsEnabled    = state;
+        _tuningSyncing = true;
+        try { swHags.IsChecked = state; } finally { _tuningSyncing = false; }
     }
 
-    // Mirror del btnHagsOn/btnHagsOff.
+    // Mirror del ex btnHagsOn/btnHagsOff (ahora Checked/Unchecked de swHags).
     private void SetHags(bool enable)
     {
         try
@@ -2462,6 +2463,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (Exception ex)
         {
+            UpdateHagsUi(!enable); // revierte el switch: la escritura de registro fallo
             lblHagsResult.Text       = $"Error: {ex.Message}";
             lblHagsResult.Foreground = BrushRed;
         }
@@ -2469,17 +2471,19 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void UpdateCoolingUi(int state)
     {
-        (string label, SolidColorBrush brush) = state switch
+        (string label, SolidColorBrush brush, bool isOn) = state switch
         {
-            1 => ("Activa (ventiladores priorizados)",      BrushGreen),
-            0 => ("Pasiva (ahorro antes que temperatura)",  BrushYellow),
-            _ => ("No disponible / plan personalizado",     BrushLicFree),
+            1 => ("Activa (ventiladores priorizados)",      BrushGreen,   true),
+            0 => ("Pasiva (ahorro antes que temperatura)",  BrushYellow,  false),
+            _ => ("No disponible / plan personalizado",     BrushLicFree, false),
         };
         lblCoolState.Text       = $"Modo actual: {label}";
         lblCoolState.Foreground = brush;
+        _tuningSyncing = true;
+        try { swCool.IsChecked = isOn; } finally { _tuningSyncing = false; }
     }
 
-    // Mirror del btnCoolActive/btnCoolPassive.
+    // Mirror del ex btnCoolActive/btnCoolPassive (ahora Checked/Unchecked de swCool).
     private async Task SetCoolingPolicyAsync(int value)
     {
         bool ok = await Task.Run(() => App.Tuning.SetCoolingPolicy(value));
@@ -2493,6 +2497,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         else
         {
+            UpdateCoolingUi(1 - value); // revierte el switch: powercfg no lo acepto
             lblCoolResult.Text       = "No se pudo aplicar. El plan de energia personalizado puede no soportarlo.";
             lblCoolResult.Foreground = BrushRed;
         }

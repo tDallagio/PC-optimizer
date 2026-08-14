@@ -9,7 +9,7 @@
   <ui:FluentWindow.Resources>
 
     <Style x:Key="BtnMain" TargetType="Button">
-      <Setter Property="Foreground" Value="#0D0D0D"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrushAppBg}"/>
       <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontSize" Value="13"/>
       <Setter Property="Padding" Value="{StaticResource PadButton}"/><Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -35,13 +35,13 @@
           <Trigger Property="IsPressed" Value="True">
             <Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.97" ScaleY="0.97"/></Setter.Value></Setter>
           </Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="bdr" Property="Background" Value="#2A2A2A"/><Setter Property="Foreground" Value="#555555"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter TargetName="bdr" Property="Background" Value="{DynamicResource BrushBorder}"/><Setter Property="Foreground" Value="{DynamicResource BrushFgDim}"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
 
     <Style x:Key="BtnSec" TargetType="Button">
-      <Setter Property="Foreground" Value="#CCCCCC"/>
+      <Setter Property="Foreground" Value="{DynamicResource BrushFg2}"/>
       <Setter Property="FontSize" Value="12"/><Setter Property="Padding" Value="14,7"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -50,35 +50,35 @@
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
         <Border x:Name="bdr" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource RadiusMd}" Padding="{TemplateBinding Padding}">
           <!-- Pinceles inline animables: fondo + borde con transicion al acento en hover -->
-          <Border.Background><SolidColorBrush x:Name="bgSec" Color="#1E1E1E"/></Border.Background>
-          <Border.BorderBrush><SolidColorBrush x:Name="bdSec" Color="#2A2A2A"/></Border.BorderBrush>
+          <Border.Background><SolidColorBrush x:Name="bgSec" Color="{StaticResource CtrlColor}"/></Border.Background>
+          <Border.BorderBrush><SolidColorBrush x:Name="bdSec" Color="{StaticResource BorderColor}"/></Border.BorderBrush>
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True">
             <Trigger.EnterActions><BeginStoryboard><Storyboard>
-              <ColorAnimation Storyboard.TargetName="bgSec" Storyboard.TargetProperty="Color" To="#2A2A2A" Duration="{StaticResource DurFast}"/>
+              <ColorAnimation Storyboard.TargetName="bgSec" Storyboard.TargetProperty="Color" To="{StaticResource BorderColor}" Duration="{StaticResource DurFast}"/>
               <ColorAnimation Storyboard.TargetName="bdSec" Storyboard.TargetProperty="Color" To="{StaticResource AccentColor}" Duration="{StaticResource DurFast}"/>
             </Storyboard></BeginStoryboard></Trigger.EnterActions>
             <Trigger.ExitActions><BeginStoryboard><Storyboard>
-              <ColorAnimation Storyboard.TargetName="bgSec" Storyboard.TargetProperty="Color" To="#1E1E1E" Duration="{StaticResource DurFast}"/>
-              <ColorAnimation Storyboard.TargetName="bdSec" Storyboard.TargetProperty="Color" To="#2A2A2A" Duration="{StaticResource DurFast}"/>
+              <ColorAnimation Storyboard.TargetName="bgSec" Storyboard.TargetProperty="Color" To="{StaticResource CtrlColor}" Duration="{StaticResource DurFast}"/>
+              <ColorAnimation Storyboard.TargetName="bdSec" Storyboard.TargetProperty="Color" To="{StaticResource BorderColor}" Duration="{StaticResource DurFast}"/>
             </Storyboard></BeginStoryboard></Trigger.ExitActions>
           </Trigger>
           <Trigger Property="IsPressed" Value="True">
             <Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.97" ScaleY="0.97"/></Setter.Value></Setter>
           </Trigger>
           <Trigger Property="IsEnabled" Value="False">
-            <Setter TargetName="bdr" Property="Background" Value="#161616"/><Setter Property="Foreground" Value="#444444"/>
+            <Setter TargetName="bdr" Property="Background" Value="{DynamicResource BrushCard}"/><Setter Property="Foreground" Value="#444444"/>
           </Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
 
     <Style x:Key="BtnPreset" TargetType="Button">
-      <Setter Property="Background" Value="#161616"/><Setter Property="Foreground" Value="#AAAAAA"/>
+      <Setter Property="Background" Value="{DynamicResource BrushCard}"/><Setter Property="Foreground" Value="#AAAAAA"/>
       <Setter Property="FontSize" Value="11"/><Setter Property="Padding" Value="12,6"/>
-      <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#2A2A2A"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="{DynamicResource BrushBorder}"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
       <Setter Property="RenderTransform"><Setter.Value><ScaleTransform/></Setter.Value></Setter>
@@ -89,8 +89,8 @@
         </Border>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True">
-            <Setter Property="Background" Value="#1E1E1E"/><Setter Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
-            <Setter Property="Foreground" Value="#EEEEEE"/>
+            <Setter Property="Background" Value="{DynamicResource BrushCtrl}"/><Setter Property="BorderBrush" Value="{StaticResource BrushAccent}"/>
+            <Setter Property="Foreground" Value="{DynamicResource BrushFg1}"/>
           </Trigger>
           <Trigger Property="IsPressed" Value="True">
             <Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.97" ScaleY="0.97"/></Setter.Value></Setter>
@@ -100,7 +100,7 @@
     </Style>
 
     <Style x:Key="BtnDanger" TargetType="Button">
-      <Setter Property="Background" Value="#2A0A0A"/><Setter Property="Foreground" Value="#EF4444"/>
+      <Setter Property="Background" Value="#2A0A0A"/><Setter Property="Foreground" Value="{StaticResource BrushErr}"/>
       <Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/>
       <Setter Property="Padding" Value="16,7"/><Setter Property="BorderThickness" Value="1"/>
       <Setter Property="BorderBrush" Value="#4A1A1A"/><Setter Property="Cursor" Value="Hand"/>
@@ -112,17 +112,17 @@
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
-          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#3D1212"/><Setter Property="BorderBrush" Value="#EF4444"/></Trigger>
+          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#3D1212"/><Setter Property="BorderBrush" Value="{StaticResource BrushErr}"/></Trigger>
           <Trigger Property="IsPressed" Value="True">
             <Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.97" ScaleY="0.97"/></Setter.Value></Setter>
           </Trigger>
-          <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#161616"/><Setter Property="Foreground" Value="#444444"/></Trigger>
+          <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="{DynamicResource BrushCard}"/><Setter Property="Foreground" Value="#444444"/></Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate></Setter.Value></Setter>
     </Style>
 
     <Style x:Key="BtnToggleOn" TargetType="Button">
-      <Setter Property="Background" Value="#2A1212"/><Setter Property="Foreground" Value="#EF4444"/>
+      <Setter Property="Background" Value="#2A1212"/><Setter Property="Foreground" Value="{StaticResource BrushErr}"/>
       <Setter Property="FontSize" Value="10"/><Setter Property="Padding" Value="8,4"/>
       <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#3D1A1A"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -138,7 +138,7 @@
     </Style>
 
     <Style x:Key="BtnToggleOff" TargetType="Button">
-      <Setter Property="Background" Value="#122A12"/><Setter Property="Foreground" Value="#22C55E"/>
+      <Setter Property="Background" Value="#122A12"/><Setter Property="Foreground" Value="{StaticResource BrushOk}"/>
       <Setter Property="FontSize" Value="10"/><Setter Property="Padding" Value="8,4"/>
       <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#1A3D1A"/>
       <Setter Property="Cursor" Value="Hand"/>
@@ -389,8 +389,8 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="bdr" Property="Background" Value="#1A1A1A"/>
-                <Setter Property="Foreground" Value="#CCCCCC"/>
+                <Setter TargetName="bdr" Property="Background" Value="{DynamicResource BrushElev}"/>
+                <Setter Property="Foreground" Value="{DynamicResource BrushFg2}"/>
               </Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter TargetName="bdr" Property="Background" Value="#00C8FF10"/>
@@ -414,7 +414,7 @@
     <!-- Nav Licencia -->
     <Style x:Key="BtnNavLicense" TargetType="Button"
            BasedOn="{StaticResource BtnNav}">
-      <Setter Property="Foreground"  Value="#F59E0B"/>
+      <Setter Property="Foreground"  Value="{StaticResource BrushWarn}"/>
       <Setter Property="FontWeight"  Value="SemiBold"/>
     </Style>
 
@@ -2483,18 +2483,18 @@
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="90"/>
+                  <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <ComboBox x:Name="cboPrio" Grid.Column="0" FontSize="12" Margin="0,0,8,0"
-                          Style="{StaticResource ComboDark}"/>
-                <Button x:Name="btnApplyPrio" Grid.Column="1" Content="Aplicar"
-                        Style="{StaticResource BtnMain}" Padding="14,7"/>
+                <StackPanel Grid.Column="0">
+                  <TextBlock x:Name="lblPrioState" FontSize="13" FontWeight="SemiBold"
+                             Margin="0,0,0,4" Text="Estado: --"/>
+                  <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
+                    Text="Da mas prioridad de CPU al proceso en primer plano frente a los de fondo. El efecto varia segun el sistema y el juego: puede notarse en la fluidez percibida y en los 1% low, o no notarse en hardware moderno. ON aplica 0x28 (prioridad alta al proceso activo); OFF vuelve al valor por defecto de Windows (2)."/>
+                </StackPanel>
+                <ui:ToggleSwitch x:Name="swPrio" Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
+                                  OnContent="Responsividad" OffContent="Default"/>
               </Grid>
-              <TextBlock x:Name="lblPrioDesc" FontSize="11" Foreground="{DynamicResource BrushFgMuted}"
-                         TextWrapping="Wrap" Margin="0,8,0,0"/>
-              <TextBlock x:Name="lblPrioStatus" FontSize="11" Margin="0,6,0,0"/>
-              <TextBlock FontSize="10" Foreground="#555555" TextWrapping="Wrap" Margin="0,10,0,0"
-                Text="Nota: el efecto medible de este parametro es minimo en hardware moderno. No es una palanca de rendimiento real para la mayoria de usuarios."/>
+              <TextBlock x:Name="lblPrioStatus" FontSize="11" Margin="0,8,0,0"/>
             </StackPanel>
           </Border>
 
@@ -2515,14 +2515,10 @@
                   <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
                     Text="Delega el scheduling de frames de GPU al hardware en lugar del driver de pantalla. Reduce latencia de GPU en juegos y aplicaciones graficas intensivas. Requiere Windows 10 v2004+, GPU compatible y reinicio."/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center">
-                  <Button x:Name="btnHagsOn" Content="Activar" Style="{StaticResource BtnMain}"
-                          Padding="14,7" Margin="0,0,0,6"/>
-                  <Button x:Name="btnHagsOff" Content="Desactivar" Style="{StaticResource BtnSec}"
-                          Padding="14,7"/>
-                  <TextBlock x:Name="lblHagsResult" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                </StackPanel>
+                <ui:ToggleSwitch x:Name="swHags" Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
+                                  OnContent="Activo" OffContent="Inactivo"/>
               </Grid>
+              <TextBlock x:Name="lblHagsResult" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap"/>
             </StackPanel>
           </Border>
 
@@ -2532,16 +2528,20 @@
             <StackPanel>
               <TextBlock Text="POLITICA TERMICA" FontSize="10" FontWeight="SemiBold"
                          Foreground="#F59E0B" Margin="0,0,0,12"/>
-              <TextBlock x:Name="lblCoolState" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"
-                         Text="Modo actual: --"/>
-              <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,0,0,10"
-                Text="Activa: el plan de energia permite maxima frecuencia de CPU y ventiladores para mantener temperatura. Pasiva: el sistema reduce frecuencia de CPU antes de acelerar ventiladores (mas silencioso, algo menos de rendimiento)."/>
-              <StackPanel Orientation="Horizontal">
-                <Button x:Name="btnCoolActive" Content="Politica Activa" Style="{StaticResource BtnMain}"
-                        Padding="14,7" Margin="0,0,8,0"/>
-                <Button x:Name="btnCoolPassive" Content="Politica Pasiva" Style="{StaticResource BtnSec}"
-                        Padding="14,7"/>
-              </StackPanel>
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                  <TextBlock x:Name="lblCoolState" FontSize="13" FontWeight="SemiBold"
+                             Margin="0,0,0,4" Text="Modo actual: --"/>
+                  <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
+                    Text="Activa: el plan de energia permite maxima frecuencia de CPU y ventiladores para mantener temperatura. Pasiva: el sistema reduce frecuencia de CPU antes de acelerar ventiladores (mas silencioso, algo menos de rendimiento)."/>
+                </StackPanel>
+                <ui:ToggleSwitch x:Name="swCool" Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
+                                  OnContent="Activa" OffContent="Pasiva"/>
+              </Grid>
               <TextBlock x:Name="lblCoolResult" FontSize="11" Margin="0,8,0,0"/>
             </StackPanel>
           </Border>

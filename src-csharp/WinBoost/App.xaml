@@ -47,6 +47,14 @@
         <SolidColorBrush x:Key="BrushErr"  Color="{StaticResource ErrColor}"/>
         <SolidColorBrush x:Key="BrushInfo" Color="{StaticResource AccentColor}"/>
 
+        <!-- Colores de superficie reutilizados en animaciones de botones (BtnSec): mismo
+             valor que BrushCtrl/BrushBorder de MainWindow.xaml, pero como Color (no Brush)
+             porque ColorAnimation solo puede animar la propiedad Color de un Brush con
+             nombre, no un recurso Brush directamente (ver leccion documentada en CHANGELOG
+             sobre Setter.TargetName contra un Freezable con nombre). -->
+        <Color x:Key="CtrlColor">#1E1E1E</Color>
+        <Color x:Key="BorderColor">#2A2A2A</Color>
+
         <!-- Tipografia -->
         <FontFamily x:Key="FontFamilyBase">Segoe UI</FontFamily>
         <sys:Double x:Key="FontCaption">10</sys:Double>
