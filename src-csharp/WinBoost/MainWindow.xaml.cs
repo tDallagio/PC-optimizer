@@ -111,6 +111,21 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         InitializeComponent();
         _memStatus.dwLength = NativeMethods.MemoryStatusExSize;
         Loaded += OnLoaded;
+        StateChanged += OnStateChanged;
+    }
+
+    // Ventana de tamano fijo: ResizeMode=CanMinimize ya saca WS_MAXIMIZEBOX y WS_THICKFRAME, lo
+    // que tapa los caminos de usuario (borde arrastrable, Win+flecha arriba, snap al borde
+    // superior, Maximizar del menu de sistema y del click derecho en la taskbar), y la TitleBar
+    // va con ShowMaximize/CanMaximize en False. Lo que NINGUNO de esos tapa es el maximizado por
+    // codigo: verificado que con CanMinimize un WindowState=Maximized (o un WM_SYSCOMMAND
+    // SC_MAXIMIZE) igual agranda la ventana a pantalla completa. Este guard es el cierre final:
+    // si algo la maximiza, vuelve a Normal. Solo mira Maximized, asi que no interfiere con
+    // minimizar.
+    private void OnStateChanged(object? sender, EventArgs e)
+    {
+        if (WindowState == WindowState.Maximized)
+            WindowState = WindowState.Normal;
     }
 
     private static SolidColorBrush FreezeBrush(Color c)
@@ -639,9 +654,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private void PopulateSystemInfoControls(SystemSnapshot info)
     {
         string diskType = info.HasSsd ? "SSD" : "HDD";
-        string osShort  = info.OsCaption.Replace("Microsoft ", "");
-
-        lblOS.Text   = osShort;
 
         infoOS.Text   = info.OsCaption;
         infoCPU.Text  = info.CpuName;
@@ -2093,35 +2105,38 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         return true;
     }
 
-    // Mirror de Update-LicenseBadge: badge Free/Pro + texto de estado segun tier/trial.
+    // Mirror de Update-LicenseBadge: badge Free/Pro/Tecnico/Prueba + texto de estado segun tier/trial.
+    // La deteccion de tier (IsTech/IsPro/IsTrial) no cambia; solo la variante visual por rama.
     private void UpdateLicenseBadge()
     {
         var lic = App.License;
+        badgeLicenseFree.Visibility  = Visibility.Collapsed;
+        badgeLicensePro.Visibility   = Visibility.Collapsed;
+        badgeLicenseTech.Visibility  = Visibility.Collapsed;
+        badgeLicenseTrial.Visibility = Visibility.Collapsed;
+
         if (lic.IsTech)
         {
-            badgeLicenseFree.Visibility = Visibility.Collapsed;
-            badgeLicensePro.Visibility  = Visibility.Visible;
+            badgeLicenseTech.Visibility = Visibility.Visible;
             lblLicenseStatus.Text       = "WinBoost TECNICO activado - multi-PC";
             lblLicenseStatus.Foreground = BrushGreen;
         }
         else if (lic.IsPro && !lic.IsTrial)
         {
-            badgeLicenseFree.Visibility = Visibility.Collapsed;
-            badgeLicensePro.Visibility  = Visibility.Visible;
+            badgeLicensePro.Visibility = Visibility.Visible;
             lblLicenseStatus.Text       = "WinBoost PRO activado";
             lblLicenseStatus.Foreground = BrushYellow;
         }
         else if (lic.IsPro && lic.IsTrial)
         {
-            badgeLicenseFree.Visibility = Visibility.Collapsed;
-            badgeLicensePro.Visibility  = Visibility.Visible;
-            lblLicenseStatus.Text       = $"Periodo de prueba activo ({lic.TrialDaysLeft} dias restantes)";
-            lblLicenseStatus.Foreground = BrushYellow;
+            badgeLicenseTrial.Visibility = Visibility.Visible;
+            lblLicenseTrialDays.Text     = $"· {lic.TrialDaysLeft}d";
+            lblLicenseStatus.Text        = $"Periodo de prueba activo ({lic.TrialDaysLeft} dias restantes)";
+            lblLicenseStatus.Foreground  = BrushYellow;
         }
         else
         {
             badgeLicenseFree.Visibility = Visibility.Visible;
-            badgeLicensePro.Visibility  = Visibility.Collapsed;
             if (App.Settings.Current.TrialExpired)
             {
                 lblLicenseStatus.Text       = "Periodo de prueba vencido";

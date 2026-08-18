@@ -5,6 +5,250 @@
 
 ---
 
+## Registro: pendiente de escalado DPI de la ventana fija (24_registrar_escalado_dpi.txt)
+
+Sólo documentación, sin cambios de código. Se registró en `docs/PENDIENTES.md` (sección
+Pre-lanzamiento, junto a los otros ítems de "funciona en dev, falla en la máquina del usuario") el
+pendiente de compatibilidad de la ventana fija 1000x720 con pantallas chicas y escala DPI: los 720px
+lógicos entran en 768px sólo al 100% de escala, y al 125% —común en laptops 1366x768 de gama
+baja/media del mercado LATAM— se renderizan como ~900px físicos y la ventana queda cortada sin poder
+achicarla. Bloqueante de mercado a decidir antes del lanzamiento, con cuatro estrategias listadas
+para evaluar (bajar el alto lógico, ajuste adaptativo por escala detectada, modo compacto, o declarar
+resolución mínima soportada).
+
+---
+
+## Ventana de tamaño fijo 1000x720, sin maximizar (23_ventana_fija_1000x720.txt)
+
+Decisión de producto (PENDIENTES Módulo 1, item 10): la app deja de ser redimensionable/maximizable
+y pasa a lienzo único de **1000x720**, para poder diseñar el rediseño sobre un tamaño predecible. El
+problema que resolvía: al maximizar, el contenido —diseñado para un tamaño concreto— se veía estirado
+y desproporcionado.
+
+**`ui:FluentWindow`**: `Width` 900→1000, `Height` 680→720, `MinWidth`/`MinHeight` (800/560)
+eliminados por no aplicar ya, `WindowStartupLocation="CenterScreen"` intacto. El alto 720 se eligió
+para entrar con margen en pantallas de 768px. Como el tamaño nuevo es MAYOR que el anterior (que ya
+funcionaba a 900x680), no hay riesgo de recorte de contenido; el aprovechamiento del espacio extra
+queda para los pasos de rediseño siguientes.
+
+**`ui:TitleBar`**: `ShowMaximize="False"` (saca el botón; quedan sólo minimizar y cerrar) y
+`CanMaximize="False"` (tapa el doble click sobre la barra de título, que con chrome custom lo maneja
+la propia TitleBar de WPF-UI y no el sistema). Ambas propiedades confirmadas como existentes en
+WPF-UI 4.3.0.
+
+**`ResizeMode="CanMinimize"`, no `NoResize`** — desvío deliberado del texto del prompt, para cumplir
+su objetivo declarado ("dejar solo minimizar y cerrar"). Medido con un harness que replica esta misma
+configuración de ventana y lee los estilos Win32 reales:
+
+| ResizeMode | WS_MAXIMIZEBOX | WS_THICKFRAME | WS_MINIMIZEBOX |
+|---|---|---|---|
+| `NoResize` | False | False | **False** |
+| `CanMinimize` | False | False | **True** |
+
+Los dos bloquean igual el redimensionado y el maximizado a nivel de sistema, pero `NoResize` además
+borra `WS_MINIMIZEBOX`, o sea le saca a la ventana la *capacidad* de minimizarse (el botón propio de
+WPF-UI sigue andando porque setea `WindowState` directo, pero quedan incoherentes el menú de sistema,
+el click derecho en la taskbar y Win+flecha abajo). `CanMinimize` es exactamente la semántica pedida:
+tamaño fijo, sin maximizar, minimizable.
+
+**Guard de maximizado en `MainWindow.xaml.cs`** (`StateChanged` → si queda `Maximized`, vuelve a
+`Normal`). El prompt pedía tapar cualquier camino que todavía maximizara y reportarlo: **se encontró
+uno**. Ni `NoResize` ni `CanMinimize` ni las props de la TitleBar impiden el maximizado **por
+código** — verificado que con ambos ResizeMode un `WindowState = Maximized` (y un `WM_SYSCOMMAND`
+`SC_MAXIMIZE`) igual agrandan la ventana a 1936x1096. Con el guard puesto, ambos vuelven solos a
+1000x720 / `Normal`. Los caminos de usuario (borde arrastrable, Win+flecha arriba, snap al borde
+superior, Maximizar del menú de sistema y de la taskbar) ya los bloquea el propio `ResizeMode` vía
+estilos de ventana. Hoy ningún código de la app toca `WindowState` (verificado), así que el guard es
+cierre preventivo, no parche de un bug activo.
+
+Sin cambios de layout interno, header, navegación ni otros controles.
+
+Verificado: `dotnet build` OK (0 errores) y publicado con `Publish-CSharp.ps1 -SkipInstaller`.
+Confirmación visual final del usuario sobre el `.exe` publicado.
+
+---
+
+## Fix: badgeLaptop y badgeUpdate estirados al alto de la fila del header
+
+Bug latente encontrado midiendo la alineación del header (ver entrada siguiente, donde quedó
+registrado como residual) y corregido a pedido del usuario.
+
+**Bug**: `badgeLaptop` ("LAPTOP", se muestra al detectar notebook) y `badgeUpdate` ("Actualizacion
+disponible", se muestra cuando hay update) no tenían `VerticalAlignment="Center"`. Un `Border` hijo
+de un `StackPanel` horizontal toma `VerticalAlignment="Stretch"` por defecto, así que en vez de
+ajustarse a su contenido se arreglaba al alto COMPLETO de la fila — que lo fija el contenedor del
+rayo, 32px. Medido en harness: **32.00px contra los 19.30px de los chips de versión y de tier**, o
+sea bloques casi el doble de altos pegados a los chips. Como ambos badges arrancan `Collapsed`, el
+defecto solo aparecía cuando se hacían visibles (notebook detectada / update disponible), que es
+justo cuando el usuario los mira.
+
+**Fix**: `VerticalAlignment="Center"` en los dos `Border`, más armonización geométrica con los chips
+ya aprobados — `CornerRadius` 4→6 y `Padding` `"6,2"`→`"9,3"`. El padding vertical 3 sin borde da
+exactamente **19.30px**, el mismo alto al que llegan los chips de tier por otro camino (borde 1 +
+padding 2). Verificado por medición: los dos badges quedan en 19.30px de alto y centro 26.000,
+idénticos al chip de versión y al de tier. Colores, textos, tooltip y lógica de visibilidad sin
+tocar.
+
+---
+
+## Header: alineación óptica del wordmark (22_header_alineacion_fina.txt)
+
+Micro-ajuste final del grupo de marca del header. Único cambio funcional: **una línea de XAML**.
+
+**Diagnóstico medido, no estimado.** Se armó un harness WPF descartable que replica el grupo de
+marca **con los `ResourceDictionary` de WPF-UI mergeados igual que `App.xaml`** (la pasada anterior
+los omitía, y por eso midió mal), lo renderiza con supersampling 16x y calcula el centro de la
+*tinta* real de cada glifo por color-keying. Resultado:
+
+| elemento | centro vertical medido |
+|---|---|
+| rayo (glifo `Flash20`) | 26.000 |
+| chip `v4.3` (caja) | 26.000 |
+| chip de tier (caja) | 26.000 |
+| wordmark "WinBoost" (tinta) | **27.031** |
+
+O sea: el rayo y los dos chips ya estaban centrados exactos entre sí — **el que colgaba 1px abajo
+era el wordmark**, y eso es lo que se percibía como "los chips quedan altos". La causa es la caja
+de línea asimétrica de Segoe UI (ascent 2210 / descent 514 sobre 2048 em): la tinta de los glifos
+queda ~5.4% del `FontSize` por debajo del centro de su propia caja — a `FontSize=19`, 1.03px.
+
+**Fix**: `Margin="0,-1,0,1"` en el `TextBlock` del wordmark. No es un margen de layout — el `-1`
+arriba y el `+1` abajo se cancelan, así que **no cambia el alto ni corre a los vecinos**: sólo
+desplaza el texto 1px hacia arriba. Residual medido tras el fix: **0.031px** (invisible). Va con
+comentario en el XAML explicando la causa y la regla (`FontSize * 0.054`) por si cambia el tamaño
+de fuente.
+
+Se corrige en el wordmark y no en los chips a propósito: el wordmark es **un** elemento, y al
+alinearlo contra el centro real de la fila quedan bien las 4 variantes de tier (FREE/PRO/TECH/
+PRUEBA) sin tocar ninguna — verificado que las 4 comparten alto (19.30px) y centro. Un tier nuevo
+hereda la alineación correcta por construcción.
+
+Sin cambios de colores, tamaños de badge, SALUD, navegación, consola ni sidebar.
+
+Verificado: `dotnet build` OK (0 errores) y publicado con `Publish-CSharp.ps1 -SkipInstaller`.
+Confirmación visual final del usuario sobre el `.exe` publicado.
+
+**Residual conocido** (medido, NO corregido por estar fuera del alcance del pedido): el texto dentro
+de cada chip queda 0.6px bajo respecto al centro de su propia píldora, por el mismo fenómeno de caja
+de línea a `FontSize=10` — sub-pixel, y tocarlo implicaba modificar el padding de los 4 chips ya
+aprobados. El otro residual detectado en esta pasada (`badgeLaptop`/`badgeUpdate` estirados) se
+corrigió acto seguido, ver la entrada de arriba.
+
+---
+
+## Corrección del header: rayo, badge compacto, alineación (21_header_correccion.txt)
+
+Tres defectos puntuales sobre el rediseño v2 (entrada siguiente), detectados por el usuario contra
+el diseño aprobado, sin tocar SALUD/navegación/consola/sidebar ni los colores del badge (ya
+aprobados):
+
+**Rayo reemplazado por ícono vectorial**: el `TextBlock` con el glyph Unicode `&#x26A1;` (Segoe UI
+Symbol) se reemplazó por `ui:SymbolIcon Symbol="Flash20"` de WPF-UI, cyan `BrushAccent`, `20x20`
+explícito. Contenedor achicado de `36x36` a `32x32`/`CornerRadius 8` para acompañar el ícono real
+en vez del glyph sobredimensionado del intento anterior.
+
+**Badge de licencia sobredimensionado — causa raíz medida, no adivinada**: antes de tocar XAML se
+armó un harness WPF descartable (`SymbolIcon` aislado en un `Border`+`Measure`/`Arrange`) para medir
+el problema en vez de iterar a ciegas por tercera vez. Resultado: `ui:SymbolIcon` sin `Width`/
+`Height` explícitos mide ~1.33× su `FontSize` de alto (a `FontSize=12` mide 15.96px, no 12px) por el
+line-height propio de la fuente Segoe Fluent Icons — por eso el badge salía más alto que el chip de
+versión aunque el `Padding` ya coincidiera con el pedido. Fix en las 4 variantes
+(`badgeLicenseFree`/`Pro`/`Tech`/`Trial`): cada `ui:SymbolIcon` (`Crown16`/`ShieldCheckmark16`/
+`Clock16`) ahora fija `Width="12" Height="12"` explícito, y el `Padding` de los 4 `Border` bajó de
+`"9,3"` a `"9,2"` (igual al vertical del chip de versión). Medido con el mismo harness: ambos chips
+dan exactamente `19.30px` de alto. Colores sin cambios.
+
+**Alineación vertical**: `VerticalAlignment="Center"` agregado explícitamente en el `Border` del
+rayo, el chip de versión y los 4 `Border` de licencia (antes solo lo tenía el `StackPanel` padre,
+que no lo propaga a hijos de distinta altura en un `StackPanel` horizontal — por eso el badge PRO,
+más alto que el resto, quedaba colgando hacia abajo en vez de centrado).
+
+Verificado: `dotnet build` OK (0 errores), publicado con `Publish-CSharp.ps1 -SkipInstaller`.
+Confirmación visual final pendiente del usuario comparando con el diseño aprobado.
+
+---
+
+## Rediseño Módulo 1: header estético v2 — wordmark y colores de tier (20_header_estetico_v2.txt)
+
+Segunda pasada sobre el header (v1, entrada siguiente): mismos elementos base (cuadro del SO ya
+quitado, SALUD ya reubicado en la esquina derecha) — esta vuelta corrige los colores de tier y
+agrega el wordmark en dos pesos que v1 no incluía. Sin cambios de navegación, consola ni sidebar.
+
+**Wordmark en dos pesos**: el `TextBlock` de "WinBoost" pasó a un único control con dos `Run`
+inline — "Win" en `FontWeight="Regular"` + "Boost" en `FontWeight="Bold"` — y `FontSize` 16→19. El
+rayo (`&#x26A1;`), contenedor `#00C8FF18` con borde `#00C8FF40`, subió de 30×30/16px a 36×36/26px
+(el primer ajuste a 30×30/22px no se notaba lo suficiente contra el mockup del usuario). Gaps del
+grupo de marca (rayo→wordmark, wordmark→chip de versión) unificados a 12px (antes 10px/8px).
+
+**Chip de versión** (`lblVersion`): `CornerRadius` 4→5, `Padding` `"6,1"`→`"8,2"` — mismo patrón
+outline sin fondo que ya tenía v1, con proporción final más ancha y baja (el primer intento,
+`"3,7"`, quedaba angosto y alto; corregido tras feedback visual del usuario sobre el .exe
+publicado).
+
+**Badges de licencia — colores exactos por tier + íconos reales.** v1 había introducido las 4
+variantes (`badgeLicenseFree`/`Pro`/`Tech`/`Trial`) pero con colores provisorios (acento cyan
+genérico para Pro, violeta para Tech) y un punto `Ellipse` como marca visual. Esta vuelta fija los
+colores definitivos elegidos por el usuario y los reemplaza por ícono real vía `ui:SymbolIcon` (WPF-UI
+ya está mergeado en `App.xaml` vía `ThemesDictionary`/`ControlsDictionary`, no hizo falta agregar
+nada):
+- **PRO**: texto/ícono `#E8A044` (ámbar cálido), fondo `#281A06`, borde `#7A4E18`, ícono
+  `Crown16`.
+- **TECH**: texto/ícono `#33D6FF` (cyan claro), fondo `#0A1E24`, borde `#1E6E85`, ícono
+  `ShieldCheckmark16`; texto del chip acortado de "TECNICO" a "TECH" (el texto de estado debajo del
+  header, en `lblLicenseStatus`, sigue en español sin cambios).
+- **PRUEBA**: texto/ícono `#F5B944` (ámbar), fondo `#1A1200`, borde `#7A5A12`, ícono `Clock16`;
+  días restantes con separador — `UpdateLicenseBadge()` en `MainWindow.xaml.cs` ahora arma
+  `lblLicenseTrialDays.Text` como `"· {N}d"` en vez de `"{N}d"` suelto.
+- **FREE**: texto `#8A8A8A`, borde `#3A3A3A`, sin fondo (sin ícono, como ya era en v1).
+- Base común de las 4: `CornerRadius` 4→6, `Padding` `"6,2"`→`"9,3"` (mismo ajuste ancho/bajo que
+  el chip de versión; el primer intento, `"3,9"`, también quedaba angosto y alto).
+
+Verificado: `dotnet build` OK (0 errores), publicado con `Publish-CSharp.ps1 -SkipInstaller` y
+corrido el `.exe` publicado. Confirmación visual final (las 4 variantes de tier + el wordmark)
+pendiente del usuario.
+
+---
+
+## Rediseño Módulo 1: header estético (20_header_estetico.txt)
+
+Pulido puramente visual del header (top bar). Sin cambios de navegación, consola ni sidebar.
+
+**Quitado el cuadro del SO** (`Border` + `lblOS` en `MainWindow.xaml`, esquina derecha). La info
+ya existía por separado en Info del Sistema (`infoOS`, con el `OsCaption` completo, más detallado
+que el `osShort` que mostraba el header) — se eliminó el `Border`, el `TextBlock lblOS` y su único
+binding (`PopulateSystemInfoControls` en `MainWindow.xaml.cs`) sin dejar código colgado.
+
+**SALUD reubicado**: al quedar como único elemento del `StackPanel` derecho, `scoreWidget` pasó a
+ocupar toda la esquina (margen final `0,0,8,0` → `0`, ya no necesita separación de un vecino que
+no existe). Lógica, tooltip y navegación al click no se tocaron.
+
+**Badge de versión rediseñado**: de pill con fondo `BrushCtrl` y texto en acento (se leía como
+etiqueta pegada) a chip con borde fino `BrushBorder`, fondo transparente y texto `BrushFgMuted` —
+detalle de producto sobrio, no un llamado de atención.
+
+**Badges de licencia — 4 variantes por tier**, mismo patrón visual que ya usaban `badgeLaptop`/
+`badgeUpdate` en este header (fondo = tinte oscuro del color del tier + borde `Color40` + texto en
+el color del tier), reemplazando el único badge ámbar+★ que antes se reusaba para Pro/Tech/Trial
+por igual:
+- **FREE**: chip discreto, borde `BrushBorder`, texto `BrushFgMuted`, sin tinte de color.
+- **PRO** (pago, sin trial): tinte acento `#00C8FF` (`badgeLicensePro`).
+- **TECNICO**: tinte violeta `#A78BFA` (`badgeLicenseTech`, nuevo) — color propio para no
+  confundirse con Pro pago ni con los estados semánticos existentes (ok/warn/err/info).
+- **PRUEBA**: tinte ámbar `#F59E0B` (`badgeLicenseTrial`, nuevo) con días restantes dinámicos
+  (`lblLicenseTrialDays`, ej. "5d") — mismo tono que `badgeUpdate`, comunica "temporal/atención".
+
+`UpdateLicenseBadge()` en `MainWindow.xaml.cs` reescrita para togglear los 4 `Border` (todos
+colapsados por defecto, se muestra uno solo) en vez de 2; la lógica de decisión de tier
+(`IsTech`/`IsPro`/`IsTrial`/`TrialDaysLeft`) no cambió, solo qué badge se hace visible en cada
+rama. Diseño pensado para que un tier nuevo (ej. Ultra del rediseño de licencias futuro, ver
+PENDIENTES Módulo 3) sea agregar un `Border` más + una rama, no reescribir la función.
+
+Verificado: `dotnet build` OK (0 errores), publicado con `Publish-CSharp.ps1 -SkipInstaller` y
+corrido el `.exe` publicado. Confirmación visual de las 4 variantes de licencia y del layout
+pendiente del usuario (forzar cada tier con `Gen-License.ps1` / dejar Free / simular Trial).
+
+---
+
 ## Fix: lectura de Política Térmica fallaba en Windows no-inglés (17_fix_termica_idioma.txt)
 
 **Bug**: en Tuning Avanzado, el switch de Política Térmica escribía bien (verificado con
@@ -42,6 +286,20 @@ Verificado: `dotnet build` OK, publicado con `Publish-CSharp.ps1`
 (`src-csharp\WinBoost\bin\publish\win-x64\WinBoost.exe`). Falta la confirmación final del
 usuario sobre el .exe publicado en su máquina (Windows en español): ON → cerrar → reabrir
 → debe mostrar ON; OFF → cerrar → reabrir → debe mostrar OFF; cruzar contra `powercfg`.
+
+---
+
+## Registro: tres pendientes de fin de sesión (19_registrar_3_pendientes.txt)
+
+Se registraron en `docs/PENDIENTES.md` tres pendientes detectados/definidos al final de una sesión,
+sin cambios de código:
+- **Bug** (sección "Re-evaluar / deuda de producto"): el health score muestra Privacidad 3/4 aunque
+  se apliquen todos los tweaks de esa sección — a diagnosticar (sospecha: desajuste entre lo que el
+  tweak escribe y lo que el health check lee).
+- **Diseño, Módulo 1** (ítem 9): splash de carga al iniciar con el logo/trueno de WinBoost, para
+  cubrir el hueco de arranque del single-file self-contained.
+- **Diseño, Módulo 1** (ítem 10): resolución fija/predeterminada y sacar el maximizar/pantalla
+  completa (la UI se ve estirada al maximizar).
 
 ---
 

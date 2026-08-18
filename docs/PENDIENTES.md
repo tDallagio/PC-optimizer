@@ -60,6 +60,22 @@ Checklist en orden de ejecución:
       un componente de diálogo dark reutilizable (info / confirmación / bloqueo Pro), quitar/suavizar
       el sonido de error, y convertir el bloqueo Pro en oportunidad de venta (comunicar el valor y
       el upgrade, no un portazo "requiere Pro"). Alcance: todos los MessageBox de la app.
+- [ ] **9. Splash de carga al iniciar:** pequeño logo de WinBoost centrado con una animación del
+      trueno azul (prende/apaga o similar) como transición hasta que la app termina de levantar.
+      Cubre el hueco entre el doble clic y la aparición de la ventana (hueco real en single-file
+      self-contained: el runtime tarda un momento en levantar). Nota técnica: en single-file el
+      splash debe aparecer ANTES de que cargue el grueso de la app (no es un control más de la
+      ventana; tiene su truco de implementación). Definir la animación exacta y el mecanismo en la
+      fase de diseño.
+- [x] **10. Resolución definitiva/predeterminada y quitar el maximizar/pantalla completa.** La app
+      se ve estirada y desproporcionada al maximizar (contenido diseñado para un tamaño concreto);
+      fullscreen no aporta y empeora el aspecto. Fijar un tamaño (o un rango acotado con mín/máx) y
+      deshabilitar el maximizar. Pendiente de decidir en la fase de diseño: tamaño FIJO (no
+      redimensionable) vs. rango con mínimo y máximo sensatos. Es un cambio de "amateur → terminado"
+      (las apps de escritorio pulidas que no son editores/navegadores no se maximizan a fullscreen).
+      **RESUELTO**: tamaño FIJO 1000x720, `ResizeMode="CanMinimize"`, maximizar sacado de la
+      TitleBar + guard de `StateChanged`. Ver CHANGELOG. El aprovechamiento del espacio extra que
+      deja el alto nuevo queda para los pasos de rediseño de pantallas.
 
 Densidad: buscar el punto medio — aire en pantallas de entrada/decisión, densidad donde el técnico
 opera (no caer en "limpio" que hace poco por pantalla).
@@ -152,6 +168,13 @@ vs. esfuerzo, tal como está clasificado en el benchmark competitivo.
       gestiona la Standby solo; forzar la purga rara vez mejora y vacía caché útil). Alineado con la
       marca anti-placebo → sacar/degradar. La liberación de Working Set (real) se conserva en
       cualquier caso.
+- [ ] **Bug: el health score muestra Privacidad 3/4 aunque se apliquen TODOS los tweaks de la
+      sección Privacidad y Telemetría.** Sospecha (a confirmar con diagnóstico, NO parchear a
+      ciegas): desajuste entre lo que el tweak ESCRIBE y lo que el health check LEE para evaluar esa
+      categoría — el check busca una condición que el tweak no deja exactamente como se espera
+      (clave no cubierta, valor distinto, o posible lectura dependiente de estado/idioma, misma
+      familia que el bug de la política térmica). Arranca leyendo cómo calcula el score de
+      Privacidad el código real y qué condición exacta no se cumple; instrumentar antes de arreglar.
 
 ---
 
@@ -215,6 +238,23 @@ en el rediseño:
       (`pnputil /enum-drivers`) matchea inglés+español a mano y falla en portugués u otro locale.
       Revisar también cualquier otro `RunCapture`/parseo de stdout. Validar idealmente en un Windows
       en español y otro en portugués.
+- [ ] **Compatibilidad de la ventana fija con pantallas chicas y escala DPI.** La ventana quedó en
+      tamaño FIJO 1000x720 no redimensionable (Módulo 1 item 10), así que el usuario no puede
+      achicarla si no le entra. Los 720px **lógicos** entran en una pantalla de 768px SOLO al 100%
+      de escala de Windows: al 125% (muy común en laptops 1366x768 de gama baja/media, frecuente en
+      LATAM y default de fábrica en muchos equipos) se renderizan como ~900px **físicos**, no entran,
+      y la ventana queda cortada abajo sin salida. Mismo patrón que el bug de idioma de la política
+      térmica y la auditoría de bloatware: funciona en dev (pantalla grande / escala 100%), falla en
+      la máquina del usuario real. Decidir estrategia antes del lanzamiento (opciones a evaluar, NO
+      implementar aún):
+      - Bajar el alto lógico a un valor que entre incluso a 125% en 768px (~560-580px lógicos —
+        apretado, hay que ver si el contenido entra sin sacrificar el diseño).
+      - Detectar la resolución/escala efectiva al iniciar y ajustar el tamaño (o escalar el
+        contenido) de forma adaptativa.
+      - Permitir un modo "compacto" alternativo para pantallas chicas.
+      - Documentar explícitamente la resolución/escala mínima soportada y no soportar por debajo.
+
+      Validar la decisión en un 1366x768 real a 125%, no solo en el dev box.
 - [ ] **Landing page:** before/after de métricas reales (las genera el reporte HTML de WinBoost),
       lista de tweaks documentados, estructura de planes (Free/Pro/[ULTRA]) con precios, botón de
       descarga al release de GitHub, sección "Qué cambia exactamente" (desarma el escepticismo de
