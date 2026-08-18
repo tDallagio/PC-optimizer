@@ -166,7 +166,10 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         App.Settings.Apply(this);
 
         App.Logger   = new AppLogger(rtbLog, logScroll, btnErrBadge, lblErrCount);
-        App.Progress = new ProgressService(progressBar, lblProgress, lblPct);
+        // Progreso con mirror a la Consola (fix 26): la barra de Optimizar + la de la Consola
+        // se actualizan con el mismo Set(); cada una es visible solo en su pestaña.
+        App.Progress = new ProgressService(progressBar, lblProgress, lblPct,
+                                           progressBarConsole, lblProgressConsole, lblPctConsole);
 
         // Badge de errores -> abre la Consola (indice 5 en el orden nuevo)
         btnErrBadge.Click += (_, _) => SetActiveNav(5);
@@ -186,7 +189,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _monitorTimer.Start();
 
         mainTabs.SelectionChanged += OnMainTabsSelectionChanged;
-        scoreWidget.MouseLeftButtonUp += (_, _) => SetActiveNav(2);
+        // Reestructuracion 25: el scoreWidget (SALUD) se saco del header y quedo parkeado
+        // colapsado; su deep-link (click -> Info) se remueve por ser inalcanzable. La SALUD
+        // visible/navegable vive ahora en Info Sistema.
         btnRecalcScore.Click += async (_, _) => await RecalcScoreAsync();
 
         // Procesos (2.4)

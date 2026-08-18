@@ -5,6 +5,113 @@
 
 ---
 
+## Fix: pill activa del sidebar + barra de progreso en la Consola (26_fix_pill_y_progreso_consola.txt)
+
+Dos correcciones puntuales tras la reestructuración del layout maestro (corte 25).
+
+**1. La pill del item activo del sidebar no se veía.** `SetActiveNav()` sí aplicaba bien el estilo
+`BtnNavActive` al item seleccionado (la lógica estaba OK, no se tocó) — el problema era el estilo.
+Causa real: `BtnNavActive` estaba `BasedOn` `BtnNav` y **heredaba su template**, que tiene un trigger
+`IsMouseOver` que pinta el fondo gris (`BrushElev`). Como al hacer clic en un item el mouse queda
+**encima**, ese trigger tapaba el fondo activo apenas se seleccionaba; y el fondo activo previo
+(`#00C8FF18`, alfa ~9%) era de por sí casi imperceptible. Resultado: el activo no se marcaba. Fix:
+`BtnNavActive` ahora tiene **template propio** con la pill (`Background="#12262E"`, `CornerRadius=8`)
+que **siempre gana**; el hover solo la aclara un poco (`#16303A`, sigue cyan), nunca gris; pressed la
+oscurece (`#0E1F26`). Texto/icono en acento por herencia de `Foreground` + `FontWeight=SemiBold`.
+Misma geometría que `BtnNav` (Padding 10,9 vía TemplateBinding, CornerRadius 8, Margin 0,1,0,1
+heredado, sin borde) → activar/desactivar no mueve el layout, solo cambia fondo + color.
+`SetActiveNav`, los índices y los deep-links, sin cambios.
+
+**2. Barra de progreso en la Consola.** Decisión de producto (registrada como consecuencia del corte
+25): las operaciones que muestran su feedback navegando a la Consola (**Bloatware**, **mantenimiento**)
+ahora muestran ahí también una barra de progreso, no solo el log en vivo. Implementación **sin
+duplicar lógica**: `ProgressService` ganó tres parámetros opcionales (barra + 2 labels de Consola) y
+su `Set()` hace **fan-out** — actualiza la barra de Optimizar y la de Consola con el mismo valor. Como
+cada barra es visible solo en su pestaña, el usuario ve el avance donde está mirando. Se agregó la
+barra a la pestaña Consola (`progressBarConsole` + `lblProgressConsole`/`lblPctConsole`, fila nueva al
+fondo, mismo estilo `ProgressBarActive`) y el `ProgressService` se construye con esos controles en
+`OnLoaded`. La barra de acción de Optimizar y su barra de progreso quedaron intactas. Flujos: la
+optimización y el updater (que navega a Optimizar antes de progresar) siguen mostrando la de Optimizar;
+Bloatware/mantenimiento (que navegan a Consola antes de progresar) muestran la de Consola.
+
+Nota de diseño futuro (registrada, no accionada): la Consola se convertirá en un panel flotante/overlay
+al ejecutar tareas; poner la barra acá ahora es correcto — cuando se haga el overlay, solo cambia el
+contenedor.
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con `Publish-CSharp.ps1
+-SkipInstaller` (single-file, 70.9 MB). El `.exe` publicado abre y responde. Confirmación visual final
+del usuario: pill activa marcándose al navegar (sin saltos de layout) + log en vivo con barra de
+progreso al correr Bloatware/mantenimiento.
+
+---
+
+## Reestructuración del layout maestro: de filas a columnas (25_reestructuracion_layout_maestro.txt)
+
+Cambio más estructural del Módulo 1: el grid raíz del que cuelgan las 10 pestañas pasa de un
+layout de **filas** (header full-width arriba / sidebar+contenido en el medio / footer full-width
+abajo) a uno de **columnas** (sidebar full-height a la izquierda | contenido a todo el alto a la
+derecha). Sólo cirugía de contenedor: el interior de cada pestaña quedó **intacto**. El
+`ui:TitleBar` (Grid.Row=0, chrome Fluent) no se tocó.
+
+**Grid interno (`Grid.Row="1"`)**: de 4 `RowDefinition` (TOP BAR / área principal / progreso /
+footer) a 2 `ColumnDefinition` (**168px** sidebar | `*` contenido). El grid anidado que antes
+envolvía sidebar+contenido se fusionó con este (se eliminó su apertura y su cierre).
+
+**Sidebar full-height (columna 0)**, 4 filas:
+- **Bloque de marca** arriba (movido tal cual desde el TOP BAR): logo `Flash20` cyan + "WinBoost"
+  (Win regular / Boost bold) + fila con el chip de versión (`lblVersion`) y el badge de licencia
+  activo (`badgeLicenseFree/Pro/Tech/Trial`, gobernados por `UpdateLicenseBadge()` sin cambios) +
+  fila con `badgeLaptop` y `badgeUpdate` (éste conserva tooltip y `MouseLeftButtonUp`). Separado de
+  la navegación por una línea inferior. Todos los `x:Name` y su lógica se preservan.
+- **Navegación reagrupada** con encabezado de grupo (texto chico, muted): **PRINCIPAL** (Optimizar,
+  Herramientas, Tuning Avanzado, Bloatware) y **SISTEMA** (Info sistema, Arranque, Consola,
+  Historial). Consola queda como item (su paso a botón es futuro). Item **activo tipo pill**
+  (`BtnNavActive`, tinte cyan + acento) en vez del realce anterior.
+- **Badge de errores** (`btnErrBadge`, oculto hasta que haya errores) sobre el bloque inferior.
+- **Ajustes + Licencia** al fondo, separados del resto por una línea.
+
+**TOP BAR full-width eliminado.** El `scoreWidget` (SALUD) se **sacó del header**: la SALUD visible
+sigue viviendo sólo en **Info Sistema** (`UpdateScorePanel`, panel con barras por categoría). El
+`scoreWidget` y todos sus hijos (`lblScoreValue`, `scoreBar`, `scoreDeltaBadge`, `lblScoreDelta`,
+`lblScoreTooltipTitle/Detail`, `tooltipScore`) se **preservan parkeados en un host colapsado**
+(`hiddenScoreHost`, `Visibility="Collapsed"`, no ocupa layout) para no romper el code-behind que aún
+los referencia: `UpdateScoreWidget()`, el delta "+N" post-optimización y `AnimateScoreCount()` siguen
+ejecutando sobre controles ocultos (inofensivo). Su **deep-link** (click en el widget → Info) se
+**removió del code-behind** por quedar inalcanzable.
+
+**Footer global eliminado.** La barra de progreso (`Row 2`: "Listo para optimizar" + `lblPct` +
+`progressBar`) y el footer (`Row 3`: banner trial, plan summary/contador de acciones, `lblSpaceFreed`
+y botones) se **reubicaron dentro de la pestaña Optimizar** como una **barra de acción fija** al
+fondo del contenido (Opción A): la pestaña ahora es un Grid de 2 filas (contenido scrolleable +
+barra). Layout de la fila principal: acciones secundarias a la izquierda (`btnSelAll`, `btnSelNone`,
+`lblSpaceFreed`), `btnCancelOpt` + **"Ejecutar optimización"** (cyan) a la derecha. Toda la lógica
+(handlers, contador en tiempo real, estado "Listo para optimizar", banner trial) se preserva con los
+mismos `x:Name`. Las **demás pestañas NO tienen footer**. `footerBar` sigue existiendo (dentro de
+Optimizar) y el toggle de `SetActiveNav` que lo muestra sólo en índice 0 quedó intacto.
+
+**Deep-links / navegación**: NO hubo que recablear índices — el orden VISUAL de los items cambió,
+pero el array `_navButtons` (indexado por tab) y cada `nav*.Click → SetActiveNav(índiceFijo)` siguen
+igual, así que el mapeo item→pestaña se mantiene. Siguen intactos: `btnErrBadge → Consola (5)`,
+`btnTrialUpgrade → Licencia (8)`, `badgeUpdate.Click → OnUpdateBadgeClick`. Único deep-link removido:
+`scoreWidget → Info (2)`.
+
+**`toastHost`**: overlay que antes usaba `Grid.RowSpan="4"` pasa a `Grid.ColumnSpan="2"` (esquina
+inferior derecha sobre las dos columnas).
+
+**Consecuencia a vigilar (reportada):** la `progressBar` pasó de ser **global** (antes en `Row 2`,
+visible en todas las pestañas) a **local de Optimizar**. El updater ya llamaba `SetActiveNav(0)`
+(navega a Optimizar) **antes** de mostrar progreso, así que su barra de descarga se sigue viendo. En
+cambio la desinstalación de **Bloatware** y el **mantenimiento** muestran progreso navegando a
+**Consola** (`SetActiveNav(5)`): ahí la barra ya **no** se ve (el log en vivo de la Consola —su
+feedback principal— sí sigue). Es consecuencia directa del diseño aprobado ("sin footer en las demás
+pestañas"); queda para decisión de producto si se quiere feedback de progreso global.
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con `Publish-CSharp.ps1
+-SkipInstaller` (single-file self-contained, 70.9 MB). El `.exe` publicado abre y responde.
+Confirmación visual final del usuario, pestaña por pestaña, sobre el publicado.
+
+---
+
 ## Registro: pendiente de escalado DPI de la ventana fija (24_registrar_escalado_dpi.txt)
 
 Sólo documentación, sin cambios de código. Se registró en `docs/PENDIENTES.md` (sección
