@@ -4,6 +4,7 @@ internal sealed class NullLogger : IAppLogger
 {
     internal static readonly NullLogger Instance = new();
     public void Log(string message, string type = "info") { }
+    public void ClearErrorBadge() { }
 }
 
 internal sealed class SilentFileLogger : IAppLogger
@@ -32,4 +33,6 @@ internal sealed class SilentFileLogger : IAppLogger
         try { File.AppendAllText(_logPath, line + Environment.NewLine); }
         catch { }
     }
+
+    public void ClearErrorBadge() { } // sin UI de badge en el logger silencioso
 }

@@ -103,8 +103,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static readonly SolidColorBrush BrushDriverName = FreezeBrush(Color.FromRgb(0xDD, 0xDD, 0xDD));
     private static readonly SolidColorBrush BrushDriverDate = FreezeBrush(Color.FromRgb(0x66, 0x66, 0x66));
 
-    // nav buttons indexed 0-9 (navTuning = index 9, Tuning Avanzado)
+    // nav buttons indexados por TAB (0-8 tras eliminar la pestaña Consola, fix 27; navTuning = 8).
+    // navConsola NO esta aca: dejo de ser tab y ahora abre el overlay.
     private Button[] _navButtons = [];
+    // Subconjunto que usa el estilo de ICONO (fila inferior del sidebar): Ajustes y Licencia.
+    // navConsola tambien es icono pero se maneja aparte (no mapea a tab). Fix 27.
+    private Button[] _iconNavButtons = [];
 
     public MainWindow()
     {
@@ -137,6 +141,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // Indexado por TAB (0-8). Consola ya no es tab (abre overlay) -> navConsola fuera del array.
         _navButtons =
         [
             navOptimizar,    // 0
@@ -144,35 +149,48 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             navInfo,         // 2
             navArranque,     // 3
             navBloatware,    // 4
-            navConsola,      // 5
-            navHistorial,    // 6
-            navAjustes,      // 7
-            navLicencia,     // 8
-            navTuning,       // 9
+            navHistorial,    // 5  (era 6)
+            navAjustes,      // 6  (era 7) — icono
+            navLicencia,     // 7  (era 8) — icono
+            navTuning,       // 8  (era 9)
         ];
+        _iconNavButtons = [navAjustes, navLicencia];
 
         navOptimizar.Click    += (_, _) => SetActiveNav(0);
         navHerramientas.Click += (_, _) => SetActiveNav(1);
         navInfo.Click         += (_, _) => SetActiveNav(2);
         navArranque.Click     += (_, _) => SetActiveNav(3);
         navBloatware.Click    += (_, _) => SetActiveNav(4);
-        navConsola.Click      += (_, _) => SetActiveNav(5);
-        navHistorial.Click    += (_, _) => SetActiveNav(6);
-        navAjustes.Click      += (_, _) => SetActiveNav(7);
-        navLicencia.Click     += (_, _) => SetActiveNav(8);
-        navTuning.Click       += (_, _) => SetActiveNav(9);
+        navHistorial.Click    += (_, _) => SetActiveNav(5);   // era 6
+        navAjustes.Click      += (_, _) => SetActiveNav(6);   // era 7
+        navLicencia.Click     += (_, _) => SetActiveNav(7);   // era 8
+        navTuning.Click       += (_, _) => SetActiveNav(8);   // era 9
+        // Consola: el icono ABRE EL OVERLAY en modo consulta (no navega a ninguna tab).
+        navConsola.Click      += (_, _) => OpenConsoleOverlay(running: false);
 
         App.Settings.Load();
         App.Settings.Apply(this);
 
         App.Logger   = new AppLogger(rtbLog, logScroll, btnErrBadge, lblErrCount);
-        // Progreso con mirror a la Consola (fix 26): la barra de Optimizar + la de la Consola
-        // se actualizan con el mismo Set(); cada una es visible solo en su pestaña.
-        App.Progress = new ProgressService(progressBar, lblProgress, lblPct,
-                                           progressBarConsole, lblProgressConsole, lblPctConsole);
+        // Progreso SOLO en el overlay de consola (fix 28.3): la barra de Optimizar se removio,
+        // asi que ProgressService apunta directo a los controles del overlay.
+        App.Progress = new ProgressService(progressBarConsole, lblProgressConsole, lblPctConsole);
 
-        // Badge de errores -> abre la Consola (indice 5 en el orden nuevo)
-        btnErrBadge.Click += (_, _) => SetActiveNav(5);
+        // Badge de errores -> abre el OVERLAY en modo consulta Y limpia el cartel visible (fix 28.4):
+        // ClearErrorBadge oculta el badge y resetea el conteo visible SIN borrar los errores del log.
+        btnErrBadge.Click += (_, _) => { App.Logger.ClearErrorBadge(); OpenConsoleOverlay(running: false); };
+        // Overlay de consola (fix 27): "Detener" cancela la operacion en curso via el CTS
+        // compartido de App.Worker (mismo path que btnCancelOpt); "Cerrar" cierra el modal.
+        btnConsoleStop.Click  += (_, _) => App.Worker.Cancel();
+        btnConsoleClose.Click += (_, _) => CloseConsoleOverlay();
+        // Cierre modal condicional (fix 28.6): click en el SCRIM (fuera del panel) cierra el overlay
+        // SOLO si no hay operacion corriendo. e.OriginalSource == consoleOverlay identifica el click
+        // en el area del scrim (no en el panel ni sus hijos). Mientras corre una operacion, no cierra.
+        consoleOverlay.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.OriginalSource == consoleOverlay && !_consoleOperationRunning)
+                CloseConsoleOverlay();
+        };
         // Consola: limpiar el log visible (mirror del btnClearLog del PS1)
         btnClearLog.Click += (_, _) =>
         {
@@ -260,7 +278,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnCopyHWID.Click        += (_, _) => CopyHardwareId();
         btnActivateLicense.Click += (_, _) => ActivateLicense();
         btnGetLicense.Click      += (_, _) => GetLicense();
-        btnTrialUpgrade.Click    += (_, _) => SetActiveNav(8);
+        btnTrialUpgrade.Click    += (_, _) => SetActiveNav(7); // Licencia (era 8, fix 27)
         _ = InitLicenseAsync();
 
         // Auto-updater (5.3, modulo 14)
@@ -431,11 +449,25 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         mainTabs.SelectedIndex = index;
 
-        var styleActive   = (Style)FindResource("BtnNavActive");
-        var styleInactive = (Style)FindResource("BtnNav");
+        var txtActive   = (Style)FindResource("BtnNavActive");
+        var txtInactive = (Style)FindResource("BtnNav");
+        var icoActive   = (Style)FindResource("BtnNavIconActive");
+        var icoInactive = (Style)FindResource("BtnNavIcon");
 
+        // Cada boton usa el estilo segun sea item de texto o icono (fila inferior, fix 27):
+        // aplicar el estilo de texto a un boton-icono lo rompe visualmente, y viceversa.
         for (int i = 0; i < _navButtons.Length; i++)
-            _navButtons[i].Style = i == index ? styleActive : styleInactive;
+        {
+            bool active = i == index;
+            bool isIcon = Array.IndexOf(_iconNavButtons, _navButtons[i]) >= 0;
+            _navButtons[i].Style = isIcon
+                ? (active ? icoActive : icoInactive)
+                : (active ? txtActive : txtInactive);
+        }
+        // navConsola (icono, fuera del array) nunca queda activo por tab: pill solo en hover o
+        // mientras el overlay esta abierto (eso lo maneja OpenConsoleOverlay/CloseConsoleOverlay).
+        if (consoleOverlay.Visibility != Visibility.Visible)
+            navConsola.Style = icoInactive;
 
         // footer solo visible en Optimizar (index 0)
         if (index == 0)
@@ -460,6 +492,71 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             }
         }
         catch { }
+    }
+
+    // ── Consola overlay (fix 27) ─────────────────────────────────────────────
+    // La consola dejo de ser pestaña: ahora es un overlay MODAL. Se abre en modo OPERACION
+    // (running:true) cuando arranca una tarea con output (optimizacion, bloatware) — muestra
+    // "Detener" y bloquea "Cerrar" hasta terminar/cancelar; o en modo CONSULTA (running:false)
+    // desde el icono navConsola o el badge de errores — sin "Detener", "Cerrar" habilitado,
+    // mostrando el log acumulado de la sesion (el rtbLog nunca se limpio solo).
+    // _consoleOperationRunning gobierna el cierre modal condicional (fix 28.6): mientras es true,
+    // ni el click en el scrim ni "Cerrar" cierran el overlay (solo "Detener" o terminar).
+    private bool _consoleOperationRunning;
+
+    private void OpenConsoleOverlay(bool running)
+    {
+        _consoleOperationRunning = running;
+        consoleOverlay.Visibility = Visibility.Visible;
+        navConsola.Style = (Style)FindResource("BtnNavIconActive"); // pill mientras esta abierto
+
+        if (running)
+        {
+            btnConsoleStop.Visibility = Visibility.Visible;
+            btnConsoleStop.IsEnabled  = true;
+            btnConsoleClose.IsEnabled = false;      // no se cierra el modal hasta terminar/cancelar
+            SetConsoleChip("Ejecutando", BrushGreen);
+        }
+        else
+        {
+            btnConsoleStop.Visibility = Visibility.Collapsed;
+            btnConsoleClose.IsEnabled = true;
+            SetConsoleChip("Consulta", BrushGray);
+        }
+
+        // Mostrar lo ultimo del log al abrir (tras el layout del overlay recien visible).
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => logScroll.ScrollToEnd()));
+    }
+
+    // Llamar al terminar (o cancelar) la operacion: oculta "Detener" y habilita "Cerrar".
+    private void ConsoleOperationCompleted()
+    {
+        _consoleOperationRunning = false; // ya se puede cerrar (Cerrar y click-afuera habilitados)
+        btnConsoleStop.Visibility = Visibility.Collapsed;
+        btnConsoleClose.IsEnabled = true;
+        SetConsoleChip("Completado", BrushGreen);
+    }
+
+    private void CloseConsoleOverlay()
+    {
+        // Guard: mientras corre una operacion no se cierra (fix 28.6). El scrim ya lo chequea, pero
+        // esto blinda cualquier otra via (p.ej. si "Cerrar" quedara habilitado por error).
+        if (_consoleOperationRunning) return;
+
+        consoleOverlay.Visibility = Visibility.Collapsed;
+        navConsola.Style = (Style)FindResource("BtnNavIcon");
+
+        // Reset de la barra y el estado al cerrar (fix 28.5): la proxima apertura arranca limpia.
+        progressBarConsole.Value = 0;
+        lblProgressConsole.Text  = "Listo";
+        lblPctConsole.Text       = "";
+        SetConsoleChip("En espera...", BrushGray);
+    }
+
+    private void SetConsoleChip(string text, SolidColorBrush brush)
+    {
+        lblLogStatus.Text       = text;
+        lblLogStatus.Foreground = brush;
     }
 
     // ── Monitor async ────────────────────────────────────────────────────────
@@ -876,20 +973,20 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _ = ScanBloatwareAsync();
         }
 
-        // Tab Historial (6): carga lazy la primera vez
-        if (mainTabs.SelectedIndex == 6 && !_historyLoaded)
+        // Tab Historial (5, era 6 antes del fix 27): carga lazy la primera vez
+        if (mainTabs.SelectedIndex == 5 && !_historyLoaded)
         {
             _historyLoaded = true;
             _ = RefreshHistoryAsync();
         }
 
-        // Tab Ajustes (7): calcula el tamano de la carpeta de backups la primera vez
+        // Tab Ajustes (6, era 7): calcula el tamano de la carpeta de backups la primera vez
         // (async, fuera del hilo UI; BUG 3)
-        if (mainTabs.SelectedIndex == 7 && !_settingsLoaded)
+        if (mainTabs.SelectedIndex == 6 && !_settingsLoaded)
             _ = LoadBackupInfoAsync();
 
-        // Tab Tuning Avanzado (9): carga lazy de estados + info la primera vez
-        if (mainTabs.SelectedIndex == 9 && !_tuningLoaded)
+        // Tab Tuning Avanzado (8, era 9): carga lazy de estados + info la primera vez
+        if (mainTabs.SelectedIndex == 8 && !_tuningLoaded)
         {
             _tuningLoaded = true;
             _ = LoadTuningTabAsync();
@@ -1446,7 +1543,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         OptResult? optResult = null;
 
-        SetActiveNav(5); // Consola — log en tiempo real
+        OpenConsoleOverlay(running: true); // fix 27: overlay modal con "Detener" (era SetActiveNav(5))
 
         bool ok = await App.Worker.RunAsync(async ct =>
         {
@@ -1457,6 +1554,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         },
         startMsg: "Iniciando optimizacion WinBoost...",
         doneMsg:  "Optimizacion completada");
+
+        ConsoleOperationCompleted(); // fix 27: oculta "Detener", habilita "Cerrar", chip Completado
 
         btnRun.IsEnabled        = true;
         btnCancelOpt.Visibility = Visibility.Collapsed;
@@ -1514,7 +1613,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             { Owner = this };
         dlg.ShowDialog();
 
-        if (dlg.GoToHistory) SetActiveNav(6); // Historial
+        if (dlg.GoToHistory) SetActiveNav(5); // Historial (era 6, fix 27)
         else if (dlg.ShowCompare) ShowCompareDialog(res.FreedMb);
     }
 
@@ -1539,7 +1638,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 catch (Exception ex) { App.Logger.Log($"No se pudo reiniciar: {ex.Message}", "err"); }
                 break;
             case "log":
-                SetActiveNav(5); // Consola
+                OpenConsoleOverlay(running: false); // fix 27: overlay en modo consulta (era Consola)
                 break;
             // "later": no hacer nada
         }
@@ -3265,12 +3364,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
         if (confirm != MessageBoxResult.Yes) return;
 
-        // Deshabilitar UI y navegar a la consola
+        // Deshabilitar UI y abrir el overlay de consola en modo operacion (fix 27)
         btnScanBloat.IsEnabled    = false;
         btnRemoveBloat.IsEnabled  = false;
         btnBloatSelAll.IsEnabled  = false;
         btnBloatSelNone.IsEnabled = false;
-        SetActiveNav(5); // Consola — log en tiempo real
+        OpenConsoleOverlay(running: true); // era SetActiveNav(5); "Detener" cancela via App.Worker
 
         // Guardar backup de lo que se va a eliminar
         if (App.Backup.ActiveSession is { } sessionPath)
@@ -3318,6 +3417,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         App.Logger.Log(
             $"Desinstalacion completada: {okCount} ok  {failCount} fallidos",
             failCount == 0 ? "ok" : "err");
+
+        ConsoleOperationCompleted(); // fix 27: oculta "Detener", habilita "Cerrar", chip Completado
 
         // Rehabilitar UI
         btnScanBloat.IsEnabled    = true;

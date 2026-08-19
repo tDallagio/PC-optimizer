@@ -52,19 +52,22 @@ excepcional y a pedido explicito), revisar ese historial antes de editar.
 - Fondo `#0D0D0D` | Cards `#161616` | Acento `#00C8FF`
 - Tipografia Segoe UI | CornerRadius 6-8
 - Colores de estado: ok `#22C55E` | warn `#F59E0B` | err `#EF4444` | info `#00C8FF`
-- Estilos de boton: `BtnMain` / `BtnSec` / `BtnPreset` / `BtnDanger` / `BtnNav` / `BtnNavActive` / `BtnNavLicense` / `BtnToggleOn` / `BtnToggleOff`
+- Estilos de boton: `BtnMain` / `BtnSec` / `BtnPreset` / `BtnDanger` / `BtnNav` / `BtnNavActive` / `BtnNavLicense` / `BtnNavIcon` / `BtnNavIconActive` / `BtnToggleOn` / `BtnToggleOff`
 
 ## Orden de tabs (SelectedIndex / SetActiveNav en MainWindow.xaml.cs)
+Tras el corte 27 la pestaña Consola se elimino (paso a overlay modal), asi que los indices
+posteriores bajaron 1:
 - 0 = Optimizar
 - 1 = Herramientas
 - 2 = Info del sistema
 - 3 = Arranque
 - 4 = Bloatware
-- 5 = Consola
-- 6 = Historial
-- 7 = Ajustes
-- 8 = Licencia
-- 9 = Tuning Avanzado
+- 5 = Historial
+- 6 = Ajustes
+- 7 = Licencia
+- 8 = Tuning Avanzado
+- Consola: ya NO es tab. Es un overlay modal (`consoleOverlay`) que abre `OpenConsoleOverlay()`
+  (desde el icono `navConsola`, el badge de errores, o automatico al correr optimizacion/bloatware).
 
 ## Modulos implementados
 Ver `docs/PENDIENTES.md` (fases 0-6, todas completas salvo pendientes de producto/

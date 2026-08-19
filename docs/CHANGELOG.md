@@ -5,6 +5,129 @@
 
 ---
 
+## Correcciones del consola-overlay (28_correcciones_consola_overlay.txt)
+
+Seis ajustes tras validar el overlay (corte 27): 3 cosmeticos, 3 funcionales.
+
+**1. Transparencia real.** El fondo del panel pasa de `#EB141414` (~92%, se veia casi opaco) a
+`#CC141414` (~80%): ahora el semitransparente se nota y se ve el fondo atenuado a traves, con el log
+perfectamente legible encima. Sin blur (semitransparencia limpia, como se decidio). El scrim
+(`#B3000000`) detras, intacto.
+
+**2. Tamaño fijo del panel.** El panel usaba `MaxHeight` y crecia al llenarse el log (saltaba de golpe
+al empezar una operacion). Ahora tiene **`Height` fijo (560)**: se ve igual vacio, ejecutando y
+completado. El log scrollea dentro de ese alto en vez de que el panel crezca.
+
+**3. Barra de progreso fuera de Optimizar.** Se removieron de la barra de accion de Optimizar la
+`ProgressBar progressBar` y su linea de estado (`lblProgress` "Listo para optimizar" + `lblPct`): el
+progreso ahora vive **solo en el overlay**. Quedan el contador (plan summary) y los botones. Wiring de
+`ProgressService`: se **revirtio el mirror del fix 26** (ya no hay dos barras); ahora apunta directo a
+`progressBarConsole` / `lblProgressConsole` / `lblPctConsole`. Ejecutar una optimizacion sigue
+mostrando el progreso, pero en el overlay (que salta modal al arrancar).
+
+**4. Reset del badge de errores.** El cartel "N errores" del sidebar quedaba indefinidamente. Ahora al
+**clickear `btnErrBadge`** (ademas de abrir el overlay en consulta) se llama a un nuevo
+`AppLogger.ClearErrorBadge()` que **oculta el cartel y pone el conteo visible en 0 SIN borrar** la
+lista `_errors` ni el contenido del log — el usuario sigue leyendo los errores en la consola. Se hizo
+con un offset `_ackedErrors = _errors.Count`: el badge cuenta solo los errores **nuevos desde el
+reset**, asi que si luego se loguea uno nuevo, reaparece con el conteo nuevo. `ClearErrorBadge()` se
+agrego a la interfaz `IAppLogger` y a sus implementaciones (`NullLogger`, `SilentFileLogger`, no-op).
+
+**5. Reset de la barra al cerrar.** `progressBarConsole` quedaba en 100% tras completar. Ahora
+`CloseConsoleOverlay()` resetea la barra a `Value=0`, el estado a "Listo" y el chip a "En espera..." —
+sin timer, en el cierre. La proxima apertura arranca limpia.
+
+**6. Cierre modal condicional.** Nuevo estado `_consoleOperationRunning` (lo prende
+`OpenConsoleOverlay(true)`, lo apaga `ConsoleOperationCompleted()` / `OpenConsoleOverlay(false)`).
+Mientras corre una operacion, el overlay queda **bloqueado**: click en el scrim NO cierra y "Cerrar"
+esta deshabilitado (solo "Detener" o esperar). Cuando NO hay operacion (termino o modo consulta), el
+**click en el scrim cierra** el overlay (handler `consoleOverlay.MouseLeftButtonDown` que dispara solo
+si `e.OriginalSource == consoleOverlay`, es decir el area del scrim y no el panel) y "Cerrar" esta
+habilitado. `CloseConsoleOverlay()` tiene ademas un guard `if (_consoleOperationRunning) return` que
+blinda cualquier otra via. Al cerrar por click-afuera se aplica el mismo reset del punto 5.
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con `Publish-CSharp.ps1
+-SkipInstaller` (single-file, 70.9 MB). El `.exe` publicado abre y responde. Confirmacion visual final
+del usuario.
+
+---
+
+## Consola: de pestaña a overlay modal + fila de iconos en el sidebar (27_consola_overlay.txt)
+
+Cambio de paradigma grande y aprobado. La Consola deja de ser una pestaña full-screen y pasa a un
+**overlay modal centrado** que salta automaticamente al ejecutar tareas con output (con la app
+bloqueada detras) o se abre a demanda desde un icono del sidebar (modo consulta). Ademas, Consola/
+Ajustes/Licencia pasan a una **fila de iconos** al fondo del sidebar (estilo Discord).
+
+**Parte 1 — Fila de iconos (sidebar).** Al fondo, separada por una linea, una fila horizontal de 3
+iconos que reparten el ancho por igual (Grid 3 columnas): **Consola** (play), **Ajustes** (engranaje),
+**Licencia** (estrella). Iconos mas grandes que los items de nav (~17-18px vs ~14px), tooltip arriba
+con la categoria, misma **pill cyan `#12262E`** en hover/activo (estilos nuevos `BtnNavIcon` /
+`BtnNavIconActive`, misma geometria → sin salto de layout). Comportamiento: **Consola abre el overlay**
+(no navega); **Ajustes y Licencia siguen navegando** a su pestaña y mantienen la pill mientras se esta
+en su seccion; **Consola** muestra pill solo en hover o mientras el overlay esta abierto. Se quitaron
+del sidebar los items con texto de Consola (grupo SISTEMA), Ajustes y Licencia (bloque inferior).
+
+**Parte 2 — Overlay de consola.** Panel centrado de **700px** de ancho, alto acotado (`MaxHeight`
+580), sobre un **scrim** `#B3000000` que cubre las dos columnas y **captura input** (modal real: la
+app queda bloqueada detras; el `ui:TitleBar` queda fuera del scrim a proposito, siguen andando
+minimizar/cerrar). **Fondo del panel: semitransparente limpio `#EB141414` (~92%), SIN blur** — el
+acrylic/mica nativo de WPF-UI aplica a la ventana, no a paneles internos, y el `BlurEffect` casero
+penaliza GPU (inaceptable en el hardware objetivo). **Se reporta: quedo semitransparente limpio, no
+acrylic.** Estructura: *Header* (icono play + "Consola" + chip de estado + botones Limpiar / Exportar
+.txt / **Exportar HTML**); *Cuerpo* (el log en vivo, `rtbLog`); *Pie* (`progressBarConsole` +
+contador `lblProgressConsole`/`lblPctConsole` + botones Detener / Cerrar).
+
+Los controles de la consola (`rtbLog`, `logScroll`, `btnClearLog`, `btnExportLog`, `btnExportHTML`,
+`lblLogStatus`, `progressBarConsole`, `lblProgressConsole`, `lblPctConsole`) se **movieron TAL CUAL**
+al overlay conservando sus `x:Name`, asi **`AppLogger`** (sigue construido con `rtbLog`/`logScroll`/
+`btnErrBadge`/`lblErrCount`), `ExportConsoleLog`, `ExportHtmlReportAsync` y el `ProgressService`
+funcionan **sin cambios**. `lblLogStatus` paso a ser el texto del chip de estado. El `btnExportHTML`
+(reporte HTML) se **preservo** en el header del overlay para no perder esa via (era la unica).
+
+**Estados de los botones del pie** (`OpenConsoleOverlay(running)` / `ConsoleOperationCompleted()` /
+`CloseConsoleOverlay()`):
+- **Operacion corriendo**: "Detener" visible y activo (rojo); "Cerrar" **deshabilitado**; chip
+  "Ejecutando" (verde).
+- **Terminado/cancelado**: "Detener" se oculta; "Cerrar" se habilita; chip "Completado".
+- **Consulta** (desde el icono / badge de errores, sin operacion): sin "Detener"; "Cerrar" habilitado;
+  muestra el log acumulado (auto-scroll al final).
+
+**Cancelacion real:** "Detener" (`btnConsoleStop`) llama `App.Worker.Cancel()` — el **mismo CTS
+compartido** que ya usaba `btnCancelOpt`; `BloatwareService.RemoveAppAsync` ya respeta el token, y
+`WorkRunner` captura el `OperationCanceledException`. No es decorativo.
+
+**Parte 3 — Recableo.** Las llamadas que navegaban a la Consola para mostrar output pasan a **abrir el
+overlay**: optimizacion (`OpenConsoleOverlay(true)` + `ConsoleOperationCompleted()` al terminar),
+desinstalacion de bloatware (idem), el caso "log" del CompareDialog y el badge de errores
+(`OpenConsoleOverlay(false)`, consulta), y el icono `navConsola` (consulta).
+
+**Indices recableados** (se elimino la `TabItem` Consola, indice 5 → los posteriores bajaron 1):
+| Pestaña | antes | ahora |
+|---|---|---|
+| Historial | 6 | **5** |
+| Ajustes | 7 | **6** |
+| Licencia | 8 | **7** |
+| Tuning Avanzado | 9 | **8** |
+
+Ajustes en el `.cs`: `_navButtons` reindexado (9 elementos, `navConsola` fuera del array) + nuevo
+`_iconNavButtons` = [`navAjustes`, `navLicencia`]; `SetActiveNav` ahora aplica estilo de **texto o
+icono** segun el boton (aplicar el estilo cruzado los rompia) y no reactiva `navConsola` mientras el
+overlay esta abierto; wiring de `nav*.Click` reindexado (Historial→5, Ajustes→6, Licencia→7,
+Tuning→8; `navConsola`→overlay); `btnTrialUpgrade` 8→7; `GoToHistory` 6→5; los checks de
+`OnMainTabsSelectionChanged` 6→5 / 7→6 / 9→8. Deep-links verificados: `btnErrBadge`→overlay,
+`btnTrialUpgrade`→Licencia (7), `badgeUpdate.Click` intacto. Nota de diseño futuro (no accionada): el
+overlay ya es el contenedor previsto, listo para cuando la Consola sea el panel flotante definitivo.
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con `Publish-CSharp.ps1
+-SkipInstaller` (single-file, 71 MB). El `.exe` publicado abre y responde. Confirmacion visual final
+del usuario: fila de iconos (pill+tooltip, Ajustes/Licencia navegan, Consola abre overlay); bloatware
+real → overlay modal con log + barra avanzando, "Cerrar" deshabilitado y "Detener" activo, y al
+terminar "Cerrar" habilitado + chip "Completado"; "Detener" cancela de verdad; consola desde el icono
+en modo consulta; logging global (badge de errores) sigue contando.
+
+---
+
 ## Fix: pill activa del sidebar + barra de progreso en la Consola (26_fix_pill_y_progreso_consola.txt)
 
 Dos correcciones puntuales tras la reestructuración del layout maestro (corte 25).
