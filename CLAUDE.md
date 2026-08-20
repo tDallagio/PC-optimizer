@@ -52,22 +52,25 @@ excepcional y a pedido explicito), revisar ese historial antes de editar.
 - Fondo `#0D0D0D` | Cards `#161616` | Acento `#00C8FF`
 - Tipografia Segoe UI | CornerRadius 6-8
 - Colores de estado: ok `#22C55E` | warn `#F59E0B` | err `#EF4444` | info `#00C8FF`
-- Estilos de boton: `BtnMain` / `BtnSec` / `BtnPreset` / `BtnDanger` / `BtnNav` / `BtnNavActive` / `BtnNavLicense` / `BtnNavIcon` / `BtnNavIconActive` / `BtnToggleOn` / `BtnToggleOff`
+- Estilos de boton: `BtnMain` / `BtnSec` / `BtnPreset` / `BtnDanger` / `BtnNav` / `BtnNavActive` / `BtnNavLicense` / `BtnNavIcon` / `BtnNavIconActive` / `BtnGlossyCyan` / `BtnGlossyDark` / `BtnToggleOn` / `BtnToggleOff` (+ `CardGlossy` para cards)
 
 ## Orden de tabs (SelectedIndex / SetActiveNav en MainWindow.xaml.cs)
-Tras el corte 27 la pestaña Consola se elimino (paso a overlay modal), asi que los indices
-posteriores bajaron 1:
+Corte 27: Consola dejo de ser tab (overlay). Corte 30: Info del sistema dejo de ser tab; el **Home**
+ocupa su slot (indice 2) y es la ENTRADA de la app (arranca en `SetActiveNav(2)`).
 - 0 = Optimizar
 - 1 = Herramientas
-- 2 = Info del sistema
+- 2 = **Home** (dashboard de entrada; ex Info del sistema). Item `navHome`, arriba de todo del sidebar.
 - 3 = Arranque
 - 4 = Bloatware
 - 5 = Historial
 - 6 = Ajustes
 - 7 = Licencia
 - 8 = Tuning Avanzado
-- Consola: ya NO es tab. Es un overlay modal (`consoleOverlay`) que abre `OpenConsoleOverlay()`
-  (desde el icono `navConsola`, el badge de errores, o automatico al correr optimizacion/bloatware).
+- Consola: ya NO es tab. Overlay modal (`consoleOverlay`) via `OpenConsoleOverlay()` (icono `navConsola`,
+  badge de errores, o automatico al correr optimizacion/bloatware).
+- Info del sistema: ya NO es tab. Hardware + componentes -> overlay `systemInfoOverlay`
+  (`OpenSystemInfoOverlay()`, boton "System Info" del Home). El monitor en vivo alimenta los medidores
+  circulares del Home; el score alimenta la malla de salud del Home.
 
 ## Modulos implementados
 Ver `docs/PENDIENTES.md` (fases 0-6, todas completas salvo pendientes de producto/

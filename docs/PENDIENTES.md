@@ -39,9 +39,13 @@ Checklist en orden de ejecución:
 - [ ] **1. Sidebar de navegación vertical** (icono + label) en reemplazo de las tabs superiores.
       Escala mejor con las 8 secciones actuales y se lee como "producto", no "herramienta".
       Agrupación tentativa: Optimizar / Sistema / Avanzado / Ajustes. *(Cambio estructural #1.)*
-- [ ] **2. Dashboard de entrada** con estado del sistema arriba (CPU/GPU/RAM detectados + score +
+- [x] **2. Dashboard de entrada** con estado del sistema arriba (CPU/GPU/RAM detectados + score +
       CTA principal), en vez de abrir con una grilla fría de checkboxes. WinBoost ya tiene el score
       y la info de sistema: promover esa data a pantalla de entrada.
+      **HECHO (corte 30)**: Home es la entrada de la app y reemplazó a Info del sistema. Medidores
+      circulares CPU/RAM/GPU en vivo, malla de salud glossy con insights reales (Privacidad prudente
+      por el bug abierto de abajo), card de última optimización desde Historial, botones glossy, y
+      overlay System Info (hardware + componentes). Ver CHANGELOG.
 - [ ] **3. Componente toggle estilizado reutilizable** que reemplace los checkboxes de sistema en
       todas las secciones. Detalle chico, gran impacto en percepción de calidad.
 - [ ] **4. Subir padding/espaciado global** (usar los escalones altos de la escala 4px). La UI
@@ -311,7 +315,6 @@ en el rediseño:
 
 - Win11 Creator (MicroWin) — meses de trabajo, nicho, soporte infinito (cada build rompe algo).
 - Lanzador de O&O ShutUp10++ / herramientas de terceros — contradice la marca (responder por tweaks ajenos).
-- Selector de idioma EN/PT — lanzar solo en español.
 - Benchmark de disco — CrystalDiskMark existe y es gratis.
 - Verificación SHA256 del XAML — optimización prematura.
 - Ofuscación del PS1 — irrelevante (PS1 jubilado a legacy).

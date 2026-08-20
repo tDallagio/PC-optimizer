@@ -26,9 +26,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private AuditResult? _lastAuditResult;
 
-    // Thermal (2.3): ticker cada 5 ticks (~5s), guard de lectura concurrente
-    private int  _thermalTick    = 0;
-    private bool _thermalReading = false;
+    // GPU usage (fix 30): counters persistentes de "GPU Engine" (rebuild periodico por churn de
+    // instancias por-proceso). _lastGpuPct = -1 => no disponible / aun sin lectura.
+    private readonly List<PerformanceCounter> _gpuCounters = [];
+    private int   _gpuRebuildTick = 100; // fuerza (re)build en la primera lectura
+    private float _lastGpuPct     = -1f;
 
 
     // Procesos (2.4): timer de auto-refresh + guard de lectura concurrente
@@ -141,32 +143,44 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Indexado por TAB (0-8). Consola ya no es tab (abre overlay) -> navConsola fuera del array.
+        // Indexado por TAB (0-8). Consola abre overlay (fuera del array). Fix 30: el tab index 2
+        // (ex Info del sistema) ahora es el HOME -> navHome ocupa esa posicion; navInfo se elimino.
         _navButtons =
         [
             navOptimizar,    // 0
             navHerramientas, // 1
-            navInfo,         // 2
+            navHome,         // 2  (era navInfo; el tab index 2 ahora es Home)
             navArranque,     // 3
             navBloatware,    // 4
-            navHistorial,    // 5  (era 6)
-            navAjustes,      // 6  (era 7) — icono
-            navLicencia,     // 7  (era 8) — icono
-            navTuning,       // 8  (era 9)
+            navHistorial,    // 5
+            navAjustes,      // 6  — icono
+            navLicencia,     // 7  — icono
+            navTuning,       // 8
         ];
         _iconNavButtons = [navAjustes, navLicencia];
 
         navOptimizar.Click    += (_, _) => SetActiveNav(0);
         navHerramientas.Click += (_, _) => SetActiveNav(1);
-        navInfo.Click         += (_, _) => SetActiveNav(2);
+        navHome.Click         += (_, _) => SetActiveNav(2);   // Home (ex Info, fix 30)
         navArranque.Click     += (_, _) => SetActiveNav(3);
         navBloatware.Click    += (_, _) => SetActiveNav(4);
-        navHistorial.Click    += (_, _) => SetActiveNav(5);   // era 6
-        navAjustes.Click      += (_, _) => SetActiveNav(6);   // era 7
-        navLicencia.Click     += (_, _) => SetActiveNav(7);   // era 8
-        navTuning.Click       += (_, _) => SetActiveNav(8);   // era 9
+        navHistorial.Click    += (_, _) => SetActiveNav(5);
+        navAjustes.Click      += (_, _) => SetActiveNav(6);
+        navLicencia.Click     += (_, _) => SetActiveNav(7);
+        navTuning.Click       += (_, _) => SetActiveNav(8);
         // Consola: el icono ABRE EL OVERLAY en modo consulta (no navega a ninguna tab).
         navConsola.Click      += (_, _) => OpenConsoleOverlay(running: false);
+
+        // Home (fix 30): botones de bienvenida + card de ultima optimizacion.
+        btnHomeSysInfo.Click     += (_, _) => OpenSystemInfoOverlay();
+        btnHomeOptimize.Click    += (_, _) => SetActiveNav(0);
+        btnHomeViewHistory.Click += (_, _) => SetActiveNav(5);
+        // System Info overlay: siempre cerrable (no hay operacion que proteger).
+        btnSysInfoClose.Click += (_, _) => CloseSystemInfoOverlay();
+        systemInfoOverlay.MouseLeftButtonDown += (_, e) =>
+        {
+            if (e.OriginalSource == systemInfoOverlay) CloseSystemInfoOverlay();
+        };
 
         App.Settings.Load();
         App.Settings.Apply(this);
@@ -310,7 +324,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Toast in-app (BUG 6): al vencer el timer, oculta el toast
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); toastHost.Visibility = Visibility.Collapsed; };
 
-        SetActiveNav(0);
+        SetActiveNav(2); // Home = entrada de la app (fix 30)
         App.Logger.Log("WinBoost iniciado", "head");
 
         _ = LoadSystemInfoAsync();
@@ -561,45 +575,49 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     // ── Monitor async ────────────────────────────────────────────────────────
 
+    // Fix 30: el monitor ahora alimenta los MEDIDORES CIRCULARES del Home (CPU/RAM/GPU) en vez de
+    // las barras verticales de Info del sistema (eliminada). Sigue manteniendo los labels TOTAL/EN
+    // USO/LIBRE del "Liberador de RAM" (Herramientas). Se dejaron de mostrar (junto con Info) la
+    // actividad de disco, el % de C: y las temperaturas CPU/GPU.
     private async void OnMonitorTick(object? sender, EventArgs e)
     {
         var data = await Task.Run(ReadMetrics);
 
-        barCPUFill.Background = ThresholdBrush(data.CpuPct, 85, 60, BrushGreen);
-        AnimateBar(barCPUFill, data.CpuPct / 100.0);
-        lblCPUPct.Text = $"{data.CpuPct:F0}%";
+        SetGaugeArc(arcCpu, segCpu, lblGaugeCpu, data.CpuPct, available: true);
 
         double ramPct = data.RamTotalGb > 0 ? data.RamUsedGb / data.RamTotalGb * 100.0 : 0;
-        barRAMFill.Background = ThresholdBrush(ramPct, 85, 70, BrushBlue);
-        AnimateBar(barRAMFill, ramPct / 100.0);
-        lblRAMVal.Text   = $"{data.RamUsedGb:F1} GB";
+        SetGaugeArc(arcRam, segRam, lblGaugeRam, ramPct, available: true);
+
+        // GPU: best-effort (Windows no lo expone tan limpio como CPU/RAM). -1 = no disponible.
+        SetGaugeArc(arcGpu, segGpu, lblGaugeGpu, data.GpuPct, available: data.GpuPct >= 0);
+
+        // Labels del "Liberador de RAM" (Herramientas): los mantiene el monitor cada segundo.
         lblRAMTotal.Text = $"{data.RamTotalGb:F0} GB";
         lblRAMUsed.Text  = $"{data.RamUsedGb:F1} GB";
         lblRAMFree.Text  = $"{(data.RamTotalGb - data.RamUsedGb):F1} GB";
+    }
 
-        barDiskFill.Background = ThresholdBrush(data.DiskPct, 85, 60, BrushGreen);
-        AnimateBar(barDiskFill, data.DiskPct / 100.0);
-        lblDiskPct.Text = $"{data.DiskPct:F0}%";
+    // Medidor circular CUSTOM del Home (fix 31): ui:ProgressRing es un spinner indeterminado, no
+    // sirve como gauge. Aca dibujamos el arco de progreso mutando el ArcSegment del Path: el track
+    // gris (Ellipse) y el StartPoint (arriba, 12 en punto) son fijos en XAML; solo cambian el punto
+    // final del arco, IsLargeArc, y el color por umbral. Geometria del XAML: centro 48, R=43.5.
+    private static void SetGaugeArc(System.Windows.Shapes.Path arc, ArcSegment seg, TextBlock lbl,
+                                    double pct, bool available)
+    {
+        if (!available) { arc.Visibility = Visibility.Collapsed; lbl.Text = "--"; return; }
 
-        // C: (uso) — umbral: >90% rojo, >75% amarillo, resto acento.
-        barDiskUsageFill.Background = ThresholdBrush(data.SysDiskUsagePct, 90, 75, BrushBlue);
-        AnimateBar(barDiskUsageFill, data.SysDiskUsagePct / 100.0);
-        lblDiskUsagePct.Text = $"{data.SysDiskUsagePct:F0}%";
+        double v = Math.Clamp(pct, 0, 100);
+        lbl.Text = $"{v:F0}%";
 
-        // Thermal: leer cada 5 ticks (~5s), igual que PS1.
-        // WMI de temperaturas es mas lento que PerformanceCounter — no leer en cada tick.
-        _thermalTick++;
-        if (_thermalTick >= 5 && !_thermalReading)
-        {
-            _thermalTick    = 0;
-            _thermalReading = true;
-            try
-            {
-                var thermal = await App.Thermal.GetThermalStatusAsync();
-                UpdateThermalDisplay(thermal);
-            }
-            finally { _thermalReading = false; }
-        }
+        if (v < 0.5) { arc.Visibility = Visibility.Collapsed; return; } // 0%: sin arco
+        arc.Visibility = Visibility.Visible;
+        arc.Stroke = v > 85 ? BrushRed : v > 60 ? BrushYellow : BrushBlue; // color por carga
+
+        const double cx = 48, cy = 48, r = 43.5;
+        double sweep    = Math.Min(359.9, v / 100.0 * 360.0);
+        double endAngle = (-90.0 + sweep) * Math.PI / 180.0; // arranca arriba (-90), horario
+        seg.Point      = new System.Windows.Point(cx + r * Math.Cos(endAngle), cy + r * Math.Sin(endAngle));
+        seg.IsLargeArc = sweep > 180.0;
     }
 
     private Metrics ReadMetrics()
@@ -628,7 +646,49 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch { }
 
-        return new Metrics(cpu, usedGb, totalGb, diskPct, sysUsagePct);
+        return new Metrics(cpu, usedGb, totalGb, diskPct, sysUsagePct, ReadGpuPct());
+    }
+
+    // GPU usage best-effort (fix 30). Windows no expone el uso de GPU tan limpio como CPU/RAM:
+    // se suma la utilizacion del engine 3D de "GPU Engine" (approx Task Manager). Counters
+    // persistentes entre ticks (para lecturas validas, 1s de separacion) + rebuild periodico por
+    // el churn de instancias por-proceso. -1 = categoria no disponible / aun sin lectura estable.
+    // Corre dentro de Task.Run (fuera del hilo UI), sin costo perceptible.
+    private float ReadGpuPct()
+    {
+        try
+        {
+            if (!PerformanceCounterCategory.Exists("GPU Engine")) return -1f;
+
+            if (_gpuRebuildTick++ >= 10)
+            {
+                _gpuRebuildTick = 0;
+                foreach (var c in _gpuCounters) { try { c.Dispose(); } catch { } }
+                _gpuCounters.Clear();
+                var cat = new PerformanceCounterCategory("GPU Engine");
+                foreach (var inst in cat.GetInstanceNames())
+                {
+                    if (!inst.EndsWith("engtype_3D")) continue;
+                    try
+                    {
+                        var c = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, readOnly: true);
+                        c.NextValue(); // prime: la 1ra lectura de un rate counter es 0
+                        _gpuCounters.Add(c);
+                    }
+                    catch { }
+                }
+                return _lastGpuPct; // tick de rebuild: counters recien primados -> devolver lo ultimo
+            }
+
+            float total = 0f;
+            foreach (var c in _gpuCounters)
+            {
+                try { total += c.NextValue(); } catch { }
+            }
+            _lastGpuPct = Math.Clamp(total, 0f, 100f);
+            return _lastGpuPct;
+        }
+        catch { return -1f; }
     }
 
     private float ReadCpuPct()
@@ -658,49 +718,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static SolidColorBrush ThresholdBrush(double pct, double high, double mid, SolidColorBrush okBrush) =>
         pct > high ? BrushRed : pct > mid ? BrushYellow : okBrush;
 
-    // Mirror de Update-ThermalDisplay del PS1 (modulo 6A).
-    // Colores reactivos: verde <70 | amarillo 70-85 | rojo >85
-    private void UpdateThermalDisplay(ThermalStatus thermal)
-    {
-        if (thermal.Cpu.Available)
-        {
-            float  c     = thermal.Cpu.TempC;
-            var    brush = TempBrush(c);
-            barCPUTempFill.Height     = Math.Max(2, Math.Round(110 * Math.Min(100f, c) / 100.0));
-            barCPUTempFill.Background = brush;
-            lblCPUTemp.Text           = $"{c}°C";
-            lblCPUTemp.Foreground     = brush;
-        }
-        else
-        {
-            barCPUTempFill.Height     = 0;
-            barCPUTempFill.Background = BrushGray;
-            lblCPUTemp.Text           = "N/D";
-            lblCPUTemp.Foreground     = BrushGray;
-        }
-
-        if (thermal.Gpu.Available)
-        {
-            float  c     = thermal.Gpu.TempC;
-            var    brush = TempBrush(c);
-            barGPUTempFill.Height       = Math.Max(2, Math.Round(110 * Math.Min(100f, c) / 100.0));
-            barGPUTempFill.Background   = brush;
-            lblGPUTemp.Text             = $"{c}°C";
-            lblGPUTemp.Foreground       = brush;
-            lblGPUTempSource.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            barGPUTempFill.Height       = 0;
-            barGPUTempFill.Background   = BrushGray;
-            lblGPUTemp.Text             = "N/D";
-            lblGPUTemp.Foreground       = BrushGray;
-            lblGPUTempSource.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private static SolidColorBrush TempBrush(float tempC) =>
-        tempC >= 85 ? BrushRed : tempC >= 70 ? BrushYellow : BrushGreen;
+    // Fix 30: UpdateThermalDisplay/TempBrush se removieron con Info del sistema (las barras de
+    // temperatura CPU/GPU ya no existen). El servicio App.Thermal queda disponible por si el
+    // monitoreo de temperaturas se reincorpora (decision PawnIO/LHM, ver PENDIENTES).
 
     private static void AnimateBar(Border bar, double ratio)
     {
@@ -720,11 +740,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         _monitorTimer.Stop();
         _procTimer?.Stop();
         _diskCounter?.Dispose();
+        foreach (var c in _gpuCounters) { try { c.Dispose(); } catch { } } // fix 30
         base.OnClosed(e);
     }
 
     private record struct Metrics(float CpuPct, double RamUsedGb, double RamTotalGb,
-                                  double DiskPct, double SysDiskUsagePct);
+                                  double DiskPct, double SysDiskUsagePct, float GpuPct);
 
     // ── System info + Score (2.1) ────────────────────────────────────────────
 
@@ -764,7 +785,63 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         infoDisk.Text = diskType;
         infoType.Text = info.IsLaptop ? "Laptop" : "PC Escritorio";
 
+        // fix 31: se quito el subtitulo de modelo de las cards de uso (CPU/RAM/GPU) — esa info ya
+        // vive en el overlay System Info, era redundante. Las cards quedan con medidor + nombre.
+
         if (info.IsLaptop) badgeLaptop.Visibility = Visibility.Visible;
+    }
+
+    // ── Home: overlay System Info + card de ultima optimizacion (fix 30) ─────
+    // El overlay reusa el patron del overlay de consola. Siempre cerrable.
+    private void OpenSystemInfoOverlay()
+    {
+        systemInfoOverlay.Visibility = Visibility.Visible;
+        _ = LoadComponentsInfoAsync(); // WMI lazy/cacheado; refresca el estado de HAGS
+    }
+
+    private void CloseSystemInfoOverlay()
+    {
+        systemInfoOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    // Card "ULTIMA OPTIMIZACION": datos REALES del ultimo backup de Historial, o estado vacio.
+    private async Task UpdateLastOptCardAsync()
+    {
+        try
+        {
+            var sessions = await Task.Run(() => App.Backup.GetBackupSessions());
+            var last = sessions.FirstOrDefault();
+            if (last is null)
+            {
+                panelHomeLastData.Visibility  = Visibility.Collapsed;
+                panelHomeLastEmpty.Visibility = Visibility.Visible;
+                return;
+            }
+
+            int delta = last.Meta is { } m ? m.ScoreAfter - m.ScoreBefore : 0;
+            DateTime when;
+            try { when = Directory.GetLastWriteTime(last.Path); } catch { when = DateTime.Now; }
+
+            lblHomeLastWhen.Text    = RelativeTime(when);
+            lblHomeLastFreed.Text   = $"{last.FreedMb} MB";
+            lblHomeLastScore.Text   = delta >= 0 ? $"+{delta}" : $"{delta}";
+            lblHomeLastActions.Text = $"{last.Actions}";
+
+            panelHomeLastEmpty.Visibility = Visibility.Collapsed;
+            panelHomeLastData.Visibility  = Visibility.Visible;
+        }
+        catch { }
+    }
+
+    private static string RelativeTime(DateTime dt)
+    {
+        var span = DateTime.Now - dt;
+        if (span.TotalDays    >= 2) return $"hace {(int)span.TotalDays} dias";
+        if (span.TotalDays    >= 1) return "hace 1 dia";
+        if (span.TotalHours   >= 2) return $"hace {(int)span.TotalHours} horas";
+        if (span.TotalHours   >= 1) return "hace 1 hora";
+        if (span.TotalMinutes >= 2) return $"hace {(int)span.TotalMinutes} minutos";
+        return "recien";
     }
 
     // ── Limpieza profunda de cache (Herramientas) ────────────────────────────
@@ -868,7 +945,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private async Task RecalcScoreAsync()
     {
         btnRecalcScore.IsEnabled  = false;
-        lblScorePanelLabel.Text   = "Recalculando...";
+        lblHomeScoreLabel.Text    = "Recalculando...";
         try
         {
             var result                 = await App.SystemInfo.RunAuditAsync();
@@ -904,36 +981,48 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                                : "\nTodo optimizado.");
     }
 
+    // Fix 30: alimenta la MALLA DE SALUD del Home (ex panel de barras de Info del sistema).
+    // Nombre conservado para no tocar los callers (RunAndDisplayScoreAsync / RecalcScoreAsync /
+    // OnMainTabsSelectionChanged).
     private void UpdateScorePanel(AuditResult r)
     {
-        var brush = ScoreBrush(r.Score);
-        lblScorePanelValue.Text       = $"{r.Score}";
-        lblScorePanelValue.Foreground = brush;
-        lblScorePanelLabel.Text       = r.Score >= 75 ? "Sistema bien optimizado"
-                                      : r.Score >= 45 ? "Optimizacion parcial - hay margen de mejora"
-                                      : "Sistema sin optimizar";
+        lblHomeScore.Text       = $"{r.Score}";
+        lblHomeScore.Foreground = ScoreBrush(r.Score);
+        lblHomeScoreLabel.Text  = r.Score >= 75 ? "Sistema bien optimizado"
+                                : r.Score >= 45 ? "Optimizacion parcial - hay margen de mejora"
+                                : "Sistema sin optimizar";
 
-        AnimateCategoryBar("Rendimiento", barCatRendimiento, lblCatRendimiento, r);
-        AnimateCategoryBar("Privacidad",  barCatPrivacidad,  lblCatPrivacidad,  r);
-        AnimateCategoryBar("Red",         barCatRed,         lblCatRed,         r);
-        AnimateCategoryBar("Servicios",   barCatServicios,   lblCatServicios,   r);
+        // Insights derivados del estado REAL. Privacidad es PRUDENTE cuando no esta completa:
+        // hay un bug conocido (da 3/4 aunque se apliquen todos los tweaks; ver PENDIENTES), asi
+        // que NO se afirma que falta con certeza.
+        SetHealthCard(r, "Rendimiento", lblHomeRendStatus, lblHomeRendFrac, lblHomeRendInsight,
+                      BrushGreen, "Todos los tweaks de rendimiento aplicados",
+                      "Hay tweaks de rendimiento sin aplicar");
+        SetHealthCard(r, "Privacidad", lblHomePrivStatus, lblHomePrivFrac, lblHomePrivInsight,
+                      BrushYellow, "Privacidad reforzada",
+                      "Revisa esta categoria para reforzar tu privacidad");
+        SetHealthCard(r, "Red", lblHomeRedStatus, lblHomeRedFrac, lblHomeRedInsight,
+                      BrushFromHex("#00C8FF"), "Conectividad optimizada",
+                      "Hay optimizaciones de red pendientes");
+        SetHealthCard(r, "Servicios", lblHomeServStatus, lblHomeServFrac, lblHomeServInsight,
+                      BrushFromHex("#A855F7"), "Servicios innecesarios deshabilitados",
+                      "Hay servicios innecesarios activos");
     }
 
-    private static void AnimateCategoryBar(string category, Border bar, TextBlock lbl, AuditResult r)
+    // Una card de la malla: fraccion real (ok/total) + estado OPTIMO/REVISAR + insight.
+    private void SetHealthCard(AuditResult r, string category, TextBlock status, TextBlock frac,
+                               TextBlock insight, SolidColorBrush completeColor,
+                               string okInsight, string reviewInsight)
     {
         var items = r.Items.Where(i => i.Category == category).ToList();
-        if (items.Count == 0) return;
-        int ok  = items.Count(i => i.Ok);
-        lbl.Text = $"{ok}/{items.Count}";
-        double pct = (double)ok / items.Count;
-        bar.Background = ScoreBrush(pct >= 0.75 ? 80 : pct >= 0.45 ? 50 : 0);
+        int ok    = items.Count(i => i.Ok);
+        int total = items.Count;
+        bool complete = total > 0 && ok == total;
 
-        if (bar.Parent is not FrameworkElement parent || parent.ActualWidth <= 0)
-        { bar.Width = 0; return; }
-
-        bar.BeginAnimation(WidthProperty,
-            new DoubleAnimation(bar.ActualWidth, parent.ActualWidth * pct, TimeSpan.FromMilliseconds(500))
-            { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        frac.Text         = $"{ok}/{total}";
+        status.Text       = complete ? "OPTIMO" : "REVISAR";
+        status.Foreground = complete ? completeColor : BrushYellow;
+        insight.Text      = complete ? okInsight : reviewInsight;
     }
 
     private void OnMainTabsSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -948,14 +1037,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _ = InitProcessesAsync();
         }
 
-        // Tab Info (2): re-dibuja las barras de categoria del score
-        if (mainTabs.SelectedIndex == 2 && _lastAuditResult is { } r)
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => UpdateScorePanel(r)));
-
-        // Tab Info (2): info de componentes (carga WMI lazy la primera vez; luego
-        // re-render instantaneo desde cache para refrescar el estado de HAGS).
+        // Tab Home (2, fix 30): refresca la malla de salud + la card de ultima optimizacion.
+        // (Los componentes ya NO se cargan aca: viven en el overlay System Info, que los pide al
+        // abrirse.)
         if (mainTabs.SelectedIndex == 2)
-            _ = LoadComponentsInfoAsync();
+        {
+            if (_lastAuditResult is { } r)
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => UpdateScorePanel(r)));
+            _ = UpdateLastOptCardAsync();
+        }
 
         // Tab Arranque (3): carga lazy de la lista de startup la primera vez
         if (mainTabs.SelectedIndex == 3 && !_startupLoaded)
@@ -1004,7 +1094,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             step++;
             double progress = Math.Min(1.0, (double)step / steps);
             double eased    = 1.0 - Math.Pow(1.0 - progress, 3);
-            lblScoreValue.Text = $"{from + (int)Math.Round((to - from) * eased)}";
+            lblHomeScore.Text = $"{from + (int)Math.Round((to - from) * eased)}"; // score del Home (fix 30)
             if (progress >= 1.0) timer.Stop();
         };
         timer.Start();

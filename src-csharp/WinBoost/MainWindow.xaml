@@ -654,7 +654,85 @@
       </Style.Triggers>
     </Style>
 
-  
+    <!-- ============ HOME / DASHBOARD (fix 30) ============
+         GLOSSY: degrade + banda de reflejo (gratis). Glow del borde = BORDE SOLIDO de color
+         (no DropShadowEffect) por la regla de performance: la pantalla de entrada esta siempre
+         abierta y los medidores se actualizan cada segundo -> el halo difuminado x varias cards
+         no vale el costo en hardware modesto. Reportado en CHANGELOG. -->
+
+    <!-- Boton glossy primario (cyan) -->
+    <Style x:Key="BtnGlossyCyan" TargetType="Button">
+      <Setter Property="Foreground" Value="#04252E"/>
+      <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="18,9"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Grid>
+          <Border x:Name="bg" CornerRadius="8" BorderThickness="1" BorderBrush="#5FE0FF">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#33D6FF" Offset="0"/><GradientStop Color="#00A6D6" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Border CornerRadius="8,8,0,0" VerticalAlignment="Top" Height="16" Margin="1,1,1,0" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#66FFFFFF" Offset="0"/><GradientStop Color="#00FFFFFF" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="Opacity" Value="0.88"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+
+    <!-- Boton glossy secundario (oscuro) -->
+    <Style x:Key="BtnGlossyDark" TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource BrushFg1}"/>
+      <Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontSize" Value="13"/>
+      <Setter Property="Padding" Value="18,9"/><Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+        <Grid>
+          <Border x:Name="bg" CornerRadius="8" BorderThickness="1" BorderBrush="#3A3A3A">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#2C2C2C" Offset="0"/><GradientStop Color="#1A1A1A" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <Border CornerRadius="8,8,0,0" VerticalAlignment="Top" Height="16" Margin="1,1,1,0" IsHitTestVisible="False">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#14FFFFFF" Offset="0"/><GradientStop Color="#00FFFFFF" Offset="1"/>
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="BorderBrush" Value="{StaticResource BrushAccent}"/></Trigger>
+        </ControlTemplate.Triggers>
+      </ControlTemplate></Setter.Value></Setter>
+    </Style>
+
+    <!-- Card glossy base (para los medidores CPU/RAM/GPU) -->
+    <Style x:Key="CardGlossy" TargetType="Border">
+      <Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="#2E2E2E"/>
+      <Setter Property="Background">
+        <Setter.Value>
+          <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#1E1E1E" Offset="0"/><GradientStop Color="#141414" Offset="1"/>
+          </LinearGradientBrush>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+
     <!-- Pinceles tematizables — overridden en runtime por Apply-Theme -->
     <SolidColorBrush x:Key="BrushAppBg"   Color="#0D0D0D"/>
     <SolidColorBrush x:Key="BrushSidebar" Color="#111111"/>
@@ -806,6 +884,15 @@
                recablear indices. -->
           <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="8,10,8,0">
+              <!-- Home = entrada de la app (fix 30). Item arriba de todo; mapea al tab index 2
+                   (ex Info del sistema, eliminada). -->
+              <Button x:Name="navHome" Style="{StaticResource BtnNav}" Margin="0,0,0,6">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#xE80F;" FontFamily="Segoe MDL2 Assets"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Home" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
               <TextBlock Text="PRINCIPAL" FontSize="9.5" FontWeight="SemiBold"
                          Foreground="{DynamicResource BrushFgDim}" Margin="8,2,0,4"/>
               <Button x:Name="navOptimizar" Style="{StaticResource BtnNav}">
@@ -843,13 +930,8 @@
 
               <TextBlock Text="SISTEMA" FontSize="9.5" FontWeight="SemiBold"
                          Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
-              <Button x:Name="navInfo" Style="{StaticResource BtnNav}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#x2139;" FontFamily="Segoe UI Symbol"
-                             FontSize="16" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Info sistema" VerticalAlignment="Center"/>
-                </StackPanel>
-              </Button>
+              <!-- navInfo eliminado (fix 30): Info del sistema dejo de ser tab; su data vive en el
+                   Home + el overlay System Info. -->
               <Button x:Name="navArranque" Style="{StaticResource BtnNav}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                   <TextBlock Text="&#x25B3;" FontFamily="Segoe UI Symbol"
@@ -1602,234 +1684,264 @@
       </TabItem>
 
       <!-- TAB INFO DEL SISTEMA -->
-      <TabItem Header="Info del sistema">
-        <Grid Margin="12,12,12,8">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="12"/>
-            <ColumnDefinition Width="*"/>
-          </Grid.ColumnDefinitions>
+      <!-- TAB HOME / DASHBOARD (fix 30): nueva entrada de la app. Reemplaza a Info del sistema
+           (ocupa su mismo indice de tab). El monitor en vivo alimenta los medidores circulares;
+           el score alimenta la malla de salud; hardware+componentes viven en el overlay System
+           Info (systemInfoOverlay). -->
+      <TabItem Header="Home">
+        <!-- fix 31: root Grid (no ScrollViewer) para aprovechar el alto -> fila inferior * que
+             estira la malla/ultima-optimizacion sin deformar. -->
+        <Grid Margin="24,18,24,18">
           <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="12"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>   <!-- bienvenida -->
+            <RowDefinition Height="Auto"/>   <!-- medidores -->
+            <RowDefinition Height="*"/>      <!-- cuadrante inferior (estira) -->
           </Grid.RowDefinitions>
 
-          <!-- CUADRANTE 1: Informacion del equipo -->
-          <Border Grid.Column="0" Grid.Row="0" Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="14">
-            <Grid>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
-              <TextBlock Grid.Row="0" Text="INFORMACION DEL EQUIPO" FontSize="9" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,10"/>
-              <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="6"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="6"/>
-                  <RowDefinition Height="Auto"/>
-                  <RowDefinition Height="6"/>
-                  <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <!-- Sistema -->
-                <Border Grid.Column="0" Grid.Row="0" Background="#1E1E1E" CornerRadius="6" Padding="10,8">
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Sistema" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoOS" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
-                  </Grid>
-                </Border>
-                <!-- Procesador -->
-                <Border Grid.Column="2" Grid.Row="0" Background="#1E1E1E" CornerRadius="6" Padding="10,8">
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE950;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Procesador" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoCPU" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
-                  </Grid>
-                </Border>
-                <!-- Graficos -->
-                <Border Grid.Column="0" Grid.Row="2" Background="#1E1E1E" CornerRadius="6" Padding="10,8">
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Graficos" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoGPU" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
-                  </Grid>
-                </Border>
-                <!-- Memoria -->
-                <Border Grid.Column="2" Grid.Row="2" Background="#1E1E1E" CornerRadius="6" Padding="10,8">
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE964;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Memoria" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoRAM" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
-                  </Grid>
-                </Border>
-                <!-- Almacenamiento -->
-                <Border Grid.Column="0" Grid.Row="4" Background="#1E1E1E" CornerRadius="6" Padding="10,8">
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xEDA2;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Almacenamiento" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoDisk" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
-                  </Grid>
-                </Border>
-                <!-- Windows -->
-                <Border Grid.Column="2" Grid.Row="4" Background="#1E1E1E" CornerRadius="6" Padding="10,8">
-                  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="&#xE782;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
-                    <StackPanel Grid.Column="1"><TextBlock Text="Windows" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoType" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
-                  </Grid>
-                </Border>
-              </Grid>
-            </Grid>
-          </Border>
+          <!-- a) BIENVENIDA -->
+          <Grid Grid.Row="0" Margin="0,0,0,18">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+              <TextBlock FontSize="25" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}">
+                <Run Text="Bienvenido a "/><Run Text="Win" FontWeight="Regular" Foreground="{StaticResource BrushAccent}"/><Run Text="Boost" FontWeight="Bold" Foreground="{StaticResource BrushAccent}"/>
+              </TextBlock>
+              <TextBlock Text="Optimizacion, rendimiento y control total de tu PC" FontSize="13"
+                         Foreground="{DynamicResource BrushFgMuted}" Margin="0,5,0,0"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <Button x:Name="btnHomeSysInfo" Content="System Info" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
+              <Button x:Name="btnHomeOptimize" Content="Optimizar ahora" Style="{StaticResource BtnGlossyCyan}"/>
+            </StackPanel>
+          </Grid>
 
-          <!-- CUADRANTE 2: Salud del sistema -->
-          <Border Grid.Column="2" Grid.Row="0" Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="14">
-            <Grid>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
-              <TextBlock Grid.Row="0" Text="SALUD DEL SISTEMA" FontSize="9" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,10"/>
-              <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,20,0" Width="110">
-                  <TextBlock Text="PUNTUACION" FontSize="9" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" HorizontalAlignment="Center"/>
-                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
-                    <TextBlock x:Name="lblScorePanelValue" Text="--" FontSize="46" FontWeight="Bold" Foreground="{DynamicResource BrushFgDim}"/>
-                    <TextBlock Text="%" FontSize="16" Foreground="{DynamicResource BrushFgDim}" VerticalAlignment="Bottom" Margin="2,0,0,8"/>
-                  </StackPanel>
-                  <TextBlock x:Name="lblScorePanelLabel" Text="Calculando..." FontSize="11" Foreground="{DynamicResource BrushFgMuted}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                  <Button x:Name="btnRecalcScore" Content="Recalcular" Style="{StaticResource BtnSec}" Padding="10,4" FontSize="11" Margin="0,10,0,0" HorizontalAlignment="Center"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                  <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Rendimiento" FontSize="11" Foreground="{DynamicResource BrushFg2}" VerticalAlignment="Center"/>
-                    <Border Grid.Column="1" Background="{DynamicResource BrushDeep}" CornerRadius="4" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" ClipToBounds="True">
-                      <Border x:Name="barCatRendimiento" Background="{StaticResource BrushAccent}" CornerRadius="4" Height="8" HorizontalAlignment="Left" Width="0"/>
-                    </Border>
-                    <TextBlock Grid.Column="2" x:Name="lblCatRendimiento" Text="0/0" FontSize="10" Foreground="{DynamicResource BrushFgMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+          <!-- b) MEDIDORES CPU / RAM / GPU (gauge custom: track + arco + % al centro; sin modelo) -->
+          <Grid Grid.Row="1" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/>
+              <ColumnDefinition Width="*"/><ColumnDefinition Width="14"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <!-- CPU -->
+            <Border Grid.Column="0" Style="{StaticResource CardGlossy}">
+              <Grid>
+                <Border CornerRadius="10" IsHitTestVisible="False">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#1AFFFFFF" Offset="0"/><GradientStop Color="#0DFFFFFF" Offset="0.12"/><GradientStop Color="#00FFFFFF" Offset="0.42"/></LinearGradientBrush></Border.Background>
+                </Border>
+                <StackPanel VerticalAlignment="Center" Margin="16,18">
+                  <Grid Width="96" Height="96" HorizontalAlignment="Center">
+                    <Ellipse Width="96" Height="96" Stroke="#2A2A2A" StrokeThickness="9"/>
+                    <Path x:Name="arcCpu" Stroke="{StaticResource BrushAccent}" StrokeThickness="9" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                      <Path.Data><PathGeometry><PathFigure StartPoint="48,4.5"><ArcSegment x:Name="segCpu" Point="48,4.5" Size="43.5,43.5" SweepDirection="Clockwise" IsLargeArc="False"/></PathFigure></PathGeometry></Path.Data>
+                    </Path>
+                    <TextBlock x:Name="lblGaugeCpu" Text="0%" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                   </Grid>
-                  <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Privacidad" FontSize="11" Foreground="{DynamicResource BrushFg2}" VerticalAlignment="Center"/>
-                    <Border Grid.Column="1" Background="{DynamicResource BrushDeep}" CornerRadius="4" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" ClipToBounds="True">
-                      <Border x:Name="barCatPrivacidad" Background="{StaticResource BrushAccent}" CornerRadius="4" Height="8" HorizontalAlignment="Left" Width="0"/>
-                    </Border>
-                    <TextBlock Grid.Column="2" x:Name="lblCatPrivacidad" Text="0/0" FontSize="10" Foreground="{DynamicResource BrushFgMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                  <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Red" FontSize="11" Foreground="{DynamicResource BrushFg2}" VerticalAlignment="Center"/>
-                    <Border Grid.Column="1" Background="{DynamicResource BrushDeep}" CornerRadius="4" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" ClipToBounds="True">
-                      <Border x:Name="barCatRed" Background="{StaticResource BrushAccent}" CornerRadius="4" Height="8" HorizontalAlignment="Left" Width="0"/>
-                    </Border>
-                    <TextBlock Grid.Column="2" x:Name="lblCatRed" Text="0/0" FontSize="10" Foreground="{DynamicResource BrushFgMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                  <Grid>
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="40"/></Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Servicios" FontSize="11" Foreground="{DynamicResource BrushFg2}" VerticalAlignment="Center"/>
-                    <Border Grid.Column="1" Background="{DynamicResource BrushDeep}" CornerRadius="4" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" ClipToBounds="True">
-                      <Border x:Name="barCatServicios" Background="{StaticResource BrushAccent}" CornerRadius="4" Height="8" HorizontalAlignment="Left" Width="0"/>
-                    </Border>
-                    <TextBlock Grid.Column="2" x:Name="lblCatServicios" Text="0/0" FontSize="10" Foreground="{DynamicResource BrushFgMuted}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                  </Grid>
-                </StackPanel>
-              </Grid>
-            </Grid>
-          </Border>
-
-          <!-- CUADRANTE 3: Informacion de componentes (movida desde Tuning) -->
-          <Border Grid.Column="0" Grid.Row="2" Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="14">
-            <Grid>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
-              <TextBlock Grid.Row="0" Text="INFORMACION DE COMPONENTES" FontSize="9" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,10"/>
-              <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <ItemsControl x:Name="icComponentsInfo"/>
-              </ScrollViewer>
-            </Grid>
-          </Border>
-
-          <!-- CUADRANTE 4: Monitor en tiempo real -->
-          <Border Grid.Column="2" Grid.Row="2" Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="14">
-            <Grid>
-              <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-              </Grid.RowDefinitions>
-              <TextBlock Grid.Row="0" Text="MONITOR EN TIEMPO REAL" FontSize="9" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,10"/>
-              <Grid Grid.Row="1">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <!-- CPU -->
-                <StackPanel Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Text="CPU" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                  <Border Width="32" Height="110" Background="#0A0A0A" CornerRadius="4" ClipToBounds="True" HorizontalAlignment="Center">
-                    <Border x:Name="barCPUFill" Background="{StaticResource BrushAccent}" VerticalAlignment="Bottom" Width="32" CornerRadius="4" Height="0"/>
-                  </Border>
-                  <TextBlock x:Name="lblCPUPct" Text="0%" FontSize="11" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <!-- RAM -->
-                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Text="RAM" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                  <Border Width="32" Height="110" Background="#0A0A0A" CornerRadius="4" ClipToBounds="True" HorizontalAlignment="Center">
-                    <Border x:Name="barRAMFill" Background="{StaticResource BrushAccent}" VerticalAlignment="Bottom" Width="32" CornerRadius="4" Height="0"/>
-                  </Border>
-                  <TextBlock x:Name="lblRAMVal" Text="-- GB" FontSize="11" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <!-- Disco (actividad %) -->
-                <StackPanel Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Text="Disco (act.)" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                  <Border Width="32" Height="110" Background="#0A0A0A" CornerRadius="4" ClipToBounds="True" HorizontalAlignment="Center">
-                    <Border x:Name="barDiskFill" Background="{StaticResource BrushAccent}" VerticalAlignment="Bottom" Width="32" CornerRadius="4" Height="0"/>
-                  </Border>
-                  <TextBlock x:Name="lblDiskPct" Text="0%" FontSize="11" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <!-- C: (uso, % usado del disco del sistema) -->
-                <StackPanel Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Text="C: (uso)" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                  <Border Width="32" Height="110" Background="#0A0A0A" CornerRadius="4" ClipToBounds="True" HorizontalAlignment="Center">
-                    <Border x:Name="barDiskUsageFill" Background="{StaticResource BrushAccent}" VerticalAlignment="Bottom" Width="32" CornerRadius="4" Height="0"/>
-                  </Border>
-                  <TextBlock x:Name="lblDiskUsagePct" Text="--%" FontSize="11" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <!-- CPU Temp -->
-                <StackPanel Grid.Column="4" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Text="CPU Temp" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                  <Border Width="32" Height="110" Background="#0A0A0A" CornerRadius="4" ClipToBounds="True" HorizontalAlignment="Center">
-                    <Border x:Name="barCPUTempFill" Background="{StaticResource BrushAccent}" VerticalAlignment="Bottom" Width="32" CornerRadius="4" Height="0"/>
-                  </Border>
-                  <TextBlock x:Name="lblCPUTemp" Text="N/D" FontSize="11" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                </StackPanel>
-                <!-- GPU Temp -->
-                <StackPanel Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center">
-                  <TextBlock Text="GPU Temp" FontSize="10" Foreground="#555555" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                  <Border Width="32" Height="110" Background="#0A0A0A" CornerRadius="4" ClipToBounds="True" HorizontalAlignment="Center">
-                    <Border x:Name="barGPUTempFill" Background="{StaticResource BrushAccent}" VerticalAlignment="Bottom" Width="32" CornerRadius="4" Height="0"/>
-                  </Border>
-                  <StackPanel HorizontalAlignment="Center" Margin="0,6,0,0">
-                    <TextBlock x:Name="lblGPUTemp" Text="N/D" FontSize="11" HorizontalAlignment="Center"/>
-                    <Border x:Name="lblGPUTempSource" Background="{DynamicResource BrushElev}" CornerRadius="3" Padding="4,1" Margin="0,2,0,0" Visibility="Collapsed" HorizontalAlignment="Center">
-                      <TextBlock Text="LHM" FontSize="9" Foreground="{DynamicResource BrushFgDim}"/>
-                    </Border>
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock Text="&#xE950;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                    <TextBlock Text="CPU" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
                   </StackPanel>
                 </StackPanel>
               </Grid>
-            </Grid>
-          </Border>
+            </Border>
+            <!-- RAM -->
+            <Border Grid.Column="2" Style="{StaticResource CardGlossy}">
+              <Grid>
+                <Border CornerRadius="10" IsHitTestVisible="False">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#1AFFFFFF" Offset="0"/><GradientStop Color="#0DFFFFFF" Offset="0.12"/><GradientStop Color="#00FFFFFF" Offset="0.42"/></LinearGradientBrush></Border.Background>
+                </Border>
+                <StackPanel VerticalAlignment="Center" Margin="16,18">
+                  <Grid Width="96" Height="96" HorizontalAlignment="Center">
+                    <Ellipse Width="96" Height="96" Stroke="#2A2A2A" StrokeThickness="9"/>
+                    <Path x:Name="arcRam" Stroke="{StaticResource BrushAccent}" StrokeThickness="9" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                      <Path.Data><PathGeometry><PathFigure StartPoint="48,4.5"><ArcSegment x:Name="segRam" Point="48,4.5" Size="43.5,43.5" SweepDirection="Clockwise" IsLargeArc="False"/></PathFigure></PathGeometry></Path.Data>
+                    </Path>
+                    <TextBlock x:Name="lblGaugeRam" Text="0%" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Grid>
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock Text="&#xE964;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                    <TextBlock Text="RAM" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </StackPanel>
+              </Grid>
+            </Border>
+            <!-- GPU -->
+            <Border Grid.Column="4" Style="{StaticResource CardGlossy}">
+              <Grid>
+                <Border CornerRadius="10" IsHitTestVisible="False">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#1AFFFFFF" Offset="0"/><GradientStop Color="#0DFFFFFF" Offset="0.12"/><GradientStop Color="#00FFFFFF" Offset="0.42"/></LinearGradientBrush></Border.Background>
+                </Border>
+                <StackPanel VerticalAlignment="Center" Margin="16,18">
+                  <Grid Width="96" Height="96" HorizontalAlignment="Center">
+                    <Ellipse Width="96" Height="96" Stroke="#2A2A2A" StrokeThickness="9"/>
+                    <Path x:Name="arcGpu" Stroke="{StaticResource BrushAccent}" StrokeThickness="9" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                      <Path.Data><PathGeometry><PathFigure StartPoint="48,4.5"><ArcSegment x:Name="segGpu" Point="48,4.5" Size="43.5,43.5" SweepDirection="Clockwise" IsLargeArc="False"/></PathFigure></PathGeometry></Path.Data>
+                    </Path>
+                    <TextBlock x:Name="lblGaugeGpu" Text="--" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Grid>
+                  <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+                    <TextBlock Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                    <TextBlock Text="GPU" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                  </StackPanel>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </Grid>
 
+          <!-- c) CUADRANTE INFERIOR: malla de salud (2fr) | ultima optimizacion (1fr). Estira (Row *). -->
+          <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="2*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- IZQUIERDA: MALLA DE SALUD 2x2 -->
+            <Border Grid.Column="0" Style="{StaticResource CardGlossy}">
+              <Grid Margin="16,14">
+                <Border CornerRadius="10" IsHitTestVisible="False" VerticalAlignment="Top" Height="60" Margin="-16,-14,-16,0">
+                  <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#16FFFFFF" Offset="0"/><GradientStop Color="#0AFFFFFF" Offset="0.3"/><GradientStop Color="#00FFFFFF" Offset="1"/></LinearGradientBrush></Border.Background>
+                </Border>
+                <Grid>
+                  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                  <Grid Grid.Row="0" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                      <TextBlock Text="SALUD" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                      <TextBlock x:Name="lblHomeScore" Text="--" FontSize="26" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                      <TextBlock Text="%" FontSize="14" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="1,0,10,4"/>
+                      <TextBlock x:Name="lblHomeScoreLabel" Text="" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <Button x:Name="btnRecalcScore" Grid.Column="1" Content="Recalcular" Style="{StaticResource BtnSec}" Padding="12,5" FontSize="11"/>
+                  </Grid>
+
+                  <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+
+                    <!-- Rendimiento (verde) -->
+                    <Border Grid.Column="0" Grid.Row="0" Margin="0,0,6,6" CornerRadius="10" BorderThickness="1" BorderBrush="#4022C55E">
+                      <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#18231B" Offset="0"/><GradientStop Color="#141414" Offset="1"/></LinearGradientBrush></Border.Background>
+                      <Grid>
+                        <Border CornerRadius="10" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#14FFFFFF" Offset="0"/><GradientStop Color="#08FFFFFF" Offset="0.16"/><GradientStop Color="#00FFFFFF" Offset="0.5"/></LinearGradientBrush></Border.Background></Border>
+                        <StackPanel Margin="13,11" VerticalAlignment="Center">
+                          <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="&#x26A1;" FontFamily="Segoe UI Symbol" FontSize="14" Foreground="#22C55E" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                              <TextBlock Text="Rendimiento" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#1C1C1C" CornerRadius="4" Padding="7,2" VerticalAlignment="Center">
+                              <TextBlock x:Name="lblHomeRendStatus" Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#22C55E"/>
+                            </Border>
+                          </Grid>
+                          <TextBlock x:Name="lblHomeRendFrac" Text="0/0" FontSize="21" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" Margin="0,7,0,2"/>
+                          <TextBlock x:Name="lblHomeRendInsight" Text="" FontSize="10.5" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+
+                    <!-- Privacidad (ambar) -->
+                    <Border Grid.Column="1" Grid.Row="0" Margin="6,0,0,6" CornerRadius="10" BorderThickness="1" BorderBrush="#40F59E0B">
+                      <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#241E15" Offset="0"/><GradientStop Color="#141414" Offset="1"/></LinearGradientBrush></Border.Background>
+                      <Grid>
+                        <Border CornerRadius="10" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#14FFFFFF" Offset="0"/><GradientStop Color="#08FFFFFF" Offset="0.16"/><GradientStop Color="#00FFFFFF" Offset="0.5"/></LinearGradientBrush></Border.Background></Border>
+                        <StackPanel Margin="13,11" VerticalAlignment="Center">
+                          <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="&#xE72E;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#F59E0B" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                              <TextBlock Text="Privacidad" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#1C1C1C" CornerRadius="4" Padding="7,2" VerticalAlignment="Center">
+                              <TextBlock x:Name="lblHomePrivStatus" Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#F59E0B"/>
+                            </Border>
+                          </Grid>
+                          <TextBlock x:Name="lblHomePrivFrac" Text="0/0" FontSize="21" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" Margin="0,7,0,2"/>
+                          <TextBlock x:Name="lblHomePrivInsight" Text="" FontSize="10.5" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+
+                    <!-- Red (cyan) -->
+                    <Border Grid.Column="0" Grid.Row="1" Margin="0,6,6,0" CornerRadius="10" BorderThickness="1" BorderBrush="#4000C8FF">
+                      <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#15222A" Offset="0"/><GradientStop Color="#141414" Offset="1"/></LinearGradientBrush></Border.Background>
+                      <Grid>
+                        <Border CornerRadius="10" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#14FFFFFF" Offset="0"/><GradientStop Color="#08FFFFFF" Offset="0.16"/><GradientStop Color="#00FFFFFF" Offset="0.5"/></LinearGradientBrush></Border.Background></Border>
+                        <StackPanel Margin="13,11" VerticalAlignment="Center">
+                          <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#00C8FF" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                              <TextBlock Text="Red" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#1C1C1C" CornerRadius="4" Padding="7,2" VerticalAlignment="Center">
+                              <TextBlock x:Name="lblHomeRedStatus" Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#00C8FF"/>
+                            </Border>
+                          </Grid>
+                          <TextBlock x:Name="lblHomeRedFrac" Text="0/0" FontSize="21" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" Margin="0,7,0,2"/>
+                          <TextBlock x:Name="lblHomeRedInsight" Text="" FontSize="10.5" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+
+                    <!-- Servicios (violeta) -->
+                    <Border Grid.Column="1" Grid.Row="1" Margin="6,6,0,0" CornerRadius="10" BorderThickness="1" BorderBrush="#40A855F7">
+                      <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#1F1826" Offset="0"/><GradientStop Color="#141414" Offset="1"/></LinearGradientBrush></Border.Background>
+                      <Grid>
+                        <Border CornerRadius="10" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#14FFFFFF" Offset="0"/><GradientStop Color="#08FFFFFF" Offset="0.16"/><GradientStop Color="#00FFFFFF" Offset="0.5"/></LinearGradientBrush></Border.Background></Border>
+                        <StackPanel Margin="13,11" VerticalAlignment="Center">
+                          <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock Text="&#x2699;" FontFamily="Segoe UI Symbol" FontSize="14" Foreground="#A855F7" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                              <TextBlock Text="Servicios" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#1C1C1C" CornerRadius="4" Padding="7,2" VerticalAlignment="Center">
+                              <TextBlock x:Name="lblHomeServStatus" Text="--" FontSize="9.5" FontWeight="SemiBold" Foreground="#A855F7"/>
+                            </Border>
+                          </Grid>
+                          <TextBlock x:Name="lblHomeServFrac" Text="0/0" FontSize="21" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" Margin="0,7,0,2"/>
+                          <TextBlock x:Name="lblHomeServInsight" Text="" FontSize="10.5" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                      </Grid>
+                    </Border>
+                  </Grid>
+                </Grid>
+              </Grid>
+            </Border>
+
+            <!-- DERECHA: ULTIMA OPTIMIZACION -->
+            <Border Grid.Column="2" CornerRadius="10" BorderThickness="1" BorderBrush="#4000C8FF">
+              <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#15242C" Offset="0"/><GradientStop Color="#121616" Offset="1"/></LinearGradientBrush></Border.Background>
+              <Grid>
+                <Border CornerRadius="10" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#18FFFFFF" Offset="0"/><GradientStop Color="#0AFFFFFF" Offset="0.12"/><GradientStop Color="#00FFFFFF" Offset="0.4"/></LinearGradientBrush></Border.Background></Border>
+                <Grid Margin="16,14">
+                  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Text="ULTIMA OPTIMIZACION" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" Margin="0,0,0,10"/>
+                  <!-- estado con datos -->
+                  <StackPanel Grid.Row="1" x:Name="panelHomeLastData" Visibility="Collapsed" VerticalAlignment="Center">
+                    <TextBlock x:Name="lblHomeLastWhen" Text="" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" Margin="0,0,0,14"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                      <TextBlock x:Name="lblHomeLastFreed" Text="0 MB" FontSize="19" FontWeight="Bold" Foreground="#22C55E" VerticalAlignment="Bottom"/>
+                      <TextBlock Text=" liberados" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                      <TextBlock x:Name="lblHomeLastScore" Text="+0" FontSize="19" FontWeight="Bold" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Bottom"/>
+                      <TextBlock Text=" puntos de salud" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock x:Name="lblHomeLastActions" Text="0" FontSize="19" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Bottom"/>
+                      <TextBlock Text=" acciones" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
+                    </StackPanel>
+                  </StackPanel>
+                  <!-- estado vacio -->
+                  <StackPanel Grid.Row="1" x:Name="panelHomeLastEmpty" Visibility="Collapsed" VerticalAlignment="Center">
+                    <TextBlock Text="Todavia no optimizaste" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg2}" TextWrapping="Wrap"/>
+                    <TextBlock Text="Optimiza ahora para ver tus resultados aca." FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                  </StackPanel>
+                  <Button Grid.Row="2" x:Name="btnHomeViewHistory" Content="Ver historial" Style="{StaticResource BtnSec}" Padding="12,5" FontSize="11" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                </Grid>
+              </Grid>
+            </Border>
+
+          </Grid>
         </Grid>
       </TabItem>
 
@@ -2757,12 +2869,13 @@
            penaliza GPU (inaceptable en el hardware objetivo). Se reporta: quedo semitransparente. -->
       <Border x:Name="consoleOverlay" Grid.Column="0" Grid.ColumnSpan="2"
               Background="#B3000000" Panel.ZIndex="200" Visibility="Collapsed">
-        <!-- fix 28.1: opacidad bajada de #EB (~92%) a #CC (~80%) para que el semitransparente se
-             note de verdad, sin perder legibilidad del log. Sin blur (semitransparencia limpia).
+        <!-- Opacidad del marco: #EB (~92%) -> #CC (~80%) -> #B3 (~70%) -> #A6 (~65%) -> #94 (~58%, fix 29c)
+             para que el vidriado se note mas. Sin blur (semitransparencia limpia). El fondo del log va
+             un poco mas opaco (#A6 ~65%) para legibilidad — ver Border del CUERPO abajo.
              fix 28.2: Height FIJO (no MaxHeight) -> el panel se ve igual vacio/ejecutando/completado;
              el log scrollea dentro de ese alto en vez de que el panel crezca. -->
         <Border Width="700" Height="560" VerticalAlignment="Center" HorizontalAlignment="Center"
-                Background="#CC141414" CornerRadius="12"
+                Background="#94141414" CornerRadius="12"
                 BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1">
           <Border.Effect>
             <DropShadowEffect BlurRadius="28" ShadowDepth="3" Opacity="0.6" Color="#000000"/>
@@ -2799,10 +2912,14 @@
               </StackPanel>
             </Grid>
 
-            <!-- CUERPO: log en vivo (rtbLog + logScroll movidos aca, x:Name intactos para AppLogger) -->
-            <Border Grid.Row="1" Background="{DynamicResource BrushDeep}" CornerRadius="8"
+            <!-- CUERPO: log en vivo (rtbLog + logScroll movidos aca, x:Name intactos para AppLogger).
+                 fix 29: el fondo del log dejo de ser el negro OPACO BrushDeep (#0A0A0A) — que se veia
+                 como un rectangulo solido dentro del panel semitransparente — y pasa a #A6141414
+                 (~65%, un poco mas opaco que el marco #94 ~58% para legibilidad del texto). El rtbLog
+                 y el logScroll (ScrollViewer) ya son Transparent, asi que toman este color del Border. -->
+            <Border Grid.Row="1" Background="#A6141414" CornerRadius="8"
                     BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Margin="20,0">
-              <ScrollViewer x:Name="logScroll" VerticalScrollBarVisibility="Auto">
+              <ScrollViewer x:Name="logScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
                 <RichTextBox x:Name="rtbLog" Background="Transparent" FontFamily="Consolas"
                              FontSize="12" BorderThickness="0" IsReadOnly="True"
                              Padding="12" IsDocumentEnabled="True"/>
@@ -2822,6 +2939,98 @@
                 <Button x:Name="btnConsoleClose" Content="Cerrar"  Style="{StaticResource BtnSec}"/>
               </StackPanel>
             </StackPanel>
+          </Grid>
+        </Border>
+      </Border>
+
+      <!-- ============ SYSTEM INFO OVERLAY (modal, fix 30) ============
+           Reusa la infra del overlay de consola: scrim modal + panel centrado semitransparente
+           (#94141414, mismo estilo/transparencia). Siempre cerrable (no hay operacion que
+           proteger): boton Cerrar + click afuera. Contiene el hardware del equipo + el detalle
+           de componentes que antes vivian en la pestaña Info del sistema (x:Name intactos). -->
+      <Border x:Name="systemInfoOverlay" Grid.Column="0" Grid.ColumnSpan="2"
+              Background="#B3000000" Panel.ZIndex="200" Visibility="Collapsed">
+        <Border Width="760" Height="520" VerticalAlignment="Center" HorizontalAlignment="Center"
+                Background="#94141414" CornerRadius="12"
+                BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1">
+          <Border.Effect><DropShadowEffect BlurRadius="28" ShadowDepth="3" Opacity="0.6" Color="#000000"/></Border.Effect>
+          <Grid>
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+            <!-- HEADER -->
+            <Grid Grid.Row="0" Margin="20,16,20,12">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="15" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                <TextBlock Text="System Info" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Center"/>
+              </StackPanel>
+              <Button x:Name="btnSysInfoClose" Grid.Column="1" Content="Cerrar" Style="{StaticResource BtnSec}" Padding="12,4" FontSize="11"/>
+            </Grid>
+
+            <!-- CUERPO: hardware (izq) | componentes (der) -->
+            <Grid Grid.Row="1" Margin="20,0,20,0">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+
+              <!-- HARDWARE DEL EQUIPO -->
+              <Border Grid.Column="0" Background="#0F0F0F" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="14">
+                <Grid>
+                  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Text="HARDWARE DEL EQUIPO" FontSize="9" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,10"/>
+                  <StackPanel Grid.Row="1">
+                    <Border Background="#1E1E1E" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE7F4;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Sistema" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoOS" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
+                      </Grid>
+                    </Border>
+                    <Border Background="#1E1E1E" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE950;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Procesador" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoCPU" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
+                      </Grid>
+                    </Border>
+                    <Border Background="#1E1E1E" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE7F8;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Graficos" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoGPU" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
+                      </Grid>
+                    </Border>
+                    <Border Background="#1E1E1E" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE964;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Memoria" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoRAM" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
+                      </Grid>
+                    </Border>
+                    <Border Background="#1E1E1E" CornerRadius="6" Padding="10,8" Margin="0,0,0,6">
+                      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xEDA2;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Almacenamiento" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoDisk" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
+                      </Grid>
+                    </Border>
+                    <Border Background="#1E1E1E" CornerRadius="6" Padding="10,8">
+                      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="&#xE782;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1"><TextBlock Text="Windows" FontSize="11" FontWeight="SemiBold" Foreground="#888888"/><TextBlock x:Name="infoType" FontSize="12" Foreground="#CCCCCC" TextWrapping="Wrap"/></StackPanel>
+                      </Grid>
+                    </Border>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <!-- DETALLE DE COMPONENTES -->
+              <Border Grid.Column="2" Background="#0F0F0F" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="14">
+                <Grid>
+                  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Text="DETALLE DE COMPONENTES" FontSize="9" FontWeight="SemiBold" Foreground="#555555" Margin="0,0,0,10"/>
+                  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="icComponentsInfo"/>
+                  </ScrollViewer>
+                </Grid>
+              </Border>
+            </Grid>
+
+            <!-- (pie vacio: el Cerrar esta en el header) -->
+            <Border Grid.Row="2" Height="8"/>
           </Grid>
         </Border>
       </Border>

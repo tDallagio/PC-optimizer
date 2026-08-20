@@ -5,6 +5,122 @@
 
 ---
 
+## Pulido del Home (31_pulido_home.txt)
+
+Cuatro ajustes de presentacion sobre el Home (sin tocar la logica del monitor ni del score):
+
+1. **Escalon del glossy eliminado.** La banda de reflejo de las cards tenia un corte duro (era un
+   `Border` de alto fijo, ademas inset por el padding de la card, con un gradiente que terminaba de
+   golpe). Ahora el reflejo es un `Border` que **llena la card** (llega a los bordes, sin el padding)
+   con un gradiente de varios stops que **se desvanece gradual a transparente** dentro del tercio
+   superior (`#1A/#14FFFFFF` arriba -> `#00FFFFFF` a ~offset 0.4-0.5). Aplicado a **todas** las cards
+   (3 de uso, 4 de salud, ultima optimizacion) y coherente con los botones glossy. Se siente como
+   vidrio, sin bloque pegado.
+2. **Modelo fuera de las cards de uso.** Se quito el subtitulo con el modelo/cantidad (Ryzen, GB,
+   Radeon) de las cards CPU/RAM/GPU — esa info ya vive en el overlay System Info, era redundante. Cada
+   card quedo con layout **vertical y balanceado**: medidor + % al centro, y debajo el icono + nombre
+   (CPU/RAM/GPU), centrados. En el `.cs` se quitaron los sets de `lblGaugeCpuSub/RamSub/GpuSub`.
+3. **Layout estira el alto.** El Home paso de `ScrollViewer`+`StackPanel` (dejaba un hueco grande
+   abajo) a un **`Grid` con fila inferior `*`**: el cuadrante de salud/ultima-optimizacion estira
+   naturalmente para ocupar el alto disponible (la malla 2x2 usa filas `*` y centra el contenido), sin
+   inflar ni deformar. Cards de uso un poco mas altas (layout vertical).
+4. **Medidores circulares = gauge CUSTOM (no ProgressRing).** `ui:ProgressRing` es un spinner
+   indeterminado (se veia cortado y el % al lado), no sirve como gauge. **Se reemplazo por un medidor
+   dibujado**: `Ellipse` de track gris (anillo completo) + `Path` con un `ArcSegment` de color
+   proporcional al % encima + el `%` **al centro** del circulo (estilo AMD Adrenalin). El arco se
+   actualiza en vivo mutando el `ArcSegment` (solo cambian el punto final, `IsLargeArc` y el color por
+   umbral: verde <=60 / ambar 60-85 / rojo >85; -1/no disponible -> "--" sin arco). Se mantiene la
+   fuente (el `_monitorTimer` de siempre). **Reportado: quedo CUSTOM, no ProgressRing.**
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con `Publish-CSharp.ps1
+-SkipInstaller` (single-file, 71 MB). Confirmacion visual final del usuario.
+
+---
+
+## Home / dashboard de entrada — reemplaza Info del sistema (30_home_dashboard.txt)
+
+Cambio grande (comparable al layout maestro o la consola-overlay). Nueva pantalla **HOME** que es la
+entrada de la app y **reemplaza a la pestaña Info del sistema**, absorbiendo toda su data.
+
+**Home (nuevo tab, ocupa el indice 2 que dejo Info):**
+- **Bienvenida**: titulo + subtitulo, y a la derecha dos botones **glossy** — "System Info" (secundario,
+  abre el overlay) y "Optimizar ahora" (primario cyan, navega a Optimizar).
+- **3 medidores en vivo CPU / RAM / GPU**: medidor circular (`ui:ProgressRing` determinado + % al
+  centro, estilo AMD Adrenalin) + icono + label + subtitulo (modelo / GB). Alimentados por el
+  `_monitorTimer` existente. Son solo indicadores (no clickeables).
+- **Cuadrante inferior** (2fr | 1fr): a la izquierda la **malla de salud 2x2** glossy (Rendimiento
+  verde / Privacidad ambar / Red cyan / Servicios violeta) con encabezado "SALUD" + score total +
+  "Recalcular"; cada card con icono, chip de estado (OPTIMO/REVISAR segun si la fraccion esta
+  completa), la fraccion real (6/6, 3/4...) e **insight** derivado del estado real. **Privacidad es
+  PRUDENTE** cuando no esta completa ("Revisa esta categoria para reforzar tu privacidad"): hay un bug
+  conocido que da 3/4 aunque se apliquen todos los tweaks (ver PENDIENTES), asi que no se afirma que
+  falta. A la derecha, la card **"ULTIMA OPTIMIZACION"** con datos REALES del ultimo backup de
+  Historial (hace cuanto, MB liberados, +N puntos de salud, N acciones) o un **estado vacio** elegante
+  si no hay optimizaciones registradas.
+
+**Efectos glossy — regla de performance:** degrades (`LinearGradientBrush`) + banda de reflejo (overlay
+con opacidad) = gratis, usados. El **glow del borde quedo como BORDE SOLIDO de color (sin
+`DropShadowEffect`)**: la pantalla de entrada esta siempre abierta y los medidores se actualizan cada
+segundo, asi que el halo difuminado x varias cards no vale el costo de GPU en hardware modesto. Estilos
+nuevos: `BtnGlossyCyan`, `BtnGlossyDark`, `CardGlossy`.
+
+**Info del sistema eliminada; su data migrada:**
+- **Monitor en vivo** -> medidores del Home. `OnMonitorTick` ahora actualiza los `ui:ProgressRing`
+  (CPU = uso, RAM = usado/total, GPU = uso) y sigue manteniendo los labels TOTAL/EN USO/LIBRE del
+  "Liberador de RAM" (Herramientas). **GPU usage** se agrego best-effort (`ReadGpuPct`, suma del engine
+  3D de "GPU Engine" con counters persistentes + rebuild periodico; -1 = no disponible -> el medidor
+  muestra "--"); Windows no lo expone tan limpio como CPU/RAM. Se **dejaron de mostrar** (con Info) la
+  actividad de disco, el % de C: y las **temperaturas CPU/GPU** (`UpdateThermalDisplay`/`TempBrush`
+  removidos; el servicio `App.Thermal` queda por si se reincorporan las temps — decision PawnIO/LHM).
+- **Hardware + componentes** -> **overlay System Info** (`systemInfoOverlay`), que reusa la infra del
+  overlay de consola (scrim modal + panel semitransparente `#94141414`, siempre cerrable: boton Cerrar
+  + click afuera). Contiene "HARDWARE DEL EQUIPO" (cards `infoOS/CPU/GPU/RAM/Disk/Type`) y "DETALLE DE
+  COMPONENTES" (`icComponentsInfo`), con los mismos `x:Name` -> `PopulateSystemInfoControls` y
+  `LoadComponentsInfoAsync` siguen funcionando sin cambios (los componentes se cargan al abrir el
+  overlay, ya no al entrar a una pestaña).
+- **Score** -> malla del Home. `UpdateScorePanel` se reescribio para alimentar la malla (conserva el
+  nombre para no tocar callers); `AnimateScoreCount` y `RecalcScoreAsync` apuntan al score del Home
+  (`lblHomeScore`/`lblHomeScoreLabel`). El `scoreWidget` parkeado y `UpdateScoreWidget` siguen vivos
+  (tooltip/delta, ya del corte 25).
+
+**Navegacion reindexada.** La app **abre en Home** (`SetActiveNav(2)` inicial). Item **Home** arriba de
+todo del sidebar (icono casa) mapeando al tab index 2. Como Home **reemplazo el slot de Info (indice
+2)**, **ningun otro indice se movio** (Optimizar 0 ... Tuning 8 intactos). Ajustes en el `.cs`:
+`_navButtons[2]` = `navHome` (era `navInfo`, eliminado); `navHome.Click -> SetActiveNav(2)`;
+`OnMainTabsSelectionChanged` para el indice 2 ahora refresca la malla + la card de ultima optimizacion
+(los componentes ya no se cargan ahi). Deep-links intactos (btnErrBadge, btnTrialUpgrade->7,
+GoToHistory->5, Consola overlay). "Ver historial" (Home) -> Historial (5); "Optimizar ahora" ->
+Optimizar (0); "System Info" -> overlay.
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con `Publish-CSharp.ps1
+-SkipInstaller` (single-file, 71 MB). El `.exe` publicado abre y responde. Confirmacion visual final
+del usuario, pieza por pieza.
+
+---
+
+## Ajuste de transparencia del consola-overlay (29_transparencia_log_overlay.txt)
+
+Cambio puramente cosmetico, dos alphas sobre la misma base `#141414` (afinados por el usuario tras
+probar 70%/78% y 65%/72%; quedaron como finales **58% marco / 65% log**):
+
+- **Marco del panel**: `#CC141414` (~80%) → `#B3141414` (~70%) → `#A6141414` (~65%) →
+  **`#94141414` (~58%)**. Mas vidriado; el contenido sigue legible. Scrim (`#B3000000`) detras
+  intacto, sin blur.
+- **Fondo del log**: el area del log se veia como un rectangulo NEGRO OPACO (`#0A0A0A`, el
+  `BrushDeep` del Border contenedor) que rompia la transparencia del panel. Ahora ese Border usa
+  **`#A6141414` (~65%)** — un poco mas opaco que el marco, a proposito, para que el texto del log se
+  lea bien. El `rtbLog` (RichTextBox) y el `logScroll` (ScrollViewer) ya eran `Transparent`, asi que
+  toman el color del Border directamente — **no hizo falta tocar el template del RichTextBox** (se
+  confirmo que ya era transparente porque el log mostraba el `BrushDeep` oscuro a traves, no el fondo
+  blanco por defecto del control). Se dejo el `Background="Transparent"` explicito tambien en el
+  `logScroll` por robustez.
+
+Contraste texto-sobre-fondo a ~65%: se mantiene bueno (el log es texto claro sobre `#141414`
+atenuado). Verificado: `dotnet build` OK (**0 errores, 0 advertencias**) y publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 70.9 MB). Confirmacion visual final del usuario.
+
+---
+
 ## Correcciones del consola-overlay (28_correcciones_consola_overlay.txt)
 
 Seis ajustes tras validar el overlay (corte 27): 3 cosmeticos, 3 funcionales.
