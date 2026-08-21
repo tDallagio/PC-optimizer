@@ -992,14 +992,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                                 : r.Score >= 45 ? "Optimizacion parcial - hay margen de mejora"
                                 : "Sistema sin optimizar";
 
-        // Insights derivados del estado REAL. Privacidad es PRUDENTE cuando no esta completa:
-        // hay un bug conocido (da 3/4 aunque se apliquen todos los tweaks; ver PENDIENTES), asi
-        // que NO se afirma que falta con certeza.
+        // Insights derivados del estado REAL. El insight afirmativo (completa) o el de revisar
+        // (incompleta) segun la fraccion. Privacidad: con el fix 32 (CheckTasks independiente del
+        // idioma) 4/4 pasa a afirmativo; el texto prudente ("Revisa...") solo queda si por algun
+        // motivo la categoria quedara incompleta.
         SetHealthCard(r, "Rendimiento", lblHomeRendStatus, lblHomeRendFrac, lblHomeRendInsight,
                       BrushGreen, "Todos los tweaks de rendimiento aplicados",
                       "Hay tweaks de rendimiento sin aplicar");
         SetHealthCard(r, "Privacidad", lblHomePrivStatus, lblHomePrivFrac, lblHomePrivInsight,
-                      BrushYellow, "Privacidad reforzada",
+                      BrushYellow, "Telemetria y tareas de diagnostico deshabilitadas",
                       "Revisa esta categoria para reforzar tu privacidad");
         SetHealthCard(r, "Red", lblHomeRedStatus, lblHomeRedFrac, lblHomeRedInsight,
                       BrushFromHex("#00C8FF"), "Conectividad optimizada",

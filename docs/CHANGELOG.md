@@ -5,6 +5,151 @@
 
 ---
 
+## Sincronización de docs/PENDIENTES.md (35_sincronizar_pendientes.txt)
+
+Tarea de documentación pura, sin cambios de código. Se auditó el Módulo 1 (ítems 1-10) contra
+CHANGELOG.md y el código real. Correcciones: **ítem 1** (sidebar de navegación) estaba sin marcar
+pese a estar implementado desde el corte 25 — se tildó y se reescribió su texto para reflejar la
+agrupación real construida (PRINCIPAL/SISTEMA + Home arriba + fila de íconos abajo), distinta a la
+tentativa original del ítem ("Optimizar/Sistema/Avanzado/Ajustes"). **Ítem 2** ya estaba bien
+marcado; se le agregó un addendum breve con el pulido de los cortes 31-32. **Ítem 3** se dejó sin
+marcar (sigue pendiente en su alcance completo) pero se anotó el trabajo parcial existente
+(`ui:ToggleSwitch` en los 3 controles de Tuning Avanzado, corte 16B; restyle visual de los
+`CheckBox` sin reemplazo de componente, corte 15) y la dirección de producto más amplia que el
+usuario planteó para Optimizar/Herramientas (remodelación mayor, no negociable, pendiente de
+planificar). Ítems 4-9 confirmados sin implementar (sin evidencia en CHANGELOG). Ítem 10 confirmado
+correcto sin cambios.
+
+---
+
+## Fix de ParsePnpUtil — trilingüe en/es/pt-BR (34_fix_pnputil_idioma.txt)
+
+Bug confirmado (no hipótesis): `ParsePnpUtil()` (`TuningService.cs`, detección de drivers obsoletos
+del Driver Store) parseaba la salida de `pnputil /enum-drivers` con regex **bilingüe** (inglés/español)
+para 4 campos (`Published Name`, `Original Name`, `Driver Version`, `Driver Date`). En Windows en
+**portugués** (Brasil) ningún patrón matcheaba → la lista quedaba vacía → la detección de drivers
+obsoletos se apagaba silenciosamente en ese idioma.
+
+**Investigación de una fuente estructurada (no textual) antes de tocar el regex**, como pedía el
+prompt:
+- **`Win32_PnPSignedDriver` (WMI) — descartado con evidencia real.** Se comparó contra
+  `pnputil /enum-drivers` en la máquina real: WMI devolvió 186 registros, pero son los drivers
+  **actualmente ligados a cada dispositivo presente** (con duplicados por dispositivo, ej. "Local
+  Print Queue" x3) — **no** el inventario del Driver Store. Un paquete **obsoleto/superseded**, por
+  definición, ya no está ligado a ningún dispositivo, así que WMI **nunca lo vería**: migrar ahí
+  habría roto la detección de obsoletos, exactamente el riesgo que el prompt pedía evitar.
+- **`/format csv|xml` en `pnputil /enum-drivers` — no existe.** Un resultado de búsqueda inicial
+  sugería que sí, pero se verificó contra la [sintaxis oficial de Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/pnputil-command-syntax)
+  y ese flag **solo existe en `/enum-containers`** (comando distinto); `/enum-drivers` solo acepta
+  `/class` y `/files`. El hallazgo inicial era una alucinación del resumen de búsqueda.
+- **API nativa del Driver Store** (`DriverStoreOfflineEnumDriverPackage`, `newdev.dll`) sí daría datos
+  estructurados, pero es un P/Invoke no trivial (structs no gestionados, iteración por callback) —
+  esfuerzo desproporcionado para el alcance de este fix.
+
+**Decisión: extender el regex bilingüe (en/es) a TRILINGÜE (en/es/pt-BR)** — la opción B del prompt,
+alcance explícito = los idiomas del mercado real de WinBoost (LATAM hispanohablante + Brasil). Otro
+locale sigue sin funcionar; limitación conocida y documentada, no oculta.
+
+**Literales agregados (portugués-BR):** `"Nome publicado"`, `"Nome original"`, `"Versão do
+driver"`/`"Versão do controlador"` (hedge — ver nota abajo), `"Data do driver"`/`"Data do controlador"`.
+**No se pudieron confirmar contra una máquina real ni contra un ejemplo de salida real de Microsoft**
+(se investigó: la página oficial de ejemplos de `pnputil` en pt-BR no incluye output de muestra para
+`/enum-drivers`, el Microsoft Language Portal no devolvió resultado accesible, no hay dumps de
+`pnputil.exe.mui` disponibles). Los literales son la mejor estimación basada en la convención de MS
+pt-BR: "Nome"/"publicado"/"original" son cognados directos del español (ya confirmado real en esta
+máquina: "Nombre publicado", "Nombre original", "Versión del controlador"); "driver" se mantiene como
+préstamo en pt-BR (ej. el Gerenciador de Dispositivos no traduce la pestaña "Driver"), de ahí que el
+regex acepte `driver` **o** `controlador` para cubrir ambas posibilidades. **Queda pendiente validar
+en una máquina Windows en portugués real.**
+
+Verificado en la máquina real (español): `dotnet build` OK (**0 errores, 0 advertencias**); el nuevo
+regex trilingüe se probó línea por línea (es/pt-BR sintético/en, sin falsos negativos) y con el
+**pipeline completo contra la salida real de `pnputil /enum-drivers`**: 42/42 paquetes parseados
+correctamente, 0 sin `OriginalName` — **sin regresión** respecto al comportamiento anterior en español.
+Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB).
+
+---
+
+## Verificación de CheckHpet y CheckTcpTuning — sin bug real (33_fix_hpet_tcp_idioma.txt)
+
+Continuación del barrido de idioma sobre el health score (misma familia que la política térmica y
+`CheckTasks`, ya resueltos en el corte 32). Dos checks quedaron reportados como sospechosos:
+`CheckHpet` (afecta Rendimiento) y `CheckTcpTuning`/RSS (afecta Red). **Resultado: verificados
+directamente en la máquina real — ninguno de los dos tiene el bug. No se modificó código.**
+
+**`CheckHpet` (`SystemInfoService.cs` ~línea 181).** Hipótesis a confirmar: `bcdedit /enum` podría
+localizar el valor booleano `"Yes"` a `"Sí"` en Windows español, igual que `schtasks` localizaba
+"Disabled" a "Deshabilitado". **Verificación real (Windows 10, locale es-ES), elevando temporalmente
+para leer `bcdedit /enum` con el MISMO código que usa `RunProcess` (Process.Start + StandardOutput,
+sin encoding explícito):** los 4 elementos booleanos del BCD store (`recoveryenabled`,
+`isolatedcontext`, `useplatformtick`, `disabledynamictick`) se mostraron como **`"Yes"`, no `"Sí"`**.
+A diferencia de `schtasks` (que localiza completamente su salida de texto), `bcdedit` **no localiza**
+los valores Yes/No de sus elementos booleanos — son tokens literales (los mismos que acepta como
+argumento en `bcdedit /set ... yes`). Con el HPET tweak ya aplicado en la máquina (`disabledynamictick
+Yes` presente), la simulación exacta del check (`.Contains("disabledynamictick") &&
+.Contains("Yes")`) devolvió `true` correctamente. **Sin bug — no se tocó el código.**
+
+**`CheckTcpTuning`/RSS (`SystemInfoService.cs` ~línea 329).** Ya tenía un fix bilingüe documentado en
+comentario (corte previo): matchea la etiqueta de la línea de RSS en inglés (`"Receive-Side Scaling"`)
+o español (`"escalado"`), y confía en que el token de valor `"enabled"`/`"disabled"` no se localiza.
+**Verificado con la salida real de `netsh int tcp show global`** en la máquina (es-ES): la línea sale
+como `"Estado de escalado de lado de recepción: enabled"` — etiqueta localizada, **valor en inglés**.
+El check matchea `"escalado"` (true) + `"enabled"` (true) → devuelve `true` correctamente. Se confirmó
+además que no hay riesgo de falso positivo cruzado con la línea de RSC (`"fusión de segmento"`, no
+contiene `"escalado"`) ni de que `"disabled"` matchee accidentalmente `"enabled"` como substring (no
+comparten letras: "disabled" no tiene "n"). **Ya funcionaba — no se tocó el código** (cumple
+exactamente el criterio del prompt: "si ya funciona, no tocar, reportar que se verificó y está OK").
+
+Sin cambios de código en este corte: `dotnet build` de control **0 errores, 0 advertencias**. No se
+republicó — el `.exe` ya publicado en el corte 32 (SHA `62294E...`) refleja el comportamiento correcto
+de ambos checks (nunca estuvieron rotos). `docs/PENDIENTES.md` sincronizado: ambos ítems salen de la
+lista "a arreglar" de la auditoría de idioma, marcados como verificados-OK con la evidencia real.
+
+---
+
+## Fix del score de Privacidad — CheckTasks independiente del idioma (32_fix_privacidad_score.txt)
+
+Bug: **Privacidad quedaba en 3/4** aunque se aplicaran TODOS los tweaks de la categoria. Causa raiz
+(misma familia que el bug de la politica termica y la auditoria de idioma de PENDIENTES): de los 4
+items que evalua Privacidad (`Telemetry/GameDVR/Cortana/Tasks` en `SystemInfoService.cs`), los tres
+primeros leen del **registro** (OK, sin idioma), pero **`CheckTasks` parseaba la salida LOCALIZADA de
+`schtasks`**: hacia `.Contains("Disabled")`. En Windows en español el estado sale como
+**"Deshabilitado"**, no "Disabled" -> nunca matcheaba -> `CheckTasks` daba `false` -> Tasks contaba
+como no aplicado -> **3/4**.
+
+**Confirmado en la maquina del usuario** (es-AR / UI es-ES) leyendo las 3 tareas de dos formas:
+`schtasks /fo CSV` devuelve `"...,"Deshabilitado"` (texto localizado, el viejo `.Contains("Disabled")`
+= false), mientras la **API COM del Task Scheduler devuelve `Enabled=False`** para las tres.
+
+**Fix:** `CheckTasks` ahora lee el estado **`Enabled` (bool, INDEPENDIENTE DEL IDIOMA)** via la API COM
+`Schedule.Service` (`GetFolder`/`GetTask`/`IRegisteredTask.Enabled`), en vez de parsear texto. Late-bind
+por **reflection** (`InvokeMember`, sin dependencia NuGet ni DLR) para robustez en el publish
+single-file; cuenta las tareas con `Enabled==false` (`disabled >= 2`, mismo criterio que antes). Con
+las 3 tareas deshabilitadas -> Tasks = true -> **Privacidad 4/4** en cualquier idioma (español,
+portugués, inglés). No se cambio el conjunto de items evaluados (sigue siendo Telemetry/GameDVR/Cortana/
+Tasks; GameMode/Notif siguen fuera del score por decision de diseño previa).
+
+**Insight del Home:** al pasar Privacidad a 4/4, la card muestra el insight afirmativo (se hizo
+especifico: "Telemetria y tareas de diagnostico deshabilitadas"); el texto prudente ("Revisa esta
+categoria...") queda solo si por algun motivo la categoria quedara incompleta.
+
+**Otros parseos de CLI localizados detectados (reportados, NO arreglados en este corte — suman a la
+auditoria de idioma de PENDIENTES):**
+- `CheckHpet` (~línea 184): parsea `bcdedit /enum` buscando `"Yes"` (en español "Sí") para
+  `disabledynamictick` -> probablemente falla en español, afectando el score de **Rendimiento**.
+- `CheckTcp/RSS` (~línea 300): parsea `netsh int tcp show global`; ya maneja la etiqueta en ES/EN
+  ("Receive-Side Scaling"/"escalado") pero el VALOR lo busca como `"enabled"` (en español
+  "habilitado") -> probablemente falla en español, afectando el score de **Red**.
+  Ambos son el mismo patron (leer texto localizado); conviene migrarlos a registro/API en un corte de
+  la auditoria de idioma.
+
+Verificado: `dotnet build` OK (**0 errores, 0 advertencias**); el mecanismo del fix validado en vivo
+sobre la maquina del usuario (COM Enabled=False vs schtasks "Deshabilitado"); publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB). Confirmacion visual final del usuario sobre
+el publicado: Privacidad 4/4 y card en OPTIMO.
+
+---
+
 ## Pulido del Home (31_pulido_home.txt)
 
 Cuatro ajustes de presentacion sobre el Home (sin tocar la logica del monitor ni del score):

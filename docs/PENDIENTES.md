@@ -36,18 +36,38 @@ cambiar la paleta.
 
 Checklist en orden de ejecución:
 
-- [ ] **1. Sidebar de navegación vertical** (icono + label) en reemplazo de las tabs superiores.
+- [x] **1. Sidebar de navegación vertical** (icono + label) en reemplazo de las tabs superiores.
       Escala mejor con las 8 secciones actuales y se lee como "producto", no "herramienta".
       Agrupación tentativa: Optimizar / Sistema / Avanzado / Ajustes. *(Cambio estructural #1.)*
+      **HECHO (corte 25, ajustado en 26/27/30)**: sidebar full-height a la izquierda con bloque de
+      marca (logo + versión + badge de licencia) arriba. Agrupación real (distinta a la tentativa
+      original): grupo **PRINCIPAL** (Optimizar, Herramientas, Tuning Avanzado, Bloatware) y grupo
+      **SISTEMA** (Arranque, Historial); **Home** (corte 30) como item propio arriba de ambos grupos,
+      es la entrada de la app. Item activo con pill de fondo cyan (corte 26). Consola/Ajustes/
+      Licencia bajaron a una fila de íconos al fondo del sidebar (corte 27); Consola abre un overlay
+      modal en vez de navegar a una pestaña. Ver CHANGELOG (cortes 25, 26, 27, 30).
 - [x] **2. Dashboard de entrada** con estado del sistema arriba (CPU/GPU/RAM detectados + score +
       CTA principal), en vez de abrir con una grilla fría de checkboxes. WinBoost ya tiene el score
       y la info de sistema: promover esa data a pantalla de entrada.
-      **HECHO (corte 30)**: Home es la entrada de la app y reemplazó a Info del sistema. Medidores
-      circulares CPU/RAM/GPU en vivo, malla de salud glossy con insights reales (Privacidad prudente
-      por el bug abierto de abajo), card de última optimización desde Historial, botones glossy, y
-      overlay System Info (hardware + componentes). Ver CHANGELOG.
+      **HECHO (corte 30, pulido en 31/32)**: Home es la entrada de la app y reemplazó a Info del
+      sistema. Medidores circulares CPU/RAM/GPU en vivo (gauge custom con arco de progreso, no
+      `ui:ProgressRing` — corte 31), malla de salud glossy con insights reales (Privacidad ahora
+      afirmativa en 4/4 tras el fix del corte 32), card de última optimización desde Historial,
+      botones glossy sin escalón en el reflejo (corte 31), y overlay System Info (hardware +
+      componentes). Ver CHANGELOG.
 - [ ] **3. Componente toggle estilizado reutilizable** que reemplace los checkboxes de sistema en
       todas las secciones. Detalle chico, gran impacto en percepción de calidad.
+      **Parcial**: los 3 controles de Tuning Avanzado (Scheduler CPU, HAGS, Política Térmica) ya
+      usan `ui:ToggleSwitch` de WPF-UI (corte 16B, "16B_tuning_toggleswitch.txt") — pero es solo esos
+      3 controles. Los checkboxes de Optimizar/Bloatware (los que este ítem apunta a reemplazar)
+      recibieron únicamente un restyle visual (vidrio translúcido + borde acento, corte
+      "15_adopcion_paso1_checkbox.txt"), siguen siendo `CheckBox`, no un componente toggle. El ítem
+      sigue pendiente en su alcance completo. Nota de dirección (2026-08-20, feedback directo del
+      usuario, no negociable): la pestaña Optimizar en particular necesita una remodelación mayor de
+      arquitectura/diseño (tarjetas por tweak con toggle propio, categorías/tabs, buscador, sin
+      checkboxes, ítems de limpieza de archivos separados a una sección "Limpieza" aparte) — este
+      ítem probablemente se quede chico frente a ese alcance; evaluar expandirlo o reemplazarlo
+      cuando se planifique esa remodelación.
 - [ ] **4. Subir padding/espaciado global** (usar los escalones altos de la escala 4px). La UI
       actual aprieta; el rediseño pide más aire en pantallas de entrada/decisión.
 - [ ] **5. Reforzar jerarquía tipográfica** (Segoe UI en varios pesos): títulos claramente más
@@ -172,13 +192,13 @@ vs. esfuerzo, tal como está clasificado en el benchmark competitivo.
       gestiona la Standby solo; forzar la purga rara vez mejora y vacía caché útil). Alineado con la
       marca anti-placebo → sacar/degradar. La liberación de Working Set (real) se conserva en
       cualquier caso.
-- [ ] **Bug: el health score muestra Privacidad 3/4 aunque se apliquen TODOS los tweaks de la
-      sección Privacidad y Telemetría.** Sospecha (a confirmar con diagnóstico, NO parchear a
-      ciegas): desajuste entre lo que el tweak ESCRIBE y lo que el health check LEE para evaluar esa
-      categoría — el check busca una condición que el tweak no deja exactamente como se espera
-      (clave no cubierta, valor distinto, o posible lectura dependiente de estado/idioma, misma
-      familia que el bug de la política térmica). Arranca leyendo cómo calcula el score de
-      Privacidad el código real y qué condición exacta no se cumple; instrumentar antes de arreglar.
+- [x] **Bug: el health score muestra Privacidad 3/4 aunque se apliquen TODOS los tweaks de la
+      sección Privacidad y Telemetría.** **RESUELTO (corte 32)**: causa raíz = `CheckTasks` parseaba
+      la salida LOCALIZADA de `schtasks` (`.Contains("Disabled")`), que en Windows español dice
+      "Deshabilitado" → daba false → 3/4. Confirmado en vivo en la máquina del usuario (es-ES). Fix:
+      leer `Enabled` (bool, sin idioma) via la API COM `Schedule.Service` (late-bind por reflection).
+      Privacidad → 4/4 en cualquier idioma. Ver CHANGELOG. (Era la misma familia que el bug de la
+      política térmica.)
 
 ---
 
@@ -236,12 +256,28 @@ en el rediseño:
       LOCALIZADO en inglés (o inglés+español a mano), lo que falla en Windows en otros idiomas —
       crítico para el mercado LATAM (español y portugués/Brasil): funciona en dev (inglés), falla en
       la máquina del usuario real. Ya corregido: `GetCoolingPolicyState` (política térmica) ahora lee
-      del registro, independiente de idioma. Pendiente: barrer TODO el código en busca de parseos de
-      CLI dependientes de idioma y hacerlos robustos (leer del registro/valores numéricos, o parsear
-      por estructura/patrón, no por el texto de la etiqueta). Caso conocido a arreglar: `ParsePnpUtil()`
-      (`pnputil /enum-drivers`) matchea inglés+español a mano y falla en portugués u otro locale.
-      Revisar también cualquier otro `RunCapture`/parseo de stdout. Validar idealmente en un Windows
-      en español y otro en portugués.
+      del registro, independiente de idioma. También corregido: `CheckTasks` del health score (corte
+      32) ahora lee `Enabled` via la API COM del Task Scheduler en vez de parsear `schtasks`
+      ("Deshabilitado" vs "Disabled"). **Verificados OK, sin bug real (corte 33)** — se habían
+      reportado como sospechosos pero la verificación en la máquina real (Windows 10 es-ES) los
+      descartó: `CheckHpet` (`SystemInfoService.cs` ~línea 181, `bcdedit /enum` buscando
+      `disabledynamictick`+`"Yes"`) — confirmado que `bcdedit` **no localiza** sus valores booleanos
+      Yes/No (se probaron 4 elementos BCD distintos, todos mostraron "Yes" en español); y
+      `CheckTcpTuning`/RSS (~línea 329, `netsh int tcp show global`) — ya tenía un fix bilingüe
+      (etiqueta ES/EN + valor "enabled" no localizado), confirmado funcionando con la salida real de
+      `netsh` en español. Ninguno de los dos se tocó (ver CHANGELOG). **Corregido, con limitación
+      documentada (corte 34):** `ParsePnpUtil()` (`TuningService.cs`, detección de drivers obsoletos)
+      matcheaba solo inglés+español y fallaba en portugués (mercado real: Brasil) — la lista de
+      drivers quedaba vacía en ese idioma, sin error visible. Se investigó migrar a una fuente
+      estructurada (WMI `Win32_PnPSignedDriver`, flag `/format` de pnputil, API nativa del Driver
+      Store) y se descartó cada una con evidencia real (WMI no ve paquetes obsoletos/superseded, sin
+      `/format` en `/enum-drivers`, API nativa desproporcionada) — detalle completo en CHANGELOG. Se
+      extendió el regex a **trilingüe (en/es/pt-BR)**. Español validado end-to-end contra la salida
+      real de `pnputil` (42/42 paquetes, sin regresión). **Los literales en portugués-BR NO se
+      pudieron verificar contra una máquina real ni una fuente de Microsoft con ejemplo de salida real
+      — quedan como mejor estimación documentada, pendiente de validación en un Windows en
+      portugués real** cuando haya oportunidad de probar. Revisar también cualquier otro
+      `RunCapture`/parseo de stdout que quede en el código (barrido no exhaustivo).
 - [ ] **Compatibilidad de la ventana fija con pantallas chicas y escala DPI.** La ventana quedó en
       tamaño FIJO 1000x720 no redimensionable (Módulo 1 item 10), así que el usuario no puede
       achicarla si no le entra. Los 720px **lógicos** entran en una pantalla de 768px SOLO al 100%

@@ -277,20 +277,47 @@ internal sealed class TuningService
             string line = rawLine.Trim();
             if (line.Length == 0) { Flush(); continue; }
 
-            // pnputil /enum-drivers se localiza segun el idioma de Windows: en es-ES
-            // los campos son "Nombre publicado", "Nombre original", "Versi(o)n del
-            // controlador", etc. Matchear ambos idiomas o el scan siempre da vacio.
-            // Las etiquetas ASCII se matchean directo; en "Versi.n" el '.' absorbe el
-            // acento sin depender de la codificacion con la que se capturo la salida.
-            var m = Regex.Match(line, @"^(?:Published Name|Nombre publicado)\s*:\s*(.+)$", RegexOptions.IgnoreCase);
+            // Fix 34: se investigo migrar a una fuente estructurada (no textual) antes de tocar el
+            // regex. Descartado con evidencia real: Win32_PnPSignedDriver (WMI) solo expone el
+            // driver ACTUALMENTE LIGADO a cada dispositivo presente (confirmado: 186 registros en
+            // esta maquina, con duplicados por dispositivo — ej. "Local Print Queue" x3 — nada que
+            // ver con paquetes del Driver Store); un paquete OBSOLETO/superseded, por definicion, ya
+            // NO esta ligado a ningun dispositivo, asi que WMI nunca lo veria — migrar ahi rompería
+            // la deteccion de obsoletos. Tampoco existe /format csv|xml para "pnputil /enum-drivers"
+            // (ese flag solo existe en /enum-containers, confirmado contra la doc oficial de
+            // Microsoft). La API nativa del Driver Store (DriverStoreOfflineEnumDriverPackage,
+            // newdev.dll) si daria datos estructurados, pero es un P/Invoke no trivial (structs no
+            // gestionados, iteracion por callback) — esfuerzo desproporcionado para este fix. Se
+            // opta por la via B del prompt: extender el regex bilingue (en/es) a TRILINGUE
+            // (en/es/pt-BR), alcance EXPLICITO = los idiomas del mercado real de WinBoost (LATAM
+            // hispanohablante + Brasil). Otro locale sigue sin funcionar — limitacion conocida y
+            // aceptada, no oculta.
+            //
+            // Espanol confirmado en la maquina real (corte 33/34): "Nombre publicado", "Nombre
+            // original", "Versi(o)n del controlador", "Fecha del controlador". Portugues-BR: NO se
+            // pudo confirmar contra una maquina real ni contra un ejemplo de salida real de
+            // Microsoft (se investigo: doc oficial pt-BR de pnputil no incluye output de ejemplo, MS
+            // Language Portal no devolvio resultado, sin dumps de pnputil.exe.mui disponibles). Los
+            // literales de abajo son la mejor estimacion basada en la convencion de MS pt-BR
+            // (Nome/publicado/original son cognados directos del espanol; "driver" se mantiene como
+            // prestamo en pt-BR — ver Gerenciador de Dispositivos, pestaña "Driver" sin traducir — de
+            // ahi que se hedgee driver|controlador). PENDIENTE: validar en una maquina Windows en
+            // portugues real.
+            var m = Regex.Match(line,
+                @"^(?:Published Name|Nombre publicado|Nome publicado)\s*:\s*(.+)$", RegexOptions.IgnoreCase);
             if (m.Success) { Flush(); published = m.Groups[1].Value.Trim(); continue; }
             if (published.Length == 0) continue;
 
-            if ((m = Regex.Match(line, @"^(?:Original Name|Nombre original)\s*:\s*(.+)$", RegexOptions.IgnoreCase)).Success)
+            if ((m = Regex.Match(line,
+                    @"^(?:Original Name|Nombre original|Nome original)\s*:\s*(.+)$", RegexOptions.IgnoreCase)).Success)
                 original = m.Groups[1].Value.Trim();
-            else if ((m = Regex.Match(line, @"^(?:Driver Version|Versi.n del controlador)\s*:\s*(.+)$", RegexOptions.IgnoreCase)).Success)
+            else if ((m = Regex.Match(line,
+                    @"^(?:Driver Version|Versi.n del controlador|Vers.o do (?:driver|controlador))\s*:\s*(.+)$",
+                    RegexOptions.IgnoreCase)).Success)
                 version = m.Groups[1].Value.Trim();
-            else if ((m = Regex.Match(line, @"^(?:Driver Date|Fecha del controlador)\s*:\s*(.+)$", RegexOptions.IgnoreCase)).Success)
+            else if ((m = Regex.Match(line,
+                    @"^(?:Driver Date|Fecha del controlador|Data do (?:driver|controlador))\s*:\s*(.+)$",
+                    RegexOptions.IgnoreCase)).Success)
                 date = m.Groups[1].Value.Trim();
         }
         Flush();

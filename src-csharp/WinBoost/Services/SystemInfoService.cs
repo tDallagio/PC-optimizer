@@ -241,6 +241,13 @@ public sealed class SystemInfoService
         return k?.GetValue("AllowCortana") is int i && i == 0;
     }
 
+    // Fix 32: lee el estado Enabled (bool, INDEPENDIENTE DEL IDIOMA) via la API COM del Task
+    // Scheduler (Schedule.Service), en vez de parsear la salida LOCALIZADA de `schtasks`. El
+    // codigo viejo hacia .Contains("Disabled"), que en Windows en español (estado "Deshabilitado")
+    // nunca matcheaba -> Tasks daba falso y Privacidad quedaba en 3/4 aunque los tweaks estuvieran
+    // aplicados. Mismo criterio que el fix de la politica termica: leer el estado como dato, no
+    // como texto. Late-bind por reflection (sin dependencia NuGet ni DLR) para robustez en el
+    // publish single-file.
     private static bool CheckTasks()
     {
         string[] tasks =
@@ -249,11 +256,47 @@ public sealed class SystemInfoService
             @"\Microsoft\Windows\Customer Experience Improvement Program\Consolidator",
             @"\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector",
         ];
-        int disabled = tasks.Count(t =>
-            RunProcess("schtasks", $"/query /fo CSV /tn \"{t}\"")
-                .Contains("Disabled", StringComparison.OrdinalIgnoreCase));
-        return disabled >= 2;
+
+        object? svc = null;
+        try
+        {
+            var svcType = Type.GetTypeFromProgID("Schedule.Service");
+            if (svcType is null) return false;
+            svc = Activator.CreateInstance(svcType);
+            if (svc is null) return false;
+            ComInvoke(svc, "Connect"); // conecta al Task Scheduler local
+
+            int disabled = 0;
+            foreach (var full in tasks)
+            {
+                try
+                {
+                    int    slash      = full.LastIndexOf('\\');
+                    string folderPath = slash > 0 ? full[..slash] : "\\";
+                    string name       = full[(slash + 1)..];
+                    object folder = ComInvoke(svc, "GetFolder", folderPath)!;
+                    object task   = ComInvoke(folder, "GetTask", name)!;
+                    // IRegisteredTask.Enabled es un bool -> sin idioma.
+                    if (ComInvoke(task, "Enabled") is bool en && !en) disabled++;
+                }
+                catch { /* tarea inexistente / sin permiso: no cuenta como deshabilitada */ }
+            }
+            return disabled >= 2;
+        }
+        catch { return false; }
+        finally
+        {
+            if (svc is not null && System.Runtime.InteropServices.Marshal.IsComObject(svc))
+                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(svc);
+        }
     }
+
+    // Late-bind sobre un objeto COM (IDispatch): invoca metodo o lee propiedad por nombre. El binder
+    // COM tolera args opcionales omitidos (ej. Connect() sin parametros).
+    private static object? ComInvoke(object target, string member, params object[] args)
+        => target.GetType().InvokeMember(member,
+               System.Reflection.BindingFlags.InvokeMethod | System.Reflection.BindingFlags.GetProperty,
+               binder: null, target: target, args: args);
 
     private static bool CheckDns()
     {
