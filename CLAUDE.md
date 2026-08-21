@@ -66,6 +66,10 @@ ocupa su slot (indice 2) y es la ENTRADA de la app (arranca en `SetActiveNav(2)`
 - 6 = Ajustes
 - 7 = Licencia
 - 8 = Tuning Avanzado
+- 9 = **Tweaks** (corte 38, piloto Fase A). Grupo propio en el sidebar (`navTweaks`), separado de
+  PRINCIPAL/SISTEMA. Cards generadas en codigo desde `App.Tweaks.All` (`TweakRegistry`), NO en
+  XAML a mano. No reemplaza ni toca el tab Optimizar (checkboxes + Ejecutar siguen igual, en
+  paralelo) — ver `docs/ARQUITECTURA_TWEAKS.md`.
 - Consola: ya NO es tab. Overlay modal (`consoleOverlay`) via `OpenConsoleOverlay()` (icono `navConsola`,
   badge de errores, o automatico al correr optimizacion/bloatware).
 - Info del sistema: ya NO es tab. Hardware + componentes -> overlay `systemInfoOverlay`

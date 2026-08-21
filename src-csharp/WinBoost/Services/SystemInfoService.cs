@@ -293,10 +293,51 @@ public sealed class SystemInfoService
 
     // Late-bind sobre un objeto COM (IDispatch): invoca metodo o lee propiedad por nombre. El binder
     // COM tolera args opcionales omitidos (ej. Connect() sin parametros).
-    private static object? ComInvoke(object target, string member, params object[] args)
+    // internal (era private): reusado por GetTasksEnabledState (mismo mecanismo, no se duplica).
+    internal static object? ComInvoke(object target, string member, params object[] args)
         => target.GetType().InvokeMember(member,
                System.Reflection.BindingFlags.InvokeMethod | System.Reflection.BindingFlags.GetProperty,
                binder: null, target: target, args: args);
+
+    // Piloto Fase A (TweakRegistry, tweak "Tasks"): variante de CheckTasks que devuelve el
+    // estado Enabled de CADA tarea (no solo un conteo agregado sobre 3 de las 5), reusando el
+    // MISMO mecanismo COM Schedule.Service (una sola conexion para todas). Una tarea que no se
+    // pudo leer (inexistente/sin permiso) se omite del resultado -- no se asume un valor, para
+    // que quien la use decida el fallback mas seguro segun el contexto (aplicar vs leer estado).
+    internal static Dictionary<string, bool> GetTasksEnabledState(IEnumerable<string> fullPaths)
+    {
+        var result = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        object? svc = null;
+        try
+        {
+            var svcType = Type.GetTypeFromProgID("Schedule.Service");
+            if (svcType is null) return result;
+            svc = Activator.CreateInstance(svcType);
+            if (svc is null) return result;
+            ComInvoke(svc, "Connect");
+
+            foreach (var full in fullPaths)
+            {
+                try
+                {
+                    int    slash      = full.LastIndexOf('\\');
+                    string folderPath = slash > 0 ? full[..slash] : "\\";
+                    string name       = full[(slash + 1)..];
+                    object folder = ComInvoke(svc, "GetFolder", folderPath)!;
+                    object task   = ComInvoke(folder, "GetTask", name)!;
+                    if (ComInvoke(task, "Enabled") is bool en) result[full] = en;
+                }
+                catch { /* tarea inexistente / sin permiso: se omite, no se asume valor */ }
+            }
+        }
+        catch { }
+        finally
+        {
+            if (svc is not null && System.Runtime.InteropServices.Marshal.IsComObject(svc))
+                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(svc);
+        }
+        return result;
+    }
 
     private static bool CheckDns()
     {
@@ -326,7 +367,9 @@ public sealed class SystemInfoService
         return false;
     }
 
-    private static bool CheckTcpTuning()
+    // internal (era private): reusado por TweakRegistry (piloto Fase A, tweak "TCP") como
+    // LeerEstadoAsync -- decision documentada en CHANGELOG (proxy RSS, no los 4 parametros).
+    internal static bool CheckTcpTuning()
     {
         // La salida de `netsh int tcp show global` se localiza segun el idioma de
         // Windows: en es-ES la linea de RSS es "Estado de escalado de lado de
@@ -346,7 +389,9 @@ public sealed class SystemInfoService
         return false;
     }
 
-    private static bool CheckSvc(string name)
+    // internal (era private): reusado por TweakRegistry (piloto Fase A, tweak "SvcDiag") --
+    // mismo criterio simple que ya usa el health score (StartType Disabled = Off, resto = On).
+    internal static bool CheckSvc(string name)
     {
         try { using var s = new ServiceController(name); return s.StartType == ServiceStartMode.Disabled; }
         catch { return false; }

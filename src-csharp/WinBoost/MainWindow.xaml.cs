@@ -78,6 +78,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private readonly List<CheckBox> _driverChecks = [];
     private bool _driverBackupDone = false;
 
+    // Tweaks (piloto Fase A, 38_fase_a_registro_tweaks_piloto.txt): carga lazy + mismo patron
+    // _syncing que Tuning Avanzado (evita que cargar el estado inicial dispare Aplicar/Revertir).
+    private bool _tweaksLoaded  = false;
+    private bool _tweaksSyncing = false;
+    private readonly Dictionary<string, (Wpf.Ui.Controls.ToggleSwitch Switch, TextBlock Status)> _tweakCardRefs = [];
+
     // Reporte HTML (4.7): estado de la ultima optimizacion para el reporte
     private double                _lastFreedMb;
     private StateSnapshot?        _snapshotAfter;
@@ -105,8 +111,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static readonly SolidColorBrush BrushDriverName = FreezeBrush(Color.FromRgb(0xDD, 0xDD, 0xDD));
     private static readonly SolidColorBrush BrushDriverDate = FreezeBrush(Color.FromRgb(0x66, 0x66, 0x66));
 
-    // nav buttons indexados por TAB (0-8 tras eliminar la pestaña Consola, fix 27; navTuning = 8).
-    // navConsola NO esta aca: dejo de ser tab y ahora abre el overlay.
+    // nav buttons indexados por TAB (0-9 tras eliminar la pestaña Consola, fix 27; navTuning = 8,
+    // navTweaks = 9 desde el piloto Fase A). navConsola NO esta aca: dejo de ser tab y ahora abre
+    // el overlay.
     private Button[] _navButtons = [];
     // Subconjunto que usa el estilo de ICONO (fila inferior del sidebar): Ajustes y Licencia.
     // navConsola tambien es icono pero se maneja aparte (no mapea a tab). Fix 27.
@@ -156,6 +163,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             navAjustes,      // 6  — icono
             navLicencia,     // 7  — icono
             navTuning,       // 8
+            navTweaks,       // 9  — piloto Fase A
         ];
         _iconNavButtons = [navAjustes, navLicencia];
 
@@ -168,6 +176,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         navAjustes.Click      += (_, _) => SetActiveNav(6);
         navLicencia.Click     += (_, _) => SetActiveNav(7);
         navTuning.Click       += (_, _) => SetActiveNav(8);
+        navTweaks.Click       += (_, _) => SetActiveNav(9);
         // Consola: el icono ABRE EL OVERLAY en modo consulta (no navega a ninguna tab).
         navConsola.Click      += (_, _) => OpenConsoleOverlay(running: false);
 
@@ -1081,6 +1090,13 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             _tuningLoaded = true;
             _ = LoadTuningTabAsync();
+        }
+
+        // Tab Tweaks (9, piloto Fase A): carga lazy de las 5 cards + estado real la primera vez
+        if (mainTabs.SelectedIndex == 9 && !_tweaksLoaded)
+        {
+            _tweaksLoaded = true;
+            _ = LoadTweaksTabAsync();
         }
     }
 
@@ -2710,6 +2726,168 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             UpdateCoolingUi(1 - value); // revierte el switch: powercfg no lo acepto
             lblCoolResult.Text       = "No se pudo aplicar. El plan de energia personalizado puede no soportarlo.";
             lblCoolResult.Foreground = BrushRed;
+        }
+    }
+
+    // ── Tweaks (piloto Fase A, 38_fase_a_registro_tweaks_piloto.txt) ─────────────────────────
+    // Mismo patron que Tuning Avanzado (ToggleSwitch IsChecked bool?, Checked/Unchecked, flag
+    // _tweaksSyncing) pero data-driven desde App.Tweaks.All en vez de 3 switches fijos en XAML:
+    // las cards se generan en codigo para no tener que duplicar bloques XAML por tweak cuando la
+    // Fase B escale esto a ~25.
+
+    private async Task LoadTweaksTabAsync()
+    {
+        pnlTweaks.Children.Clear();
+        _tweakCardRefs.Clear();
+        foreach (var def in App.Tweaks.All)
+            pnlTweaks.Children.Add(BuildTweakCard(def));
+
+        foreach (var def in App.Tweaks.All)
+            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync());
+    }
+
+    private Border BuildTweakCard(TweakDefinition def)
+    {
+        var toggle = new Wpf.Ui.Controls.ToggleSwitch
+        {
+            Margin            = new Thickness(16, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            OnContent         = "Activo",
+            OffContent        = "Inactivo",
+        };
+        var status = new TextBlock { FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
+        _tweakCardRefs[def.Id] = (toggle, status);
+
+        toggle.Checked   += async (_, _) => { if (!_tweaksSyncing) await ApplyTweakAsync(def); };
+        toggle.Unchecked += async (_, _) => { if (!_tweaksSyncing) await RevertTweakAsync(def); };
+
+        var title = new TextBlock
+        {
+            Text       = def.Nombre.ToUpperInvariant(),
+            FontSize   = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("BrushAccent"),
+            Margin     = new Thickness(0, 0, 0, 12),
+        };
+
+        var left = new StackPanel();
+        left.Children.Add(new TextBlock
+        {
+            Text          = def.Descripcion,
+            FontSize      = 12,
+            TextWrapping  = TextWrapping.Wrap,
+            Foreground    = (Brush)FindResource("BrushFg2"),
+        });
+        if (def.RequiereReinicio)
+            left.Children.Add(new TextBlock
+            {
+                Text         = "Requiere reiniciar el equipo para tener efecto completo.",
+                FontSize     = 10,
+                FontWeight   = FontWeights.SemiBold,
+                Foreground   = BrushYellow,
+                TextWrapping = TextWrapping.Wrap,
+                Margin       = new Thickness(0, 4, 0, 0),
+            });
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(left, 0);
+        Grid.SetColumn(toggle, 1);
+        grid.Children.Add(left);
+        grid.Children.Add(toggle);
+
+        var body = new StackPanel();
+        body.Children.Add(title);
+        body.Children.Add(grid);
+        body.Children.Add(status);
+
+        return new Border
+        {
+            Background      = (Brush)FindResource("BrushCard"),
+            BorderBrush     = (Brush)FindResource("BrushAccent"),
+            BorderThickness = new Thickness(0, 0, 0, 2),
+            CornerRadius    = new CornerRadius(8),
+            Padding         = new Thickness(18, 14, 18, 16),
+            Margin          = new Thickness(0, 0, 0, 14),
+            Child           = body,
+        };
+    }
+
+    // Fuente de verdad SIEMPRE es LeerEstadoAsync contra el sistema real, nunca el store -- por
+    // eso esto se llama tanto en la carga inicial como despues de cada Aplicar/Revertir (incluso
+    // si tiro excepcion), para que el switch nunca muestre algo que no se pudo confirmar de verdad.
+    private void UpdateTweakCardUi(string id, TweakStatus status)
+    {
+        if (!_tweakCardRefs.TryGetValue(id, out var refs)) return;
+
+        _tweaksSyncing = true;
+        try { refs.Switch.IsChecked = status.State == TweakState.On; }
+        finally { _tweaksSyncing = false; }
+
+        refs.Switch.IsEnabled = status.State != TweakState.NoAplicable;
+        refs.Status.Text = status.State switch
+        {
+            TweakState.On          => "Aplicado.",
+            TweakState.Off         => "No aplicado.",
+            TweakState.NoAplicable => $"No disponible: {status.Motivo}",
+            _                      => "",
+        };
+        refs.Status.Foreground = status.State == TweakState.On ? BrushGreen : BrushLicFree;
+    }
+
+    private async Task ApplyTweakAsync(TweakDefinition def)
+    {
+        if (!_tweakCardRefs.TryGetValue(def.Id, out var refs)) return;
+        try
+        {
+            await def.AplicarAsync();
+            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync());
+            refs.Status.Text = def.RequiereReinicio
+                ? "Aplicado. Reinicia el equipo para que tenga efecto completo."
+                : "Aplicado.";
+            refs.Status.Foreground = def.RequiereReinicio ? BrushYellow : BrushGreen;
+            App.Logger.Log($"{def.Nombre}: aplicado", "ok");
+        }
+        catch (Exception ex)
+        {
+            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync()); // revierte el switch al estado real
+            refs.Status.Text       = $"Error al aplicar: {ex.Message}";
+            refs.Status.Foreground = BrushRed;
+        }
+    }
+
+    private async Task RevertTweakAsync(TweakDefinition def)
+    {
+        if (!_tweakCardRefs.TryGetValue(def.Id, out var refs)) return;
+        try
+        {
+            await def.RevertirAsync();
+            var status = await def.LeerEstadoAsync();
+            UpdateTweakCardUi(def.Id, status);
+
+            // RevertirAsync es no-op si WinBoost nunca aplico este tweak desde esta seccion (ej.
+            // ya estaba On por el tab Optimizar clasico) -- el estado real sigue On y el switch
+            // vuelve a marcarse solo (via UpdateTweakCardUi de arriba); el texto tiene que decir
+            // eso, no afirmar un revert que no paso.
+            if (status.State == TweakState.Off)
+            {
+                refs.Status.Text       = "Revertido a su valor original.";
+                refs.Status.Foreground = BrushLicFree;
+                App.Logger.Log($"{def.Nombre}: revertido", "ok");
+            }
+            else
+            {
+                refs.Status.Text = "No se revirtio: WinBoost no tiene un valor original guardado " +
+                                    "para este tweak (puede haber sido aplicado desde la pestaña Optimizar).";
+                refs.Status.Foreground = BrushYellow;
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync()); // revierte el switch al estado real
+            refs.Status.Text       = $"Error al revertir: {ex.Message}";
+            refs.Status.Foreground = BrushRed;
         }
     }
 

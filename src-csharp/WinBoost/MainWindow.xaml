@@ -946,6 +946,19 @@
                   <TextBlock Text="Historial" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
+
+              <!-- Piloto Fase A (38_fase_a_registro_tweaks_piloto.txt): grupo propio, separado
+                   de PRINCIPAL/SISTEMA a proposito, son 5 tweaks piloto con toggle inmediato,
+                   no la pestaña Optimizar existente (que sigue intacta en paralelo). -->
+              <TextBlock Text="TWEAKS" FontSize="9.5" FontWeight="SemiBold"
+                         Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
+              <Button x:Name="navTweaks" Style="{StaticResource BtnNav}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Tweaks" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </StackPanel>
           </ScrollViewer>
 
@@ -2808,6 +2821,21 @@
           </Border>
 
         </StackPanel></ScrollViewer>
+      </TabItem>
+
+      <!-- TAB TWEAKS (9) — Piloto Fase A (38_fase_a_registro_tweaks_piloto.txt). Cards generadas
+           en codigo (BuildTweakCard, MainWindow.xaml.cs) a partir de App.Tweaks.All: es un
+           registro extensible, no 5 bloques XAML a mano que haya que duplicar en la Fase B.
+           No toca el tab Optimizar existente (checkboxes + Ejecutar siguen igual, en paralelo). -->
+      <TabItem Header="Tweaks">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="20,14,20,20">
+            <TextBlock Text="Piloto de 5 tweaks con toggle inmediato: prender aplica ya, apagar revierte ya."
+                       FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
+                       TextWrapping="Wrap"/>
+            <StackPanel x:Name="pnlTweaks"/>
+          </StackPanel>
+        </ScrollViewer>
       </TabItem>
 
       </TabControl>

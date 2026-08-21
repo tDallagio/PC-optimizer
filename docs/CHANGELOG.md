@@ -5,6 +5,187 @@
 
 ---
 
+## Fix: el toggle de TCP nunca revertía (39_fix_revert_tcp_piloto.txt)
+
+Bug encontrado en la validación manual del piloto de tweaks (prompt 38): de los 5 tweaks, los 4
+restantes (Telemetry, SvcDiag, Tasks, PageFile) cerraban el ciclo Aplicar→Revertir exactamente al
+valor previo; TCP no — al apagar el toggle siempre mostraba "No se revirtió: WinBoost no tiene un
+valor original guardado para este tweak", incluso arrancando desde un estado forzado a mano
+(`netsh int tcp set global rss=disabled`) inmediatamente antes de prender el toggle.
+
+**Causa raíz real (no la hipótesis del prompt).** El prompt sospechaba que `AplicarAsync` de TCP
+terminó llamando al `BackupService.SaveNetshBackup()` viejo (gateado por `if (_path is null)
+return;`, sin sesión de Optimizar activa) en vez de escribir al `TweakStateStore` nuevo —
+**descartado con evidencia directa**: se inspeccionó `tweak_state.json` en
+`%USERPROFILE%\.OptimizarPC\` y la entrada `"TCP"` **sí existía**, con el texto completo de
+`netsh int tcp show global` capturado correctamente (incluyendo `Estado de escalado de lado de
+recepción: disabled`, exactamente el valor forzado a mano). La captura y persistencia en el store
+nuevo funcionan bien.
+
+La causa real está en el **parseo al revertir**: `RevertTcpAsync` portaba (tal como pedía el
+prompt 38) el mismo regex de `BackupService.RestoreNetshFromSession`, pero ese regex matchea
+**solo en inglés** (`"Receive Window Auto-Tuning Level"`, `"Receive-Side Scaling State"`, `"TCP
+Fast Open"`). Se confirmó contra la salida real de `netsh int tcp show global` en esta máquina
+(es-ES, Windows moderno) que **3 de las 4 etiquetas están localizadas al español** y la cuarta
+(`"Chimney Offload State"`) ya no aparece en absoluto (parámetro deprecado, removido de la salida
+en Windows moderno, en cualquier idioma). El regex en inglés nunca matcheaba nada → `MatchNetsh`
+caía siempre a su valor de fallback hardcodeado — y el fallback de RSS es `"enabled"`, el mismo
+valor que `AplicarAsync` ya había escrito. Resultado: el revert **nunca fallaba** (no había
+excepción) pero tampoco **hacía nada real** — reaplicaba el mismo valor de Apply en vez del
+original guardado, así que `CheckTcpTuning()` seguía leyendo `On` después de "revertir",
+disparando el mensaje de "no se revirtió" agregado en el corte 38 (ese guard estaba haciendo lo
+correcto — leer el estado real y no mentir — pero el revert de fondo no cambiaba nada).
+
+Hallazgo adicional relacionado (no es la causa del bug, documentado para quien lo revise después):
+el texto guardado en `tweak_state.json` tiene los acentos corrompidos (`Parámetros` → `Par¡metros`,
+`recepción` → `recepci¢n`) porque `RunProcess` lee `StandardOutput` sin fijar un encoding
+explícito. No se tocó — mismo criterio que ya usa el resto del código para este tipo de problema
+(`ParsePnpUtil`, `CheckTcpTuning`): evitar depender de caracteres acentuados en vez de arreglar la
+codificación de captura.
+
+**Fix**: `RevertTcpAsync` ya no usa el regex de `BackupService.RestoreNetshFromSession` (no se
+tocó `BackupService.cs`). Parseo propio por línea (`MatchNetshLine`) con anclas **sin acentos**,
+bilingües donde aplica — mismo criterio que `SystemInfoService.CheckTcpTuning` (token `"escalado"`,
+ya validado contra esta máquina en el corte 33): autotuning matchea `"Auto-Tuning Level"` (EN) o
+`"ajuste autom"` (ES, corta antes de la á); RSS reusa el mismo `"Receive-Side Scaling"` / `"escalado"`
+que `CheckTcpTuning`; Fast Open matchea `"Fast Open"` excluyendo explícitamente las líneas
+`"Reserva Fast Open"` / `"Fast Open Fallback"` (mismo prefijo, parámetro distinto); Chimney se deja
+igual (etiqueta en inglés, fallback `"disabled"` — sin equivalente en español porque el parámetro
+ya no existe en la salida). Verificado a mano contra el texto real guardado en `tweak_state.json`
+de esta máquina: con el fix, autotuning/RSS/Fast Open parsean sus valores reales (antes: fallback
+siempre).
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB). No se re-probó el ciclo completo sobre el
+sistema real (además el `tweak_state.json` ya tiene la entrada `"TCP"` válida de la prueba
+anterior — no hace falta recapturar, el fix solo cambia cómo se lee) — queda para que Tomy lo
+reproduzca con el estado forzado (`rss=disabled`) que ya tenía preparado.
+
+---
+
+## Fase A: registro único de tweaks + piloto de 5 + sección "Tweaks" (38_fase_a_registro_tweaks_piloto.txt)
+
+Primer paso del cambio de arquitectura de Optimizar (selección + Aplicar por lote → toggles
+inmediatos por tweak, prender = aplica ya / apagar = revierte ya): un **piloto de 5 tweaks**
+(Telemetry, SvcDiag, Tasks, TCP, PageFile) para validar el patrón antes de escalarlo a los ~25
+tweaks reales en la Fase B. El tab **Optimizar existente no se tocó**: sigue funcionando exactamente
+igual (checkboxes + botón Ejecutar), en paralelo. Precedido por el análisis de arquitectura en
+`docs/ARQUITECTURA_TWEAKS.md` (28 tweaks reales inventariados, familias de lectura de estado,
+casos especiales resueltos).
+
+**Modelo de datos nuevo (`Services/TweakRegistry.cs`):**
+- `TweakState`: enum de TRES estados (`On`/`Off`/`NoAplicable`), no boolean — ninguno de los 5
+  tweaks del piloto necesita `NoAplicable` hoy, pero el tipo lo soporta desde ahora porque va a
+  hacer falta en la Fase B (ej. Power en laptop, SvcSysMain/SvcWSearch sin SSD).
+- `TweakStatus`: record que combina `State` + un `Motivo` opcional, para que la razón de un
+  `NoAplicable` pueda viajar hasta la UI y mostrarse con el toggle deshabilitado.
+- `TweakDefinition`: record con `Id` (mismo string clave que ya usa el checkbox actual en
+  `OptimizationService`/XAML — no rompe referencias futuras con el histórico de sesiones),
+  `Nombre`, `Descripcion` (pensada para el usuario final, alimenta el item 6 del Módulo 1 a
+  futuro), `Categoria` (las mismas 4 del health score: Rendimiento/Privacidad/Red/Servicios),
+  `RequiereReinicio`, y tres delegados `Func<Task> AplicarAsync` / `Func<Task> RevertirAsync` /
+  `Func<Task<TweakStatus>> LeerEstadoAsync` — se eligió delegado sobre clase abstracta/interfaz
+  por ser lo más simple de extender en la Fase B (agregar una `TweakDefinition` más, sin
+  reescribir el patrón).
+- `TweakRegistry`: expone `All` (los 5 del piloto) y `Find(id)`; registrado como singleton en
+  `App.Tweaks`, mismo patrón que el resto de los Services (`App.Backup`, `App.Tuning`, etc.).
+
+**Store de persistencia por-tweak (`Services/TweakStateStore.cs`, `tweak_state.json` bajo
+`%USERPROFILE%\.OptimizarPC\`, mismo mecanismo de resolución de ruta que `SettingsService`):**
+separado a propósito de `BackupService`/`BackupModels` (ninguno de los dos se tocó) — el modelo de
+sesión completa (un `.reg`/`session.json` por corrida de Optimizar) no encaja con un toggle
+individual que necesita guardar/restaurar su propio valor anterior sin depender de que exista una
+sesión. Guarda por Id: el valor original (payload libre por tweak vía `JsonElement`, cada uno con
+la forma que le sirve — un `int?[]` para Telemetry, un record para el servicio, un
+`Dictionary<string,bool>` para las 5 tareas, texto crudo de `netsh` para TCP, el mismo
+`PageFileBackup` que ya usa BackupService para PageFile), fecha de aplicado, y un flag
+`AppliedByWinBoost` **puramente informativo/diagnóstico** — la fuente de verdad de si un tweak
+está ON u OFF siempre es `LeerEstadoAsync()` contra el sistema real, nunca este JSON (si el
+usuario revirtió algo por fuera de WinBoost, o restauró una sesión vieja desde Historial, el
+toggle refleja la realidad, no lo que dice el archivo).
+
+**Los 5 tweaks piloto** (todo mirando primero cómo lo hace hoy el código real, reusando en vez de
+reescribir):
+- **Telemetry** (Privacidad): Aplicar/Revertir reusan las mismas dos claves `AllowTelemetry` que ya
+  escribe `OptimizationService`. **Decisión** (no se encontró en CHANGELOG el motivo histórico de
+  la segunda clave/`CurrentVersion\Policies`): `LeerEstadoAsync` exige que **ambas** estén en 0
+  para reportar On — un toggle que dijera On con una sola clave en 0 mentiría sobre lo que Apply
+  realmente aplica. Revert lee el valor real de ambas claves antes de la primera aplicación
+  (`null` = la value no existía, se borra al revertir, no se deja en un valor inventado).
+- **SvcDiag** (Servicios): reusa `RegistryPrivilegeHelper.OpenWritable` para el `Start=4` (igual que
+  `OptimizationService.DisableSvc`). Lector reusable **ya existía**: `SystemInfoService.CheckSvc`
+  (bump a `internal` para reusarlo). Revert reconstruye el mismo mecanismo de
+  `BackupService.RestoreServicesFromSession` (mapeo StartMode→DWORD + re-arranque si estaba
+  corriendo), adaptado a UN servicio guardado en el store nuevo.
+- **Tasks** (Privacidad) — el caso que forzaba a construir el revert que hoy no existía en ningún
+  lado: `LeerEstadoAsync` extiende el mecanismo COM de `CheckTasks` (corte 32,
+  `Schedule.Service`/reflection) a las **5** tareas reales (el health score sólo cubre 3 de 5) vía
+  un nuevo método `SystemInfoService.GetTasksEnabledState` (una sola conexión COM, devuelve el
+  estado de cada tarea individual en vez de un conteo agregado). Antes de la primera aplicación se
+  captura el `Enabled` real de cada una de las 5 (no se asume que todas partían de `true`); Revertir
+  reactiva sólo las que estaban habilitadas antes (`schtasks /enable`), deja las demás como
+  estaban.
+- **TCP** (Red): Aplicar reusa los mismos 4 comandos `netsh` que `OptimizationService`. Revert
+  porta el mecanismo de `BackupService.SaveNetshBackup`/`RestoreNetshFromSession` **tal cual**
+  (mismo parseo por regex de `netsh int tcp show global`), guardando el texto en el store nuevo en
+  vez del `netsh_backup.txt` de sesión. **Decisión**: `LeerEstadoAsync` reusa
+  `SystemInfoService.CheckTcpTuning` (proxy RSS, bilingüe, validado en el corte 33) tal cual, sin
+  verificar los otros 3 parámetros — mismo lector que ya alimenta el health score de Red, así el
+  toggle nunca queda en desacuerdo con el score de la misma categoría; en la práctica los 4 valores
+  siempre se tocan juntos (mismo Apply, mismo Revert por texto).
+- **PageFile** (Rendimiento, requiere reinicio — confirmado en los logs del código): Aplicar reusa
+  `OptimizationService.PageFileTweaks` **tal cual** (bump a `internal`; ya tiene el rollback a
+  gestión automática si falla la creación, no se tocó esa lógica). No existía `Check*` para el
+  score de Rendimiento — se escribió de cero con el criterio simple del prompt (`On` si
+  `AutomaticManagedPagefile=false` Y existe al menos un `Win32_PageFileSetting` de tamaño fijo).
+  Revert porta las mismas consultas WMI que `BackupService.SavePageFileBackup`/
+  `RestorePageFileFromSession` (reusando los tipos `PageFileBackup`/`PageFileEntry` de
+  `BackupModels.cs` directamente), guardando en el store nuevo en vez del `pagefile_backup.json` de
+  sesión.
+
+**Guardrail agregado en la verificación propia de este corte** (no estaba en el prompt original):
+el tab Optimizar clásico sigue vivo en paralelo y aplica estos mismos 5 tweaks por su cuenta (con
+`BackupService`, sin tocar el store nuevo) — un usuario puede llegar a la sección Tweaks con
+Telemetry/SvcDiag/Tasks ya en `On` sin haber pasado nunca por `AplicarAsync` de este piloto. Los
+revert de TCP y PageFile ya eran no-op seguros sin entrada en el store (`if (backup is null)
+return;`); Telemetry/SvcDiag/Tasks usaban un valor por-defecto sintético (ej. borrar ambas claves,
+`"Auto"` para el servicio) que en ese escenario habría escrito un valor **adivinado**, contra el
+principio central del piloto ("no asumir default, leer el real"). Se agregó el mismo guard
+`if (!App.TweakState.HasEntry(id)) return;` a los tres — Revertir sin un original capturado por
+esta sección ahora es no-op en los 5, consistente. `MainWindow.RevertTweakAsync` refleja esto en la
+UI: si tras revertir el estado real sigue `On` (el no-op no cambió nada), el switch vuelve a
+marcarse solo y el texto avisa que no había valor original guardado, en vez de afirmar un revert
+que no ocurrió.
+
+**Sección "Tweaks" en el sidebar** (`MainWindow.xaml`/`.xaml.cs`): grupo propio en el sidebar
+(`navTweaks`), separado de PRINCIPAL/SISTEMA, mismo mecanismo `BtnNav`/`BtnNavActive`/
+`SetActiveNav` que el resto de los ítems (tab índice 9). El panel de las 5 cards se genera **en
+código** (`BuildTweakCard`, a partir de `App.Tweaks.All`) en vez de 5 bloques XAML a mano, para que
+la Fase B (~25 tweaks) no tenga que duplicar XAML por cada tweak nuevo. Cada card: nombre,
+descripción, `ui:ToggleSwitch` de WPF-UI, y el aviso de "requiere reinicio" (sólo PageFile en este
+piloto). Mismo patrón que los 3 toggles de Tuning Avanzado (corte 16B): `IsChecked` (`bool?`, no
+`IsOn`), eventos `Checked`/`Unchecked`, flag de sincronización (`_tweaksSyncing`) para que cargar el
+estado inicial no dispare Aplicar/Revertir, y si el Aplicar/Revertir real tira excepción el switch
+se revierte visualmente re-leyendo `LeerEstadoAsync()` contra el sistema real (nunca queda
+mostrando algo que no se pudo confirmar).
+
+**Cambios menores de accesibilidad para reuso** (sin tocar lógica): `SystemInfoService.CheckSvc`,
+`CheckTcpTuning` y `ComInvoke` pasaron de `private` a `internal`; `OptimizationService.PageFileTweaks`
+de `private` a `internal`. Se agregó `Brush = System.Windows.Media.Brush` a `GlobalUsings.cs`
+(el mismo conflicto que ya resolvían `Button`/`CheckBox`/etc. por `UseWindowsForms=true`, disparado
+por primera vez al construir las cards de Tweaks en código).
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (self-contained single-file, 71 MB, cabecera PE válida, sin
+DLLs sueltas). **Pendiente de validación manual sobre el .exe publicado** (entrar a la sección
+Tweaks, confirmar que los 5 toggles reflejan el estado real del sistema al abrir, prender/apagar
+cada uno y confirmar el cambio real en registro/servicio/tarea/netsh/pagefile, y que Revertir
+vuelve exactamente al valor previo) — no se ejecutó en este corte porque implica modificar
+configuración real del sistema (telemetría, un servicio de Windows, tareas programadas, el stack
+TCP, el pagefile), fuera del alcance de lo que se automatiza sin supervisión directa.
+
+---
+
 ## Sincronización de docs/PENDIENTES.md (35_sincronizar_pendientes.txt)
 
 Tarea de documentación pura, sin cambios de código. Se auditó el Módulo 1 (ítems 1-10) contra

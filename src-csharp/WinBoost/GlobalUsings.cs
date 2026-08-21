@@ -11,3 +11,4 @@ global using ProgressBar    = System.Windows.Controls.ProgressBar;
 global using Color          = System.Windows.Media.Color;
 global using ColorConverter = System.Windows.Media.ColorConverter;
 global using CheckBox       = System.Windows.Controls.CheckBox;
+global using Brush          = System.Windows.Media.Brush;

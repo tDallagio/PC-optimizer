@@ -703,7 +703,9 @@ public sealed class OptimizationService
 
     // ── PageFile ──────────────────────────────────────────────────────────────
 
-    private void PageFileTweaks(
+    // internal (era private): reusado tal cual por TweakRegistry (piloto Fase A, tweak
+    // "PageFile") para no reescribir el mecanismo WMI de creacion + rollback a automatico.
+    internal void PageFileTweaks(
         double totalRamGb, string sysDrive, string? altDrive, bool moveToAlt)
     {
         Prog(91, "Optimizando PageFile...");
