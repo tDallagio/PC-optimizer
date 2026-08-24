@@ -5,6 +5,538 @@
 
 ---
 
+## Fase B, Tanda 4: SvcSysMain + SvcWSearch — categoría Servicios completa (46_fase_b_tanda_4_svcsysmain_svcwsearch.txt)
+
+Cuarta tanda de la Fase B: 2 tweaks más — **SvcSysMain** (SysMain/Superfetch) y **SvcWSearch**
+(Windows Search/indexado) —, mismo mecanismo 1:1 de `SvcDiag`/`SvcWER` vía el helper genérico
+`ApplySvcEntriesAsync`/`RevertSvcEntriesAsync` de la Tanda 2, sin novedad ahí. Con esta tanda la
+categoría **Servicios queda completa (7/7)**: SvcDiag (piloto), SvcXbox/SvcWER/SvcMaps/SvcFax
+(Tanda 2), SvcSysMain/SvcWSearch (esta). 22 tweaks migrados en total. El tab Optimizar clásico no
+se tocó. Ninguno de los dos tenía checker en `SystemInfoService` (confirmado contra el switch
+`Check(id)`, igual que se pidió verificar).
+
+### Detección de SSD: `SystemInfoService.HasSsd()` (nuevo), no `OptimizationService.GetSsdDriveLetters()`
+
+Ambos tweaks dependen de si la máquina tiene SSD (Apply hoy, `OptimizationService.ServiceTweaks`,
+omite el tweak entero sin SSD — SysMain/Superfetch existe justamente para ayudar en HDD). Se agregó
+`internal static bool HasSsd()` en `SystemInfoService.cs`, junto a `CheckSvc` — **misma detección
+que ya usa `GatherSystemInfo` para armar el `SystemSnapshot`** (WMI `MSFT_PhysicalDisk`,
+`MediaType==4`), extraída a su propio método reusable en vez de duplicar el WMI a mano dentro de
+`TweakRegistry.cs`. **No** se usó `OptimizationService.GetSsdDriveLetters()` — ese método responde
+una pregunta distinta (qué letras de unidad tocar con TRIM) con su propio WMI (`WHERE MediaType =
+4` filtrado server-side, devuelve letras) — mezclar los dos habría sido reusar la herramienta
+equivocada para la pregunta simple "¿hay un SSD sí o no?". `HasSsd()` no cachea nada: se re-consulta
+en cada `AplicarAsync`/`RevertirAsync`/`LeerEstadoAsync` por separado — confirmado que si el
+usuario cambia de disco después de instalar, la próxima apertura de la sección Tweaks lo refleja
+solo, sin reiniciar la app (nota de robustez del prompt).
+
+**Guard "sin SSD, no-op" agregado DENTRO de `AplicarAsync`/`RevertirAsync`** (no solo delegado a
+que la UI deje el toggle deshabilitado): `ApplySvcIfSsdAsync`/`RevertSvcIfSsdAsync` chequean
+`HasSsd()` antes de llamar al helper genérico de servicios; sin SSD, no tocan `SysMain`/`WSearch`
+para nada. Mismo criterio general del proyecto de no confiar en una sola capa (la UI) para algo que
+importa.
+
+### Primer caso real de `TweakState.NoAplicable`
+
+El enum `TweakState.NoAplicable` existe desde el piloto (prompt 38) pero ningún tweak anterior lo
+necesitaba de verdad — Nagle (Tanda 1) tiene su propio caso `NoAplicable` (0 adaptadores con IP
+DHCP) pero es una condición rara que nunca se disparó en la práctica. `LeerEstadoAsync` de
+SvcSysMain/SvcWSearch consulta `HasSsd()` primero: sin SSD, devuelve `TweakStatus.NotApplicable("Requiere
+un disco SSD.")` sin llamar a `CheckSvc` ni tocar nada del servicio real; con SSD, sigue el patrón
+normal (`CheckSvc(nombre)`, reusado tal cual).
+
+**Manejo visual de NoAplicable — se encontró parcialmente ya construido, se completó el gap
+real**: `UpdateTweakCardUi` (`MainWindow.xaml.cs`) ya deshabilitaba el toggle
+(`Switch.IsEnabled = status.State != TweakState.NoAplicable`, el `ToggleSwitch` de WPF-UI se ve
+atenuado por default al estar deshabilitado, sin restyle propio en este proyecto) y ya mostraba el
+motivo (`"No disponible: {status.Motivo}"`) — esto ya estaba escrito desde antes de esta tanda
+(antes de que ningún tweak real devolviera `NoAplicable`, aparentemente construido por anticipado
+junto con el resto del piloto). El gap real encontrado: el color del texto de estado usaba
+`BrushLicFree` tanto para `Off` como para `NoAplicable` — indistinguibles a simple vista más allá
+del toggle atenuado y el texto. Se agregó una rama de color propia para `NoAplicable` con
+`BrushBlue` (`#00C8FF`), el color "info" que ya define la guía de estilo de `CLAUDE.md`
+(ok/warn/err/info) y que el propio archivo ya usa como tal en otros lugares (ej. el medidor
+circular de CPU/RAM) — brush reusado tal cual, no se creó ninguno nuevo.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Máquina de build: SSD NVMe detectado
+(`Get-PhysicalDisk` → `ADATA FALCON`, `MediaType=SSD`, `BusType=NVMe`) — la rama "con SSD" (Apply/
+Revert/Read reales vía `CheckSvc`) es la que corre en esta máquina; la rama "sin SSD" (`NoAplicable`)
+**no se pudo ejercitar en esta máquina de build** al no haber ningún disco mecánico disponible acá
+— queda 100% para que Tomy la confirme si tiene o consigue una máquina/VM sin SSD, o revisando el
+código directamente. Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`207F38A47DAB7F0F6EA90F8193F321B581B9BAE5024F9F6BE4068E46EB1329A4`, publicado 2026-08-24
+17:18:19**. No se hizo el click-through manual sobre el sistema real — mismo criterio que las
+tandas anteriores, queda para Tomy sobre este .exe publicado.
+
+---
+
+## Fase B, Tanda 3: HPET + FastStartup (45_fase_b_tanda_3_hpet_faststartup.txt)
+
+Tercera tanda de la Fase B: 2 tweaks más — **HPET** y **FastStartup** — sobre el registro de
+tweaks existente (`TweakDefinition`/`TweakState`/`TweakRegistry`/`TweakStateStore`, sin cambiarlo).
+El tab Optimizar clásico no se tocó. Las 2 cards nuevas caen en la MISMA sección "Tweaks" del
+sidebar; único cambio fuera de `TweakRegistry.cs` fue el comentario de conteo de cards en
+`MainWindow.xaml.cs` (18 → 20: 14 de la Tanda 1 + 4 de la Tanda 2 + 2 de esta tanda).
+
+### HPET — mecanismo nuevo de captura/revert de valores BCD
+
+`CheckHpet` (reusado sin tocar) ya tenía confirmado de un corte anterior que `bcdedit` no localiza
+sus tokens `Yes`/`No` — ese hallazgo se dio por válido tal cual, sin re-verificarlo.
+
+**Por qué no se reusó `BackupService.RestoreHpetFromSession` tal cual**: ese método hace
+`bcdedit /deletevalue` de los 3 elementos (`useplatformclock`, `useplatformtick`,
+`disabledynamictick`) **siempre**, sin haber leído ningún valor original antes de aplicar — asume
+que "borrar" equivale al estado por defecto seguro. Es el mismo atajo ("asumir un default en vez de
+leer el valor real") que ya se identificó y se corrigió para valores de registro en GPUPrio (Tanda
+1). Para este tweak nuevo se construyó un mecanismo propio: antes de aplicar, se lee el estado real
+de los 3 elementos parseando `bcdedit /enum` (nuevo helper `ReadBcdElement`, basado en tokens de
+línea — `<elemento> <valor>` con padding variable — no en un regex de texto libre) y se guarda en
+`TweakStateStore` si cada uno existía (con qué valor exacto, sin asumir que es booleano) o no
+existía. Al revertir: elemento que no existía → `bcdedit /deletevalue`; elemento que existía →
+`bcdedit /set <elemento> <valor>` repitiendo el token capturado tal cual. `RestoreHpetFromSession`
+no se tocó ni se llamó desde acá.
+
+**Decisión de `LeerEstadoAsync`** (el checker existente no valida `useplatformtick`): se extendió
+más allá del proxy de una sola clave — exige `useplatformtick=Yes` Y `disabledynamictick=Yes` MÁS
+`useplatformclock` ausente (lo que Apply realmente produce al borrarlo; a diferencia de los otros
+dos no es un booleano que se "prende", es una key que se elimina). Mismo criterio "todos los
+valores que Apply realmente toca, no el proxy parcial" que la mayoría de los tweaks de la Tanda 1.
+Sin riesgo de falso positivo en una máquina virgen: si `useplatformtick`/`disabledynamictick` nunca
+se tocaron, esos dos ya dan Off por sí solos sin importar `useplatformclock`.
+
+`RequiereReinicio: true` — dictado directo del prompt, mismo criterio que PageFile: el valor BCD se
+escribe ya, pero el firmware/kernel solo lo relee en el próximo arranque.
+
+**Limitación de verificación de esta tanda**: no se pudo confirmar en vivo el formato exacto de
+línea de `bcdedit /enum` en esta corrida — `bcdedit` requiere elevación y la sesión de build no
+la tenía (`Acceso denegado` al intentar `/enum` de solo lectura). El parseo nuevo (`ReadBcdElement`)
+se apoya en el mismo supuesto ya validado para `disabledynamictick` (token crudo en inglés, sin
+localizar) extendiéndolo a los otros 2 elementos, que son de la misma familia BCD y no deberían
+comportarse distinto — pero queda pendiente que la verificación real del revert (Tomy, sobre el
+.exe publicado, con una consola elevada) confirme puntualmente que `useplatformclock` y
+`useplatformtick` aparecen con ese mismo formato de línea antes de dar el mecanismo por 100%
+probado. Recordar que probar el revert completo de HPET pide reiniciar la máquina para confirmar el
+efecto real (la escritura/lectura de los valores BCD en sí se puede confirmar sin reiniciar, mismo
+criterio que ya se usó con `MouseDataQueueSize`).
+
+### FastStartup — primer tweak con dos mecanismos distintos (registro + powercfg) y sin revert previo
+
+Apply hoy (`OptimizationService.FastStartupTweaks`) mezcla `HiberbootEnabled=0` (registro) con
+`powercfg /hibernate off` — confirmado contra el código real que este comando apaga la hibernación
+de **toda la máquina**, no solo el fast startup. No existía ningún revert dedicado para este tweak
+completo en ningún lado del código, ni siquiera el viejo de sesión (`RestoreHpetFromSession`/
+`RestorePageFileFromSession`/etc. no lo cubren).
+
+**Captura del estado de hibernación**: se reusó la MISMA lectura que ya usa
+`BackupService.SavePowerPlanBackup` — el DWord `HibernateEnabled` bajo
+`HKLM\SYSTEM\CurrentControlSet\Control\Power`, con el mismo default de esa lectura ("no se pudo
+leer" → asumir que estaba activada) —, **no** el método completo (que además guarda el GUID del
+plan de energía activo, algo que este tweak no toca). Se guarda junto con el original de
+`HiberbootEnabled` en un solo record por-tweak (`FastStartupOriginal`). Al revertir: restaura
+`HiberbootEnabled` a su valor original (existía con tal valor / no existía) y, solo si la
+hibernación estaba activada antes de aplicar, corre `powercfg /hibernate on`; si ya estaba apagada
+de antes, no se toca.
+
+**Decisión de `LeerEstadoAsync`** (el checker existente, `CheckFastStartup`, solo valida
+`HiberbootEnabled`): se extendió para verificar además que la hibernación esté realmente apagada.
+Se descartó `powercfg /a` (la forma obvia de preguntarle a Windows si la hibernación está
+disponible) por ser texto libre **localizado** — exactamente el tipo de parseo frágil que
+`docs/PENDIENTES.md` ya identifica como riesgo para el mercado LATAM. En su lugar se reusó la MISMA
+lectura de registro (`HibernateEnabled`) que la captura: no localizada, ya validada por el propio
+código del tab clásico.
+
+**`RequiereReinicio: false`** (a diferencia de HPET/PageFile, decidido contra el comportamiento
+real, no copiado): `HiberbootEnabled` lo relee la rutina de apagado en el momento de apagar, no algo
+que el kernel cachee al arrancar — el cambio de configuración es inmediato, el usuario recién lo
+"nota" en el próximo apagado completo (que además no es lo mismo que un reinicio: Reiniciar en
+Windows siempre hace arranque en frío, Fast Startup solo afecta a Apagar). `powercfg /hibernate
+off` también es inmediato: desactiva la hibernación y borra `hiberfil.sys` al toque. Ninguna de las
+dos mitades de este tweak encaja en la misma categoría que HPET (bcdedit, que el firmware/kernel
+solo relee en el próximo arranque) o `MouseDataQueueSize` (parámetro de driver de kernel que solo
+se relee al cargar).
+
+**Nota de producto, sin resolver a propósito (fuera del alcance de esta tanda)**: que
+`powercfg /hibernate off` apague la hibernación de toda la máquina (no solo el fast startup, sin
+distinguir laptop de desktop) ya es el comportamiento actual del tab Optimizar clásico también —
+no se cambió acá. No se encontró en el código ni en el historial evidencia de que haya sido una
+decisión de producto evaluada a propósito (vs. un efecto secundario del comando que nadie
+evaluó); queda anotado para que se revise en algún momento, no se decide en este prompt.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`07CCC88DEC4FAE223B2891221B1BCD9506ED45C01B45102E11AD95B4910AA7DD`, publicado 2026-08-24
+16:46:18**. No se hizo el click-through manual de los 2 sobre el sistema real — mismo criterio que
+las tandas anteriores, queda para Tomy sobre este .exe publicado (HPET puntualmente necesita un
+reinicio real para confirmar el efecto completo del revert, ver limitación de verificación arriba).
+
+---
+
+## Fase B, Tanda 2: 4 tweaks de servicios (44_fase_b_tanda_2_servicios.txt)
+
+Segunda tanda de la Fase B: extiende el registro de tweaks con 4 tweaks más de la familia
+"servicios" — **SvcXbox, SvcWER, SvcMaps, SvcFax** —, la misma familia que ya tenía UN caso
+validado en el piloto (`SvcDiag`, prompt 38). El tab Optimizar clásico no se tocó, sigue aplicando
+estos mismos tweaks por su lado. Las 4 cards nuevas caen en la MISMA sección "Tweaks" del sidebar;
+único cambio fuera de `TweakRegistry.cs` fue un comentario en `MainWindow.xaml.cs` que mencionaba
+el conteo de cards (14 → 18: 14 de la Tanda 1 + 4 de esta tanda) — el panel ya se generaba desde
+`App.Tweaks.All` en código, así que extender el registro fue suficiente, igual que en la Tanda 1.
+
+**Regla crítica respetada: guardado del original directo a `TweakStateStore`, NO
+`App.Backup.SaveSvcBackup`.** Los 4 tweaks reusan la lógica interna de `DisableSvc`
+(`OptimizationService.cs`) de parar el servicio (`ServiceController.Stop()`) y escribir `Start=4`
+vía `RegistryPrivilegeHelper.OpenWritable` — pero el guardado del valor original para el revert va
+directo al store por-tweak, igual que `SvcDiag`, nunca a `App.Backup.SaveSvcBackup()` (el guardado
+ligado a una corrida completa del tab Optimizar clásico que causó el bug real de TCP en el piloto,
+fix 39: nunca persistía nada fuera de esa corrida).
+
+**Helper nuevo compartido (`ApplySvcEntriesAsync`/`RevertSvcEntriesAsync`, en `TweakRegistry.cs`)**:
+los 4 tweaks tocan de 1 a 3 servicios cada uno con el mismo mecanismo exacto que `SvcDiag` ya
+probó para un servicio — en vez de repetir ese cuerpo 4 veces (y de nuevo en cada tanda futura de
+esta familia), se factorizó en un helper genérico parametrizado por la lista de nombres de
+servicio, mismo criterio que el helper `RegEntry` de la Tanda 1. `ReadSvcOriginal`/`SvcOriginal`/
+`SvcStartValues` (ya existían junto a `SvcDiag`, ya genéricos por servicio) se reusaron tal cual,
+sin cambios. **`SvcDiag` no se tocó ni se migró a este helper nuevo** — mismo precedente que
+`Telemetry` en la Tanda 1: los tweaks de tandas anteriores que ya funcionan quedan como están.
+`RevertSvcEntriesAsync` restaura cada servicio a su propio original guardado (no asume que todos
+los servicios de un mismo tweak comparten estado de fábrica).
+
+**Por qué `SvcXbox` y `SvcFax` terminan con un `LeerEstadoAsync` propio, distinto del checker de
+health-score que ya existe con el mismo nombre** (mismo argumento que GPUPrio/MouseAccel/GameDVR
+en la Tanda 1 frente a sus `Check*`):
+- `CheckSvcXbox` (`SystemInfoService.cs`) es un proxy de health-score con criterio "mayoría" (≥2 de
+  3) — intencional para que el score tolere que un servicio no se pudo deshabilitar por permisos y
+  aun así puntúe bien. Para el toggle de Tweaks ese criterio sería un placebo parcial (On con 1 de
+  3 servicios todavía activos). Se construyó `ReadSvcXboxAsync` con criterio estricto (`All`,
+  exige los 3 en Disabled), **sin tocar `CheckSvcXbox` ni su uso en el audit de Home** — son dos
+  consumidores con objetivos distintos (score tolerante vs. toggle honesto).
+- `CheckSvc("Fax") || CheckSvc("RemoteRegistry")` es el mismo problema con criterio OR (alcanza con
+  que uno de los dos esté deshabilitado). Se construyó `ReadSvcFaxAsync` con criterio estricto
+  (`All`, AND de ambos), sin tocar el checker existente del audit de Home.
+
+`SvcWER` es el caso más directo de la tanda: el checker existente (`CheckSvc("WerSvc")`) ya valida
+exactamente ese mismo servicio, sin proxy ni asimetría — se reusó tal cual, mismo patrón 1:1 que
+`SvcDiag` en el piloto.
+
+`SvcMaps` no tenía ningún checker en `SystemInfoService` (confirmado contra el switch `Check(id)`):
+se construyó `ReadSvcMapsAsync` de cero reusando el helper genérico `CheckSvc(nombre)` que ya
+existe, con criterio AND (ambos servicios en Disabled) — mismo criterio "todos, no al menos uno"
+que `GameMode`/`Notif` en la Tanda 1.
+
+**Estado de fábrica de `RemoteRegistry` (nota del prompt sobre el caso "ya deshabilitado")**: se
+verificó en la máquina de build con `Get-Service`/registro — **en esa máquina los 8 servicios de
+las 4 tanda (incluido `Fax`, no solo `RemoteRegistry`) ya estaban en `Start=4`/`Disabled`**, muy
+probablemente porque esa misma máquina (la de uso real de Tomy) ya corrió antes el tab Optimizar
+clásico con esos checkboxes marcados, no por ser una instalación limpia de fábrica — no es una
+señal confiable de "estado de fábrica" en el sentido que pedía el prompt (Windows recién instalado,
+sin tocar). No se pudo confirmar de forma aislada si `RemoteRegistry` viene Disabled de fábrica en
+un Win10/11 limpio moderno independientemente de `Fax`. Lo que sí queda garantizado por diseño,
+independiente de la causa: el caso "servicio ya estaba Disabled antes de aplicar" no necesita rama
+especial en el código — `ReadSvcOriginal` ya captura `StartMode="Disabled"`/`WasRunning=false` para
+un servicio ya deshabilitado, `SvcStartValues` lo mapea de vuelta a `Start=4` (no-op real), y la
+condición `WasRunning && StartMode != "Disabled"` da `false`, así que `RevertSvcEntriesAsync` nunca
+intenta "encender" un servicio que nunca fue WinBoost quien lo apagó. Pendiente de validación real
+en un Windows limpio (fuera del alcance de esta tanda, mismo tipo de limitación ya documentada para
+otros casos en `docs/PENDIENTES.md`).
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`DD1BEF48CAE4E08EEA049EC61AC1374C5DCE2714896724F0CBFED8611B4A5203`, publicado 2026-08-22
+22:58:23**. No se hizo el click-through manual de los 4 sobre el sistema real — mismo criterio que
+las tandas anteriores, queda para Tomy sobre este .exe publicado.
+
+---
+
+## Fix real de MouseAccel: SystemParametersInfo + driver de kernel (43_fix_mouseaccel_no_aplica_realmente.txt)
+
+El corte anterior (42) reportó "el registro real cambia" como evidencia de que MouseAccel
+funcionaba. Tomy probó en vivo (checkbox de Panel de Control, cerrando/reabriendo el diálogo cada
+vez + regedit) y en ninguna de las dos formas vio cambio. Este corte resuelve la contradicción con
+causa raíz real, no una repetición del diagnóstico anterior.
+
+**Hallazgo de proceso, de paso:** al intentar recompilar, `WinBoost.exe` seguía corriendo y
+bloqueando el archivo — resultó ser `bin\Debug\net8.0-windows\WinBoost.exe` (el output de un
+`dotnet build` suelto), **no** el publicado en `bin\publish\win-x64\`. Tomy venía probando el build
+Debug, no el publicado — el hallazgo del corte 42 sobre este mismo binario ya había quedado
+anotado, pero recién ahora se confirmó que efectivamente era el que se estaba usando para probar.
+No es la causa del bug (el código es el mismo en Debug y en el publish; el problema de fondo no
+tiene nada que ver con single-file/self-contained), pero **VERIFICACIÓN FUNCIONAL SIEMPRE SOBRE EL
+.EXE PUBLICADO** — la regla de CLAUDE.md — sigue siendo la única forma de estar seguro de qué se
+está probando.
+
+**Causa raíz real, dos mitades distintas (confirmado con evidencia en vivo, no solo lectura de
+código):**
+
+- **`MouseDataQueueSize`** (`HKLM\SYSTEM\...\Services\mouclass\Parameters`): se verificó el ACL de
+  esa key en la máquina real — `BUILTIN\Administradores: FullControl`, sin restricción (descartada
+  la hipótesis de ACL bloqueada tipo GPU Priority). El registro **sí se escribe** (confirmado leyendo
+  en vivo: 20, el valor que aplica el tweak). El problema es otro: `mouclass.sys` es un **driver de
+  kernel**, y un driver solo relee sus parámetros al cargar — no existe una API de "aplicar ya" para
+  esto. Escribir el registro persiste el valor pero no cambia nada hasta que el driver se recarga
+  (reinicio, o deshabilitar/rehabilitar el mouse desde el Administrador de dispositivos). Mismo
+  criterio que PageFile/HPET.
+- **`MouseSpeed`/`MouseThreshold1`/`MouseThreshold2`** (el checkbox "Mejorar la precisión del
+  puntero" de Panel de Control): Windows cachea estos 3 valores a nivel de sesión. Escribir el
+  registro directo persiste el valor (por eso una relectura del registro, como la del corte 42,
+  parecía confirmar que "andaba") pero **no lo aplica en la sesión en curso** — ni reabrir el
+  diálogo lo actualiza, porque el diálogo lee el estado *en vivo* de Windows, no relee el registro
+  crudo cada vez. La única forma de que tome efecto sin esperar al próximo logon es la misma API
+  que usa el propio Panel de Control cuando el usuario toca el checkbox a mano:
+  `SystemParametersInfo(SPI_SETMOUSE, ...)`.
+
+**Fix aplicado:**
+- `NativeMethods.cs`: nuevo P/Invoke a `user32.dll` (`SystemParametersInfo`) + helper
+  `SetMouseAcceleration(threshold1, threshold2, speed)` (`SPI_SETMOUSE` con
+  `SPIF_UPDATEINIFILE | SPIF_SENDCHANGE`, que además difunde `WM_SETTINGCHANGE`).
+- `TweakRegistry.cs`: `MouseAccel` deja de usar directamente el helper genérico compartido
+  (`ApplyRegEntriesAsync`/`RevertRegEntriesAsync`) como `AplicarAsync`/`RevertirAsync` — ahora tiene
+  wrappers propios (`ApplyMouseAccelAsync`/`RevertMouseAccelAsync`) que llaman al mismo helper
+  genérico para el registro (sin duplicar esa lógica) y después releen lo que haya quedado
+  escrito y lo empujan en vivo con `NotifyMouseSettingsChanged()` — funciona para las dos
+  direcciones (aplicar y revertir) porque no asume cuál se acaba de ejecutar, solo relee el
+  registro actual. El helper genérico (`ApplyRegEntriesAsync`/etc.) no se tocó — sigue
+  compartido tal cual por los otros 6 tweaks de registro directo.
+- `RequiereReinicio` de `MouseAccel` pasa de `false` a `true` (por `MouseDataQueueSize`, el peor
+  caso del tweak combinado — mismo criterio que Visual con su valor condicional).
+
+**Protocolo de verificación reproducible por Tomy** (mismo dato que se está mirando acá, para que
+el próximo reporte sea comparable):
+```powershell
+"MouseSpeed=" + (Get-ItemProperty "HKCU:\Control Panel\Mouse").MouseSpeed
+"MouseDataQueueSize=" + (Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\mouclass\Parameters").MouseDataQueueSize
+```
+Correr esto ANTES de tocar el toggle, después de prenderlo, y después de apagarlo — los 3
+resultados por separado. Para el checkbox de Panel de Control: con el fix, ya no hace falta cerrar
+y reabrir el diálogo para verlo — el cambio ahora es inmediato al prender/apagar el toggle. Para
+`MouseDataQueueSize`, el registro cambia al toque (visible por PowerShell/regedit) pero el
+comportamiento real del mouse quirk-level solo se nota tras reiniciar o reconectar el dispositivo —
+eso es esperado, no un bug, ahora que el tweak está marcado "requiere reinicio".
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. `WinBoost.exe` (el proceso que Tomy tenía
+corriendo) resultó ser el build Debug bloqueando el archivo — cerrado por Tomy antes de recompilar.
+Publicado con `Publish-CSharp.ps1 -SkipInstaller`: **SHA256
+`1D34ADF1C1D1597FDE8836AF944F068E11D353EF5FC6A4482A45C0776335A58D`, publicado 2026-08-22 21:02:51**
+(single-file, 71 MB). Esta vez probar sobre `bin\publish\win-x64\WinBoost.exe` puntualmente, no
+sobre `bin\Debug\...` ni `dotnet run`.
+
+---
+
+## Investigación post-fix del lock: sin bug de código nuevo confirmado (42_fix_placebo_mouseaccel_persistente_cortana_notif.txt)
+
+Re-validación de la Tanda 1 sobre el build del fix 41 (lock en `TweakStateStore`). Reporte: Cortana
+y Notif seguían mostrando exactamente el mismo síntoma de antes; MouseAccel ya no mostraba el error
+al revertir pero se sospechaba que el toggle no escribía nada de verdad (placebo silencioso); Nagle
+sin confirmar en ninguna dirección. Los 3 puntos se investigaron por separado, sin asumir causa
+común, con evidencia real (lectura de registro, no solo ausencia de error) — **conclusión: no se
+encontró ningún bug de código nuevo, en ninguno de los 3.** Detalle por punto:
+
+**0. Exe correcto confirmado.** SHA256 del `.exe` publicado (`7CF93D71...`, generado 18:56:38) y el
+publicado ahora (sin cambios de código, republicado solo para descartar dudas) coinciden. Se
+descartó que el síntoma viniera de una instancia vieja sin cerrar — aunque se encontró, de paso, un
+`bin\Debug\...\WinBoost.exe` de un `dotnet build` suelto en el disco (18:54:18): no es el binario
+que se debe probar nunca (ya lo dice CLAUDE.md), pero de cualquier forma contenía el mismo fix del
+lock, así que no explica el síntoma por sí solo.
+
+**Cortana y Notif.** Se re-inspeccionó `tweak_state.json`: **siguen sin tener entrada**, igual que
+antes del fix 41. Se auditó el helper genérico compartido (`ApplyRegEntriesAsync`/
+`RevertRegEntriesAsync`/`ReadRegEntriesAsync`) línea por línea contra los 5 tweaks que SÍ funcionan
+con el mismo helper (GPUPrio, PowerThrot, GameDVR, GameMode, y ahora MouseAccel) — código
+idéntico, sin ninguna rama especial para estos dos. Se verificó además, con un reproductor aislado
+(sin tocar el registro real) que `TweakStateStore.SaveOriginal`/`HasEntry`/`ReadOriginal` manejan
+sin problema la forma exacta que produce la captura de Cortana/Notif (`string?[]` de un solo
+elemento, ese elemento `null`, porque el value de política no existe todavía) — guarda, persiste,
+y recarga correctamente en una instancia nueva. **No se encontró ningún defecto de código.** La
+lectura en vivo del registro mostró `AllowCortana=0` y `ToastEnabled=0` (el valor que Aplicar
+escribe) — es decir, el registro SÍ está escrito, pero el store nunca capturó nada. La explicación
+más simple y consistente con toda la evidencia: estos dos valores quedaron en `0` desde ANTES del
+fix del lock (la corrida de Tanda 1 original, o el intento fallido del prompt 41) y nunca se
+revirtieron desde entonces — el toggle arranca ya en On, así que un click "para probarlo" dispara
+Revertir (no Aplicar), y Revertir sigue sin encontrar un original porque nunca hubo una captura
+exitosa desde que existe el fix. **No es un bug nuevo: es que el ciclo Apagado→Prendido con el
+código corregido nunca se volvió a ejercitar para estos dos.** Pendiente de confirmar por Tomy:
+borrar de verdad (clic derecho → Eliminar en regedit, no vaciar) `AllowCortana` y `ToastEnabled`,
+prender el toggle, y recién ahí revisar si `tweak_state.json` ahora sí tiene la entrada.
+
+**MouseAccel.** Evidencia real, no solo lectura de código:
+- `tweak_state.json` SÍ tiene entrada ahora (`AppliedAt: 2026-08-22 18:59:39`, `Original:
+  ["1","6","10","20"]`) — el fix del lock resolvió el guardado, confirmado.
+- Registro real leído en vivo (PowerShell, solo lectura): `MouseSpeed=0, MouseThreshold1=0,
+  MouseThreshold2=0, MouseDataQueueSize=20` — **son los valores que Aplicar escribe, distintos del
+  original capturado (`1,6,10`)**. Esto prueba que Aplicar SÍ escribió de verdad: el único código
+  que pudo mover el registro de `1,6,10` a `0,0,0` es el bucle de escritura de
+  `ApplyRegEntriesAsync`. Descartado que Aplicar sea placebo.
+- Se armó un segundo reproductor aislado con la forma exacta de MouseAccel (3 valores String + 1
+  DWord) contra el store: guarda y relee `["1","6","10","20"]` sin pérdida, y el cálculo del bucle
+  de Revertir (mismo índice, misma rama String-vs-DWord) da exactamente lo esperado
+  (`SetValue("1")`, `SetValue("6")`, `SetValue("10")`, `SetValue(int.Parse("20")=20)`) — la lógica
+  de revertir es correcta.
+- `AppliedByWinBoost` en el store sigue en `true` (lo pone Aplicar; Revertir lo pone en `false` al
+  terminar) — indica que la ÚLTIMA operación completa registrada para este tweak fue Aplicar, no
+  Revertir. Combinado con que no aparece ningún error al apagar (confirmado por el propio reporte),
+  lo más consistente con la evidencia es que el ciclo completo (aplicar → revertir) se probó y
+  terminó dejando el toggle prendido de nuevo (o el revert no se completó/no se re-verificó a nivel
+  de registro después de correr) — no que revertir sea un placebo silencioso. **No se encontró
+  ningún defecto de código en el camino de Aplicar ni de Revertir de MouseAccel.**
+
+**Nagle.** Mismo patrón que MouseAccel: `tweak_state.json` tiene la entrada (`AppliedAt:
+2026-08-22 18:54:49`, capturada ANTES incluso del build del fix 41 — o sea, de la validación
+original de la Tanda 1, no de esta ronda). Original capturado para el único adaptador con DHCP de
+esta máquina: `TcpAckFrequency: null, TCPNoDelay: null` (no existían). Registro real leído en vivo:
+`TcpAckFrequency=1, TCPNoDelay=1` — **coincide con el valor que Aplicar escribe, confirmando que
+Aplicar sí escribe de verdad.** `AppliedByWinBoost` también en `true`. Mismo razonamiento que
+MouseAccel: no hay evidencia de que Revertir sea un placebo, solo falta re-ejercitar el ciclo
+completo y revisar el registro después de cada paso.
+
+**No se aplicó ningún cambio de código en este corte** — no se encontró causa que reparar, y el
+prompt es explícito en no parchear sin evidencia. `dotnet build` **0 errores, 0 advertencias**
+(recompilación de control, sin cambios de fuente). El `.exe` publicado sigue siendo el del fix 41
+(SHA256 `7CF93D719A3D986A5C35069F0FED2AA29307639378D1E268795C458C7997775F`, publicado 2026-08-22
+18:56:38) — no hizo falta republicar. Protocolo de re-prueba recomendado para la próxima ronda,
+sobre ESE mismo exe: para Cortana/Notif, borrar el value (no vaciarlo) antes de prender; para
+MouseAccel/Nagle, leer el registro real inmediatamente después de cada click (on y off por
+separado) en vez de solo mirar que no aparezca un error en la UI.
+
+---
+
+## Fix: race condition en TweakStateStore — MouseAccel/Cortana/Notif nunca revertían (41_fix_revert_mouseaccel_cortana_notif.txt)
+
+Bug encontrado en la validación manual de la Tanda 1 (prompt 40): de los 9 tweaks, 6 (GPUPrio,
+PowerThrot, GameDVR, GameMode, Nagle, Visual) aplicaban y revertían bien; **MouseAccel, Cortana y
+Notif** quedaban bloqueados en On, mostrando siempre "No se revirtió: WinBoost no tiene un valor
+original guardado para este tweak" — incluso arrancando desde un estado forzado a mano
+inmediatamente antes de prender el toggle.
+
+**Diagnóstico (mismo método que el fix 39): se inspeccionó `tweak_state.json` en
+`%USERPROFILE%\.OptimizarPC\` en vez de asumir la causa.** Confirmado: las entradas de los 6 que
+funcionan bien están todas presentes, con su `AppliedAt` correspondiente — pero **no existe
+ninguna entrada para `MouseAccel`, `Cortana` ni `Notif`**, pese a que ambos reportaron aplicar
+correctamente (el registro real SÍ queda escrito, confirmado por lectura directa: el toggle
+depende de `LeerEstadoAsync`, que lee el sistema real, no el store). Se descartaron ambas hipótesis
+del prompt: no hay ningún mismatch de Id entre `AplicarAsync`/`RevertirAsync` (se revisaron
+carácter por carácter, todos usan el mismo literal), y el código de `SaveOriginal` no tiene ningún
+guard mal puesto que se salte por error para estos 3 — el bug no está en la lógica de esos 3
+tweaks en particular.
+
+**Causa raíz real: `TweakStateStore` no tiene ninguna sincronización de hilos.** `App.TweakState`
+es un singleton, pero cada tweak corre su `AplicarAsync`/`RevertirAsync` en su **propio hilo de
+fondo** (`Task.Run`, ver `TweakRegistry.cs`) — nada impide que dos tweaks distintos escriban al
+`Dictionary<string, TweakStateEntry>` compartido y llamen a `Persist()` (`File.WriteAllText` sobre
+el mismo `tweak_state.json`) casi al mismo tiempo si el usuario interactúa con más de un toggle en
+una ventana corta. Ni `EnsureLoaded`/`Persist` (con su `catch {}` silencioso ya existente, pensado
+para no romper la app si el disco falla) ni el resto de los métodos tenían ningún `lock`.
+
+**Verificado empíricamente, no solo por inspección de código:** se armó un reproductor aislado (9
+"tweaks" ficticios, cada uno llamando `SaveOriginal`-equivalente desde su propio `Task.Run`,
+mismo patrón exacto de `Dictionary` + `File.WriteAllText` + `catch{}` silencioso que el código
+real) — **189 de 200 corridas perdieron entradas** (el diccionario en memoria SIEMPRE terminaba
+con las 9, pero el archivo en disco terminaba con tan solo 1 a 8 de las 9, según cuál
+`File.WriteAllText` concurrente ganaba la carrera y cuáles pisaban con un snapshot más viejo del
+diccionario o directamente tiraban `IOException: The process cannot access the file...` — absorbida
+en silencio por el mismo `catch{}`). Esto explica el síntoma exacto: el registro se escribe bien
+(independiente del store), pero la entrada de captura puede perderse del archivo sin ningún error
+visible, y como `SaveOriginal` solo se llama una vez (la primera aplicación), una pérdida ahí es
+permanente hasta la próxima vez que ese tweak se aplique de cero.
+
+**Fix**: se envolvió el cuerpo completo de los 5 métodos públicos de `TweakStateStore`
+(`HasEntry`, `SaveOriginal`, `ReadOriginal`, `SetAppliedByWinBoost`, `Remove`) —
+incluyendo `EnsureLoaded()` y `Persist()` — en un único `lock (_gate)`, serializando todo acceso al
+diccionario y al archivo. **Re-verificado con el mismo reproductor: 0 de 200 corridas con
+pérdida tras aplicar el mismo fix.** No se tocó nada de `TweakRegistry.cs` ni el guard de
+"revertir sin original capturado" (ya probado en el fix 39, seguía funcionando correctamente — el
+problema nunca fue ese guard, sino que nunca había nada que encontrar).
+
+**Segundo punto auditado (separado): ¿el revert escribe 0/"" en vez de borrar el value cuando el
+original capturado era "no existía"?** Se revisó `RevertRegEntriesAsync` línea por línea: la
+lógica es correcta — `if (v is null) DeleteValue(...) else SetValue(...)`, y los índices entre lo
+capturado y lo revertido están alineados 1 a 1 (mismo array de `RegEntry` en el mismo orden en
+Apply y Revert). **No es un bug de código.** Lo que se observó en la prueba de GPUPrio (2 values
+DWord terminaron en `0`, 3 String terminaron "vacías") tiene una explicación más simple: el
+`Original` capturado y guardado en el store para ese tweak es `["0","0","","",""]` — es decir, en
+el momento de aplicar, `ReadRegValueAsString` **ya leyó "0"/"" desde el registro real**, no `null`.
+`ReadRegValueAsString` solo puede devolver `null` cuando la key o el value realmente no existen
+(no hay ningún camino en el código que sintetice `"0"` o `""` a partir de un valor ausente) — así
+que el estado de partida de esa prueba no era "los 5 values no existían", sino "los 5 values
+existían con contenido 0/vacío" (lo más probable: al forzar el estado a mano se editaron los
+values a 0/vacío en vez de eliminar el nombre del value, ej. vía el diálogo "Modificar" de
+regedit en vez de "Eliminar"). Con ese punto de partida real, el revert hizo exactamente lo
+esperado: escribió de vuelta `0` y `""` (no `null`), porque eso es lo que había capturado. El
+String vacío en el registro puede verse "vacío" a simple vista en herramientas de inspección
+rápidas, fácil de confundir con "no existe" sin mirar con cuidado si el nombre del value sigue
+presente.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB). El click-through sobre el sistema real
+queda para Tomy — mismo criterio que los fixes anteriores.
+
+---
+
+## Fase B, Tanda 1: 9 tweaks de registro directo (40_fase_b_tanda_1_registro_directo.txt)
+
+Primera tanda de la Fase B: extiende el registro de tweaks (mismo `TweakDefinition`/`TweakState`/
+`TweakRegistry`/`TweakStateStore` del piloto, sin cambiarlo) con 9 tweaks más, todos de la familia
+"registro directo" (la más simple según `docs/ARQUITECTURA_TWEAKS.md`): **GPUPrio, PowerThrot,
+MouseAccel, GameDVR, GameMode, Cortana, Notif, Nagle, Visual**. El tab Optimizar clásico no se
+tocó, sigue aplicando estos mismos tweaks por su lado. Las 9 cards nuevas caen en la MISMA sección
+"Tweaks" del sidebar — no hizo falta ningún cambio en `MainWindow.xaml`/`.xaml.cs` más allá de un
+par de comentarios/textos que mencionaban "5" tweaks (ahora son 14): el panel ya se generaba desde
+`App.Tweaks.All` en código, así que extender el registro fue suficiente. Confirmado contra el
+código real: ninguno de los 9 requiere reinicio (todos `SetReg`/registro de aplicación inmediata).
+
+**Helper nuevo compartido (`ApplyRegEntriesAsync`/`RevertRegEntriesAsync`/`ReadRegEntriesAsync` +
+record `RegEntry`)**: 7 de los 9 tweaks (todos menos Nagle y Visual) son "N valores fijos en 1 o
+más keys HKLM/HKCU, capturar el original solo la primera vez, escribir/restaurar" — exactamente el
+mismo patrón que ya usaba `Telemetry` a mano en el piloto. En vez de duplicar ese bloque 7 veces (y
+de nuevo en cada tanda futura de esta misma familia — quedan ~5 tweaks más de registro directo
+sin tocar todavía), se factorizó en un helper genérico parametrizado por una lista de
+`(Hive, SubKey, Name, Kind, Value)`. Nagle y Visual quedan afuera del helper porque no encajan (N
+dinámico de adaptadores; un valor condicional a RAM).
+
+**Decisión de diseño aplicada a los 7** (misma línea que Telemetry/TCP en el piloto, documentada
+una sola vez porque aplica igual a varios): `LeerEstadoAsync` exige que **todos** los valores que
+Apply realmente escribe coincidan, no el proxy parcial de los `Check*` del health score
+(`CheckGpuPrio` solo mira `"GPU Priority"`, `CheckMouseAccel` solo `MouseSpeed`, `CheckGameDvr`
+solo `GameDVR_Enabled`) — un proxy parcial podría mostrar On con 4 de 5 valores revertidos por
+fuera de WinBoost. El health score en `SystemInfoService.cs` no se tocó, sigue con su proxy
+liviano para otro propósito (la corrida agregada de 25+ checks). Por esto **ninguno** de los
+`Check*` existentes se reusó, ni siquiera `PowerThrot`/`Cortana` (que sí coinciden 1 a 1 con Apply,
+sin asimetría) — usar el mismo helper genérico para los 7 es más simple que mezclar criterios.
+`GameMode` y `Notif` no tenían ningún checker en `SystemInfoService` (confirmado contra el switch
+`Check(id)`); se construyeron con el mismo criterio simple del prompt.
+
+**Nagle** — el único que no encaja en el helper genérico: estructuralmente igual a `Tasks` del
+piloto (N unidades dinámicas — adaptadores de red — no una lista fija de claves). Apply hoy recorre
+las subkeys de `Tcpip\Parameters\Interfaces` y toca solo las que tienen `DhcpIPAddress` asignado;
+esa lista puede variar entre corridas. **Decisión**: `LeerEstadoAsync` exige que **todos** los
+adaptadores actualmente elegibles tengan `TcpAckFrequency`/`TCPNoDelay`=1, no el "al menos uno" que
+usa `CheckNagle` del health score (mismo argumento que los 7 de arriba). Riesgo aceptado y
+documentado: un adaptador que se conecta *después* de aplicar (uno que WinBoost nunca tocó) hace
+que el toggle pase a Off aunque nada haya retrocedido en los adaptadores que sí se tocaron — se
+considera el comportamiento más honesto, no un bug. Se agregó un guard explícito para el caso de
+**0 adaptadores elegibles** (máquina toda con IP estática): sin él, `.All()` sobre una lista vacía
+da `true` por vacuidad lógica y el toggle mostraría On sin nada tocado — primer uso real del estado
+`NoAplicable` que el piloto dejó preparado desde el corte 38 mismo. El revert también evita
+recrear la subkey de un adaptador que ya no existe (se desconectó desde que se aplicó): sin ese
+guard, `RegistryPrivilegeHelper.OpenWritable` la crearía de la nada.
+
+**Visual** — único con un valor condicional: Apply escribe 2 valores siempre + `EnableTransparency`
+solo si la RAM total es ≤8GB. **Decisión**: `LeerEstadoAsync` replica la misma condición (lee la
+RAM real y exige el 3er valor solo cuando corresponde), para que el toggle sea honesto en máquinas
+con poca RAM. La RAM se lee con `GlobalMemoryStatusEx` (nativo, el mismo mecanismo que ya usa el
+monitor en vivo de `MainWindow` cada segundo sin `Task.Run`) en vez de
+`SystemInfoService.GetSystemInfoAsync()` — esa última dispara varias consultas WMI pesadas
+(CPU/GPU/SSD) para un dato donde acá solo hace falta el total de RAM, y este toggle la va a llamar
+en cada Apply/Revert/Leer.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias**. Antes de publicar se revisaron a mano
+(read-only, vía PowerShell, sin tocar nada) las rutas de registro reales de esta máquina contra las
+que usa el código nuevo — confirmado que los 5 tweaks ya aplicados por el tab Optimizar clásico en
+algún momento (GPUPrio, PowerThrot, MouseAccel, GameDVR parcial, y el único adaptador con DHCP de
+esta máquina sin Nagle aplicado) matchean exactamente lo que `ReadRegEntriesAsync`/`ReadNagleAsync`
+esperan leer. Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB). No se hizo el
+click-through manual de los 9 sobre el sistema real — mismo criterio que el piloto, queda para
+Tomy sobre el .exe publicado.
+
+---
+
 ## Fix: el toggle de TCP nunca revertía (39_fix_revert_tcp_piloto.txt)
 
 Bug encontrado en la validación manual del piloto de tweaks (prompt 38): de los 5 tweaks, los 4

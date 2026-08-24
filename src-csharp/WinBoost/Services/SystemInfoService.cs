@@ -397,6 +397,27 @@ public sealed class SystemInfoService
         catch { return false; }
     }
 
+    // internal: reusado por TweakRegistry (Fase B, Tanda 4, SvcSysMain/SvcWSearch) para la
+    // pregunta "esta maquina tiene al menos un SSD" -- MISMA deteccion que ya usa GatherSystemInfo
+    // para el SystemSnapshot (MSFT_PhysicalDisk, MediaType==4), extraida a su propio metodo en vez
+    // de duplicar el WMI a mano en TweakRegistry.cs. NO es OptimizationService.GetSsdDriveLetters()
+    // (esa responde una pregunta distinta -- que letras de unidad tocar con TRIM -- y hace un WMI
+    // propio con otro filtro). No cachea nada: se re-consulta en cada llamada a proposito, para que
+    // SvcSysMain/SvcWSearch reflejen un cambio de disco sin reiniciar la app.
+    internal static bool HasSsd()
+    {
+        try
+        {
+            var scope   = new ManagementScope(@"\\.\root\microsoft\windows\storage");
+            var query   = new ObjectQuery("SELECT MediaType FROM MSFT_PhysicalDisk");
+            using var q = new ManagementObjectSearcher(scope, query);
+            foreach (ManagementObject o in q.Get())
+                if (Convert.ToInt32(o["MediaType"]) == 4) return true;
+        }
+        catch { }
+        return false;
+    }
+
     private static bool CheckSvcXbox()
     {
         string[] names = ["XblAuthManager", "XblGameSave", "XboxNetApiSvc"];

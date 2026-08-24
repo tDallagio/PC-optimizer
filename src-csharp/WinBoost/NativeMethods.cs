@@ -55,6 +55,29 @@ internal static class NativeMethods
         SHEmptyRecycleBin(IntPtr.Zero, null, SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
     }
 
+    // ── user32 ────────────────────────────────────────────────────────────────
+
+    // Fix 43: escribir MouseSpeed/MouseThreshold1/MouseThreshold2 directo al registro (lo que
+    // hacia el tweak MouseAccel) PERSISTE el valor pero no lo aplica en la sesion en curso --
+    // Windows cachea estos 3 parametros a nivel de sesion y solo los relee via
+    // SystemParametersInfo(SPI_SETMOUSE) o en el proximo logon. Confirmado en la maquina real: el
+    // registro quedaba escrito en 0/0/0, pero el checkbox "Mejorar precision del puntero" de Panel
+    // de Control nunca cambiaba, ni cerrando y reabriendo el dialogo. SPI_SETMOUSE es la MISMA API
+    // que usa Panel de Control cuando el usuario toca el checkbox a mano -- toma un array de 3
+    // ints [Threshold1, Threshold2, Speed] (ese orden, no el orden de los nombres de registro) y
+    // SPIF_SENDCHANGE difunde WM_SETTINGCHANGE para que la sesion en curso lo tome ya mismo.
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, int[] pvParam, uint fWinIni);
+
+    internal static void SetMouseAcceleration(int threshold1, int threshold2, int speed)
+    {
+        const uint SPI_SETMOUSE       = 0x0004;
+        const uint SPIF_UPDATEINIFILE = 0x01;
+        const uint SPIF_SENDCHANGE    = 0x02;
+        int[] mouseParams = [threshold1, threshold2, speed];
+        SystemParametersInfo(SPI_SETMOUSE, 0, mouseParams, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    }
+
     // ── structs ───────────────────────────────────────────────────────────────
 
     [StructLayout(LayoutKind.Sequential)]

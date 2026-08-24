@@ -2830,7 +2830,7 @@
       <TabItem Header="Tweaks">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="20,14,20,20">
-            <TextBlock Text="Piloto de 5 tweaks con toggle inmediato: prender aplica ya, apagar revierte ya."
+            <TextBlock Text="Toggle inmediato por tweak: prender aplica ya, apagar revierte ya."
                        FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
                        TextWrapping="Wrap"/>
             <StackPanel x:Name="pnlTweaks"/>

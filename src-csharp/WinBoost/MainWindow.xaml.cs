@@ -1092,7 +1092,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _ = LoadTuningTabAsync();
         }
 
-        // Tab Tweaks (9, piloto Fase A): carga lazy de las 5 cards + estado real la primera vez
+        // Tab Tweaks (9): carga lazy de las cards (App.Tweaks.All, 22: 14 de la Tanda 1 + 4 de la
+        // Tanda 2 + 2 de la Tanda 3 + 2 de la Tanda 4 de Fase B -- categoria Servicios 7/7 completa)
+        // + estado real la primera vez
         if (mainTabs.SelectedIndex == 9 && !_tweaksLoaded)
         {
             _tweaksLoaded = true;
@@ -2833,7 +2835,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             TweakState.NoAplicable => $"No disponible: {status.Motivo}",
             _                      => "",
         };
-        refs.Status.Foreground = status.State == TweakState.On ? BrushGreen : BrushLicFree;
+        // NoAplicable (primer caso real: SvcSysMain/SvcWSearch sin SSD, Fase B Tanda 4) usaba el
+        // mismo BrushLicFree que Off -- el toggle deshabilitado (arriba) ya lo distingue de un
+        // vistazo, pero el texto de estado se veia identico a "No aplicado.", como si el usuario
+        // pudiera simplemente prenderlo. BrushBlue = #00C8FF, el color "info" de la guia de estilo
+        // (CLAUDE.md: ok/warn/err/info), reusado tal cual -- no se creo un brush nuevo.
+        refs.Status.Foreground = status.State switch
+        {
+            TweakState.On          => BrushGreen,
+            TweakState.NoAplicable => BrushBlue,
+            _                      => BrushLicFree,
+        };
     }
 
     private async Task ApplyTweakAsync(TweakDefinition def)

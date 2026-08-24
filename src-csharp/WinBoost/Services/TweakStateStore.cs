@@ -26,9 +26,27 @@ public sealed class TweakStateStore
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".OptimizarPC", "tweak_state.json");
 
+    // Fix 41 (41_fix_revert_mouseaccel_cortana_notif.txt): TweakStateStore es un singleton
+    // (App.TweakState) pero cada tweak corre su Aplicar/Revertir en su PROPIO hilo de fondo
+    // (Task.Run, ver TweakRegistry.cs) -- nada impide que dos tweaks distintos escriban al mismo
+    // tiempo si el usuario toca dos toggles en una ventana corta. _entries era un Dictionary
+    // comun (NO es thread-safe para escritores concurrentes) y Persist() hacia
+    // File.WriteAllText() sobre el MISMO archivo desde esos hilos sin ninguna coordinacion: dos
+    // llamadas casi simultaneas a SaveOriginal (una por cada tweak) podian pisarse -- la que
+    // terminaba de escribir el archivo ultimo ganaba con SU snapshot de _entries, que podia no
+    // incluir todavia la entrada que el otro hilo acababa de agregar en memoria, perdiendola en
+    // el disco sin ninguna excepcion visible (EnsureLoaded/Persist ya tragaban errores en un
+    // catch{} silencioso). Esto explica el sintoma real encontrado: MouseAccel/Cortana/Notif
+    // aplicaban bien (la escritura de registro es independiente de este store) pero su entrada en
+    // tweak_state.json nunca llegaba a persistir, asi que el revert siempre encontraba
+    // HasEntry(id)==false. Fix: un lock unico que serializa TODO acceso a _entries y al archivo
+    // (carga, lectura, escritura), asi dos tweaks aplicados/revertidos en paralelo ya no compiten
+    // por el mismo diccionario ni el mismo archivo.
+    private readonly object _gate = new();
     private Dictionary<string, TweakStateEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
     private bool _loaded;
 
+    // Llamar SIEMPRE desde dentro de lock (_gate).
     private void EnsureLoaded()
     {
         if (_loaded) return;
@@ -42,6 +60,7 @@ public sealed class TweakStateStore
         catch { }
     }
 
+    // Llamar SIEMPRE desde dentro de lock (_gate).
     private void Persist()
     {
         try
@@ -55,8 +74,11 @@ public sealed class TweakStateStore
 
     public bool HasEntry(string id)
     {
-        EnsureLoaded();
-        return _entries.ContainsKey(id);
+        lock (_gate)
+        {
+            EnsureLoaded();
+            return _entries.ContainsKey(id);
+        }
     }
 
     // Guarda el valor original de un tweak (solo la PRIMERA vez que se aplica -- llamar
@@ -65,37 +87,49 @@ public sealed class TweakStateStore
     // de un comando, etc.) -- el store no le impone un shape fijo.
     public void SaveOriginal<T>(string id, T originalValue)
     {
-        EnsureLoaded();
-        _entries[id] = new TweakStateEntry
+        lock (_gate)
         {
-            Id                = id,
-            Original          = JsonSerializer.SerializeToElement(originalValue),
-            AppliedAt         = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-            AppliedByWinBoost = true
-        };
-        Persist();
+            EnsureLoaded();
+            _entries[id] = new TweakStateEntry
+            {
+                Id                = id,
+                Original          = JsonSerializer.SerializeToElement(originalValue),
+                AppliedAt         = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                AppliedByWinBoost = true
+            };
+            Persist();
+        }
     }
 
     public T? ReadOriginal<T>(string id)
     {
-        EnsureLoaded();
-        if (!_entries.TryGetValue(id, out var entry)) return default;
-        try { return entry.Original.Deserialize<T>(); }
-        catch { return default; }
+        lock (_gate)
+        {
+            EnsureLoaded();
+            if (!_entries.TryGetValue(id, out var entry)) return default;
+            try { return entry.Original.Deserialize<T>(); }
+            catch { return default; }
+        }
     }
 
     // Flag informativo/diagnostico (ver nota de clase): no toca el valor Original guardado.
     public void SetAppliedByWinBoost(string id, bool applied)
     {
-        EnsureLoaded();
-        if (!_entries.TryGetValue(id, out var entry)) return;
-        entry.AppliedByWinBoost = applied;
-        Persist();
+        lock (_gate)
+        {
+            EnsureLoaded();
+            if (!_entries.TryGetValue(id, out var entry)) return;
+            entry.AppliedByWinBoost = applied;
+            Persist();
+        }
     }
 
     public void Remove(string id)
     {
-        EnsureLoaded();
-        if (_entries.Remove(id)) Persist();
+        lock (_gate)
+        {
+            EnsureLoaded();
+            if (_entries.Remove(id)) Persist();
+        }
     }
 }
