@@ -270,6 +270,38 @@ public sealed class TweakRegistry
                 AplicarAsync:     () => ApplySvcIfSsdAsync("SvcWSearch", "WSearch"),
                 RevertirAsync:    () => RevertSvcIfSsdAsync("SvcWSearch", "WSearch"),
                 LeerEstadoAsync:  () => ReadSvcIfSsdAsync("WSearch")),
+
+            // ── Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt) ───────────────────────
+            // Nueva seccion "Network" del sidebar: Categoria "Red" ahora se renderiza en su propio
+            // panel (MainWindow.xaml.cs, LoadNetworkTabAsync) en vez del panel Tweaks -- Nagle/TCP
+            // (arriba) no cambiaron ni un caracter de su Id/AplicarAsync/RevertirAsync/
+            // LeerEstadoAsync, solo se movieron de panel via su Categoria ya existente. DisableIPv6
+            // es tweak nuevo, mismo patron simple de 1 sola clave sin asimetria que PowerThrot/
+            // Cortana en la Tanda 1 -- reusa el helper generico tal cual, sin mecanismo nuevo.
+
+            new TweakDefinition(
+                Id:               "DisableIPv6",
+                Nombre:           "Preferir IPv4 sobre IPv6",
+                Descripcion:      "IPv6 sigue activo; Windows prefiere IPv4 cuando ambos estan disponibles en la red. Seguro en cualquier red, incluidas las IPv6-nativas.",
+                Categoria:        "Red",
+                RequiereReinicio: true,
+                AplicarAsync:     () => ApplyRegEntriesAsync("DisableIPv6", DisableIpv6Entries()),
+                RevertirAsync:    () => RevertRegEntriesAsync("DisableIPv6", DisableIpv6Entries()),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(DisableIpv6Entries())),
+
+            // ── Prompt 51 (51_migracion_power.txt) ──────────────────────────────────────────
+            // Ultimo de los 26 tweaks individuales del tab clasico: con este se completa el
+            // universo (Limpieza sigue aparte, ya migrada como bloque no-togglable en la Fase C).
+
+            new TweakDefinition(
+                Id:               "Power",
+                Nombre:           "Plan de energia de alto rendimiento",
+                Descripcion:      "En equipos de escritorio activa Ultimate Performance, apaga la hibernacion y el apagado de pantalla en CA. En laptops activa Alto Rendimiento sin tocar la hibernacion, para no vaciar la bateria.",
+                Categoria:        "Sistema y Rendimiento",
+                RequiereReinicio: false,
+                AplicarAsync:     ApplyPowerAsync,
+                RevertirAsync:    RevertPowerAsync,
+                LeerEstadoAsync:  ReadPowerAsync),
         ];
     }
 
@@ -1297,6 +1329,190 @@ public sealed class TweakRegistry
         using var pfSearcher = new ManagementObjectSearcher("SELECT Name FROM Win32_PageFileSetting");
         using var pfCol      = pfSearcher.Get();
         return (!autoManaged && pfCol.Count > 0) ? TweakStatus.On : TweakStatus.Off;
+    });
+
+    // ══ Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt) ═══════════════════════════════
+    // ── DisableIPv6 ────────────────────────────────────────────────────────────
+    // 1 sola clave, sin asimetria -- mismo patron simple que PowerThrot/Cortana en la Tanda 1,
+    // reusa ApplyRegEntriesAsync/RevertRegEntriesAsync/ReadRegEntriesAsync tal cual (captura el
+    // original SOLO la primera vez, incluyendo "no existia" como valor valido; al revertir, si
+    // no existia se borra, si existia con otro valor -- ej. 0xFF, el que tenia el codigo viejo del
+    // PS1 antes del fix documentado en CHANGELOG -- se restaura tal cual). Sin mecanismo nuevo.
+    //
+    // Semantica real del valor (igual que ya la describe el tab clasico, Nombre/Descripcion la
+    // repiten a proposito): DisabledComponents=0x20 NO deshabilita IPv6 -- hace que Windows
+    // PREFIERA IPv4 sobre IPv6 cuando ambos estan disponibles; IPv6 sigue activo. Muy distinto de
+    // 0xFF (deshabilita TODOS los componentes IPv6), que cortaba conectividad en redes IPv6-nativas
+    // -- ya identificado como bug del PS1 y corregido (ver CHANGELOG); este tweak nuevo solo
+    // escribe/revierte 0x20.
+    //
+    // RequiereReinicio = true: DisabledComponents es de los parametros de la pila TCP/IP que
+    // Windows solo relee al inicializar el stack de red en el arranque (documentado por Microsoft,
+    // KB929852 -- "debe reiniciar el equipo para que el cambio surta efecto"), no algo que se
+    // reaplique en caliente con reiniciar el adaptador o el servicio. El registro queda escrito ya,
+    // pero el efecto real (que interfaz se prefiere en la practica) no se nota hasta el proximo
+    // arranque -- mismo criterio que HPET (Tanda 3), no el de FastStartup (que si es inmediato).
+    private static RegEntry[] DisableIpv6Entries() =>
+    [
+        new(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters",
+            "DisabledComponents", RegistryValueKind.DWord, 0x20),
+    ];
+
+    // ══ Prompt 51 (51_migracion_power.txt) ══════════════════════════════════════════════════
+    // ── Power (plan de energia) ───────────────────────────────────────────────
+    // Reusa OptimizationService.PowerPlanTweaks(isLaptop) tal cual (subida a internal) -- no
+    // reimplementa la deteccion de Ultimate Performance ni su fallback. El llamado embebido a
+    // App.Backup.SavePowerPlanBackup() dentro de ese metodo queda como no-op inerte desde este
+    // panel (sin sesion de backup activa, _path es null y el metodo retorna de inmediato) -- mismo
+    // motivo de siempre para no depender de el como mecanismo de revert, no para evitar la llamada
+    // indirecta en si (que no hace nada aca).
+    //
+    // Confirmado contra el codigo real (PowerPlanTweaks), NO asumido del resumen del prompt:
+    // - Desktop: intenta activar "Ultimate Performance" (nombre bilingue, duplicando el plan
+    //   semilla si no existe); SI ESO FALLA cae a SCHEME_MIN ("Alto Rendimiento") -- las DOS son
+    //   un resultado exitoso real de Apply (ambas ramas loguean "ok"). Siempre apaga hibernacion
+    //   despues, sin importar cual de las dos.
+    // - Laptop: SOLO activa SCHEME_MIN. NO toca hibernacion -- no hay ningun /hibernate en esa
+    //   rama del codigo real.
+    // - standby-timeout-ac=0 se aplica SIEMPRE para las dos ramas -- el llamado esta FUERA del
+    //   if/else isLaptop en el codigo real. Esto corrige el resumen original del prompt, que lo
+    //   daba como no confirmado para laptop: SI se aplica en laptop tambien.
+    //
+    // Hueco de reversion del mecanismo viejo (BackupService.SavePowerPlanBackup/RestoreSession,
+    // accion "powerplan"): restaura el GUID del plan y la hibernacion, pero NUNCA captura ni
+    // restaura standby-timeout-ac -- revertir dejaba la pantalla/espera en 0 para siempre aunque
+    // el plan volviera al original. Para este tweak nuevo se captura y se restaura tambien, sin
+    // pasar por ese mecanismo de sesion (mismo motivo de siempre: el original vive en
+    // TweakStateStore, no en una sesion de Optimizar).
+    private sealed record PowerOriginal(string? SchemeGuid, bool? HibernateWasOn, int? StandbyAcSeconds);
+
+    // GUIDs resueltos en vivo via "powercfg /aliases", nunca hardcodeados de memoria (sin forma de
+    // verificarlos contra una maquina real elevada desde este entorno de build). Los alias en si
+    // (SCHEME_MIN, SUB_SLEEP, STANDBYIDLE, SCHEME_CURRENT) son tokens de linea de comandos fijos
+    // que powercfg reconoce igual en cualquier idioma -- mismo criterio que ya usa el resto del
+    // proyecto con SCHEME_MIN/SCHEME_CURRENT tal cual (PowerPlanTweaks, CreateRestorePoint).
+    private static string? ResolvePowercfgAlias(string alias)
+    {
+        string output = RunProcess("powercfg", "/aliases");
+        foreach (string rawLine in output.Split('\n'))
+        {
+            string line = rawLine.Trim();
+            if (!line.StartsWith(alias, StringComparison.OrdinalIgnoreCase)) continue;
+            var m = Regex.Match(line, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+            if (m.Success) return m.Value;
+        }
+        return null;
+    }
+
+    private static string? ReadActiveSchemeGuid()
+    {
+        string output = RunProcess("powercfg", "/getactivescheme");
+        var m = Regex.Match(output, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+        return m.Success ? m.Value : null;
+    }
+
+    // "powercfg /q" de UN solo setting siempre imprime exactamente 5 valores hex, en el MISMO
+    // ORDEN estructural fijo sea cual sea el idioma (Minimo, Maximo, incremento, AC actual, DC
+    // actual) -- se toma el 4to por POSICION, no por el texto de la etiqueta ("Current AC..." en
+    // ingles, "...actual de CA..." en español -- mismo tipo de trampa bilingue ya documentada
+    // para otros comandos en este proyecto, y aca ademas la propia sigla se invierte, AC vs CA).
+    // "Possible Settings units: Seconds" en el propio output confirma que el valor esta en
+    // segundos -- distinto de la unidad que espera "/change standby-timeout-ac" (minutos), de ahi
+    // la conversion /60 al revertir.
+    private static int? ReadStandbyTimeoutAcSeconds()
+    {
+        string output = RunProcess("powercfg", "/q SCHEME_CURRENT SUB_SLEEP STANDBYIDLE");
+        var hex = Regex.Matches(output, @"0x[0-9a-fA-F]+");
+        if (hex.Count < 4) return null;
+        try { return Convert.ToInt32(hex[3].Value, 16); } catch { return null; }
+    }
+
+    private static Task ApplyPowerAsync() => Task.Run(() =>
+    {
+        bool isLaptop = SystemInfoService.IsLaptop();
+
+        if (!App.TweakState.HasEntry("Power"))
+        {
+            string? schemeGuid = ReadActiveSchemeGuid();
+            // Apply nunca toca hibernacion en laptop -- null = nada que capturar ni revertir ahi.
+            bool? hibernateWasOn = isLaptop
+                ? null
+                : (ReadDwordOrNull(HibernatePowerKey, "HibernateEnabled") is int h ? h == 1 : true);
+            int? standbyAc = ReadStandbyTimeoutAcSeconds();
+            App.TweakState.SaveOriginal("Power", new PowerOriginal(schemeGuid, hibernateWasOn, standbyAc));
+        }
+
+        new OptimizationService().PowerPlanTweaks(isLaptop);
+        App.TweakState.SetAppliedByWinBoost("Power", true);
+    });
+
+    private static Task RevertPowerAsync() => Task.Run(() =>
+    {
+        // Sin entrada = WinBoost nunca aplico este tweak desde esta seccion -- no-op (mismo
+        // criterio que el resto del registro).
+        if (!App.TweakState.HasEntry("Power")) return;
+
+        var original = App.TweakState.ReadOriginal<PowerOriginal>("Power");
+        if (original is null) return;
+
+        bool isLaptop = SystemInfoService.IsLaptop();
+
+        if (original.SchemeGuid is not null)
+            RunProcess("powercfg", $"/setactive {original.SchemeGuid}");
+
+        // Solo reactivar si WinBoost fue quien la apago Y esta maquina es de las que Apply
+        // realmente toca hibernacion (desktop) -- en laptop original.HibernateWasOn siempre es
+        // null, asi que esta rama nunca se ejecuta ahi, consistente con lo que Apply hizo de
+        // verdad.
+        if (!isLaptop && original.HibernateWasOn == true)
+            RunProcess("powercfg", "/hibernate on");
+
+        if (original.StandbyAcSeconds is int secs)
+            RunProcess("powercfg", $"/change standby-timeout-ac {secs / 60}");
+
+        App.TweakState.SetAppliedByWinBoost("Power", false);
+    });
+
+    // On exige TODO lo que Apply realmente toca en cada rama (mismo criterio "todos, no proxy
+    // parcial" del resto del registro) -- y devuelve un TweakStatus.On con Motivo especifico segun
+    // que se aplico de verdad (Ultimate Performance vs. el fallback a Alto Rendimiento en
+    // desktop, o Alto Rendimiento en laptop): la card tiene que decir la verdad de lo que paso en
+    // ESTA maquina, no un "Aplicado" generico igual para las dos ramas.
+    private static Task<TweakStatus> ReadPowerAsync() => Task.Run(() =>
+    {
+        bool isLaptop = SystemInfoService.IsLaptop();
+
+        string? activeGuid = ReadActiveSchemeGuid();
+        if (activeGuid is null) return TweakStatus.Off;
+
+        bool standbyOk = ReadStandbyTimeoutAcSeconds() == 0;
+
+        if (isLaptop)
+        {
+            string? schemeMinGuid = ResolvePowercfgAlias("SCHEME_MIN");
+            bool onLaptop = schemeMinGuid is not null
+                && string.Equals(activeGuid, schemeMinGuid, StringComparison.OrdinalIgnoreCase);
+            return (onLaptop && standbyOk)
+                ? new TweakStatus(TweakState.On, "Alto Rendimiento activado.")
+                : TweakStatus.Off;
+        }
+
+        string list          = RunProcess("powercfg", "/list");
+        string? ultimateGuid = OptimizationService.FindSchemeGuidByName(list, "Ultimate Performance", "M.ximo rendimiento");
+        string? schemeMin    = ResolvePowercfgAlias("SCHEME_MIN");
+
+        bool onUltimate = ultimateGuid is not null
+            && string.Equals(activeGuid, ultimateGuid, StringComparison.OrdinalIgnoreCase);
+        bool onFallback = !onUltimate && schemeMin is not null
+            && string.Equals(activeGuid, schemeMin, StringComparison.OrdinalIgnoreCase);
+        bool hibernateOff = ReadDwordOrNull(HibernatePowerKey, "HibernateEnabled") == 0;
+
+        if (!(onUltimate || onFallback) || !hibernateOff || !standbyOk) return TweakStatus.Off;
+
+        string motivo = onUltimate
+            ? "Ultimate Performance activado, hibernacion desactivada, espera en CA desactivada."
+            : "Alto Rendimiento activado (Ultimate Performance no disponible), hibernacion desactivada, espera en CA desactivada.";
+        return new TweakStatus(TweakState.On, motivo);
     });
 
     // ── Helpers compartidos ────────────────────────────────────────────────────

@@ -255,8 +255,14 @@ public sealed class OptimizationService
     }
 
     // ── Punto de restauracion ─────────────────────────────────────────────────
+    // internal (era private): reusado por QuickActionRegistry.cs (Fase C, Paso 5,
+    // 50_fase_c_paso4_5_trim_herramientas_restore_home.txt) para la card de Home. Este metodo
+    // solo hace la llamada (Checkpoint-Computer) y loguea "creado" si no tiro excepcion -- eso NO
+    // confirma que Windows haya creado un punto nuevo de verdad (el limite de 1 cada 24hs deja
+    // pasar la llamada sin crear nada). La verificacion real con evidencia (antes/despues) vive en
+    // QuickActionRegistry, no aca -- este metodo no se toco.
 
-    private void CreateRestorePoint(string sysDrive)
+    internal void CreateRestorePoint(string sysDrive)
     {
         Prog(2, "Creando punto de restauracion (puede tardar 30-60 s)...");
         Log("PUNTO DE RESTAURACION", "head");
@@ -285,8 +291,11 @@ public sealed class OptimizationService
     }
 
     // ── Invoke-CleanupTweaks ──────────────────────────────────────────────────
+    // internal (era private): reusado por MainWindow.xaml.cs (Fase C, Paso 3, seccion Limpieza,
+    // 49_fase_c_paso3_seccion_limpieza.txt) para exponer las mismas 8 acciones de borrado ya
+    // validadas en su propia seccion, sin duplicar ninguna de las rutinas de limpieza.
 
-    private double CleanupTweaks(
+    internal double CleanupTweaks(
         IReadOnlyDictionary<string, bool> sel, bool hasSsd, string sysDrive)
     {
         Log("LIMPIEZA DE ARCHIVOS", "head");
@@ -593,7 +602,10 @@ public sealed class OptimizationService
 
     // ── Plan de energia ───────────────────────────────────────────────────────
 
-    private void PowerPlanTweaks(bool isLaptop)
+    // internal (era private): reusado por TweakRegistry.cs (prompt 51, tweak "Power") para no
+    // duplicar la deteccion de Ultimate Performance (con su fallback a SCHEME_MIN) ni el resto de
+    // esta rutina.
+    internal void PowerPlanTweaks(bool isLaptop)
     {
         Prog(30, "Plan de energia...");
         Log("PLAN DE ENERGIA", "head");
@@ -653,7 +665,10 @@ public sealed class OptimizationService
     // patrones dados (regex, case-insensitive) y devuelve su GUID. Cada linea tiene la forma
     // "<etiqueta>: <guid>  (<nombre>) [*]" en cualquier idioma; el GUID y los parentesis son
     // el unico formato estable entre locales.
-    private static string? FindSchemeGuidByName(string powercfgListOutput, params string[] namePatterns)
+    // internal (era private): reusado por TweakRegistry.cs (prompt 51) para el LeerEstadoAsync del
+    // tweak "Power" -- compara el GUID del plan activo contra el de "Ultimate Performance"
+    // resuelto por nombre (sin GUID fijo posible, ver comentario de PowerPlanTweaks), no por texto.
+    internal static string? FindSchemeGuidByName(string powercfgListOutput, params string[] namePatterns)
     {
         foreach (Match line in Regex.Matches(
             powercfgListOutput,
@@ -778,8 +793,11 @@ public sealed class OptimizationService
     }
 
     // ── TRIM / Desfrag (async con progreso) ───────────────────────────────────
+    // internal (era private): reusado por MainWindow.xaml.cs (Fase C, Paso 4, tab Herramientas,
+    // 50_fase_c_paso4_5_trim_herramientas_restore_home.txt) via App.Worker.RunAsync, sin duplicar
+    // el mecanismo de cancelacion/progreso que ya tiene.
 
-    private async Task TrimTweaksAsync(bool hasSsd, CancellationToken ct)
+    internal async Task TrimTweaksAsync(bool hasSsd, CancellationToken ct)
     {
         Prog(94, "TRIM / Desfrag schedule...");
         Log("TRIM / DESFRAG", "head");

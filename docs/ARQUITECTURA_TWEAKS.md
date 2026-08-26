@@ -8,6 +8,12 @@
 > Fuentes: `OptimizationService.cs` (Apply real), `SystemInfoService.cs` (lectores de estado
 > existentes, vía health score), `BackupService.cs` (precedente de reversión, hoy a nivel de sesión
 > completa, no por tweak individual).
+>
+> **ACTUALIZACIÓN 2026-08-24**: las Fases A, B y C descritas como plan en este documento ya se
+> implementaron y validaron por completo. Las secciones 1-6 quedan como registro histórico del
+> análisis previo a implementar (varias de sus predicciones/decisiones NO coinciden con lo que
+> terminó pasando en la práctica). **Ver Sección 7 al final para el estado real post-implementación**
+> — es la fuente de verdad actual, no las secciones 4-5.
 
 ---
 
@@ -170,6 +176,9 @@ posible:
 > DNSFlush) ya tienen decisión de producto tomada. Esta sección SOLO registra la decisión para
 > retomarla en una sesión futura sin reconstruir el razonamiento — la implementación es Fase A/B,
 > todavía no arrancó.
+>
+> **NOTA (ver Sección 7)**: al implementarse de verdad, dos de estas decisiones CAMBIARON respecto
+> a lo registrado acá. Dejalo como está por valor histórico, pero no lo tomes como el estado final.
 
 **Principio general adoptado**: Optimizar queda reservado EXCLUSIVAMENTE a tweaks **TOGGLEABLES**
 (estado persistente ON/OFF con Aplicar/Revertir/LeerEstado). Cualquier ítem que sea una **ACCIÓN DE
@@ -216,3 +225,142 @@ destino ahí, para cuando llegue su turno.
 - Los 3 casos especiales duros ya NO están "a decidir" (ver sección 5): DNSFlush y Startup salen a
   Herramientas; TrimDesfrag se parte en toggle (queda) + botón (aparte). El rediseño de Herramientas
   que los va a recibir es un proyecto propio, no planificado en este documento.
+
+---
+
+## 7. Estado real post-implementación (Fases A, B y C — cerradas 2026-08-24)
+
+> Esta sección es la fuente de verdad actual. Las secciones 1-6 son el análisis/plan previo a
+> implementar (2026-08-21) y quedan como registro histórico — varias de sus predicciones y
+> decisiones NO coinciden con lo que se implementó realmente. Detalle completo corte por corte en
+> `docs/CHANGELOG.md` (prompts 38 a 50); acá solo el resumen de destino final y estado de validación.
+
+### 7.1 Arquitectura implementada
+
+- **Modelo de datos**: `TweakDefinition` (Id, Nombre, Descripcion, Categoria, RequiereReinicio,
+  AplicarAsync, RevertirAsync, LeerEstadoAsync) + enum `TweakState` (On/Off/NoAplicable) +
+  `TweakStatus` (estado + motivo, para que NoAplicable viaje con explicación hasta la UI). Vive en
+  `TweakRegistry.cs`.
+- **Persistencia por-tweak**: `TweakStateStore.cs` (`tweak_state.json` en `%USERPROFILE%\.OptimizarPC\`),
+  separado a propósito de `BackupService`/`BackupModels` (sesión completa). Protegido con `lock` tras
+  un bug real de concurrencia encontrado durante la Tanda 1 (ver 7.4).
+- **Segundo patrón, para lo que NO es on/off**: `QuickActionDefinition`/`QuickActionRegistry`
+  (`Id`, `Nombre`, `Descripcion`, `Func<Task<string>> EjecutarAsync`), sin estado, sin
+  `TweakStateStore`. Nació en el Paso 2 de la Fase C (DNSFlush) y se reusó para el punto de
+  restauración en Home. **NO se usó** para TRIM/Desfrag (ver 7.3) porque esa acción ya tenía
+  cancelación/progreso propios que este patrón simple no cubre.
+- **Secciones de sidebar nuevas**: **Tweaks** (piloto, Fase A) y, agregadas después en la Fase C:
+  **Network** y **Limpieza**. Además se sumaron acciones puntuales en **Herramientas** (TRIM/Desfrag)
+  y **Home** (punto de restauración).
+- El tab **Optimizar clásico NO se tocó ni se retiró** — sigue aplicando los mismos 28 tweaks +
+  Limpieza por su cuenta, en paralelo. Es una decisión pendiente, no tomada todavía (ver 7.5).
+
+### 7.2 Destino final por tweak (26 de 26 migrados — universo completo)
+
+| Categoría original | Tweaks | Destino final |
+|---|---|---|
+| Sistema y Rendimiento | HPET, GPUPrio, PowerThrot, Visual, MouseAccel, FastStartup, PageFile | Sección **Tweaks** |
+| Sistema y Rendimiento | TrimDesfrag | **Herramientas** (acción única, NO se partió en toggle+botón — ver 7.3) |
+| Sistema y Rendimiento | Startup (punto de restauración) | **Home** (QuickAction) |
+| Sistema y Rendimiento | **Power** | Sección **Tweaks** (prompt 51, texto honesto por tipo de máquina — ver 7.4) |
+| Privacidad y Telemetría | GameDVR, GameMode, Telemetry, Cortana, Notif, Tasks | Sección **Tweaks** |
+| Red y Conectividad | Nagle, TCP, DisableIPv6 | Sección **Network** (toggle) |
+| Red y Conectividad | DNS | Sección **Network** (selector + revert real, NO es TweakDefinition) |
+| Red y Conectividad | DNSFlush | Sección **Network** (QuickAction) |
+| Servicios | SvcXbox, SvcDiag, SvcWER, SvcSysMain, SvcMaps, SvcFax, SvcWSearch | Sección **Tweaks** (7/7 completo) |
+| Limpieza de archivos | TempUser, TempSys, Prefetch, WinUpdate, Browsers, Thumb, Recycle, EventLogs | Sección **Limpieza** (1 sola card, selección múltiple + ejecutar, sin revert — no aplica) |
+
+### 7.3 Divergencias reales respecto a la Sección 5 (decisión original)
+
+La decisión de 2026-08-21 (Sección 5) NO se cumplió tal cual en dos puntos — quede anotado para que
+no confunda a quien lea este documento de ahora en más:
+
+1. **Sí se creó una pestaña "Network"**, contra lo que decía la Sección 5 ("NO se crea una pestaña
+   nueva de Red y Conectividad"). Tomy cambió de decisión durante la Fase C: todos los tweaks de Red
+   (Nagle, TCP, DisableIPv6, DNS, DNSFlush) se agruparon en su propia sección, separada de Tweaks.
+2. **TrimDesfrag NO se partió en toggle + botón.** Se migró completo como una única acción a
+   Herramientas, reusando el mecanismo ya existente `App.Worker` (`WorkRunner.cs`) + el overlay de
+   Consola (el mismo que ya usaba la optimización completa y el desinstalador de bloatware) —
+   cancelación real vía el botón "Detener" ya cableado genéricamente, sin agregar UI propia. No quedó
+   ningún toggle de "TRIM semanal automático" separado en Tweaks/Optimizar.
+
+### 7.4 Bugs reales encontrados y corregidos durante la implementación
+
+Detalle completo en `docs/CHANGELOG.md` por corte; resumen:
+
+- **Race condition en `TweakStateStore`** (Tanda 1): `Dictionary` compartido + `File.WriteAllText`
+  sin lock, perdía entradas bajo escritura concurrente (189/200 corridas en el reproductor aislado).
+  Fix: `lock` envolviendo los 5 métodos del store, incluida la escritura a disco.
+- **Bug de idioma en el revert de TCP** (piloto, prompt 39): el parseo de `netsh int tcp show global`
+  para reconstruir el original usaba un regex en inglés, fallaba en Windows es-ES. Se corrigió
+  portando el mismo criterio ya validado en `CheckTcpTuning` (token "escalado" + valor no localizado).
+  **Bug idéntico sigue sin arreglar en `BackupService.RestoreNetshFromSession`** (el mecanismo viejo
+  de sesión completa) — nunca se tocó porque quedó fuera de alcance de ese prompt. Agregado al
+  backlog de auditoría de idioma en `PENDIENTES.md`.
+- **MouseAccel — dos causas reales distintas** (prompt 43): `MouseDataQueueSize` es un parámetro de
+  driver (`mouclass.sys`) que solo se relee al cargar el driver — requiere reinicio, igual que
+  PageFile. `MouseSpeed`/`MouseThreshold1/2` se cachean a nivel de sesión de Windows — la escritura
+  cruda al registro persiste pero no se aplica en vivo sin llamar a
+  `SystemParametersInfo(SPI_SETMOUSE, ...)` (la misma API que usa el Panel de Control). Fix:
+  `NativeMethods.SetMouseAcceleration` llamado tras cada escritura, en Aplicar y Revertir.
+  `RequiereReinicio` quedó en `true`.
+- **"Asumir default en vez de leer el original real"**, encontrado y corregido dos veces: en GPUPrio
+  (Tanda 1, valores de registro que no existían de fábrica) y en HPET (Tanda 3,
+  `RestoreHpetFromSession` borraba los 3 valores BCD siempre sin haber leído nada antes). Mismo
+  patrón de bug, dos lugares distintos.
+- **DNS — bug de adaptador sin entrada capturada** (Paso 2, Fase C): la primera versión de
+  `RestoreAsync` forzaba "automático" en cualquier adaptador sin entrada en el original guardado, sin
+  distinguir "nunca existía cuando se capturó" (ej. una VPN conectada después) de "sí existía y no se
+  guardó nada". Corregido para saltear esos adaptadores, mismo criterio que ya usa el revert de Nagle.
+- **Checkers de health-score reusados donde no correspondía**: `CheckSvcXbox` (≥2 de 3, proxy laxo) y
+  `CheckSvc("Fax") || CheckSvc("RemoteRegistry")` (OR) son correctos para el score tolerante de Home,
+  pero se hubieran comportado como placebo parcial en el toggle de Tweaks. Se construyeron
+  `LeerEstadoAsync` dedicados con criterio estricto (AND / todos) para SvcXbox y SvcFax, sin tocar los
+  checkers del audit de Home.
+- **Punto de restauración — límite de 24hs de Windows** (Paso 5, Fase C): `CreateRestorePoint` no
+  tirar excepción no confirma que Windows haya creado un punto nuevo (por política, no deja crear más
+  de uno cada 24hs). Se resolvió comparando `Get-ComputerRestorePoint` antes/después; si no sube el
+  conteo, el mensaje se lo dice explícitamente al usuario en vez de un "listo" genérico.
+- **Power — el resumen previo a implementar no tenía el detalle completo de `PowerPlanTweaks`**
+  (prompt 51): confirmado contra el código real que `standby-timeout-ac=0` se aplica **siempre**, en
+  las dos ramas (el llamado está fuera del `if/else isLaptop`; el análisis previo daba esto como "no
+  confirmado" para laptop), y que en laptop Apply **no** toca hibernación (no hay ningún
+  `/hibernate` en esa rama). El hueco de reversión que el mecanismo viejo
+  (`BackupService.SavePowerPlanBackup`/`RestoreSession`) nunca cubrió —
+  `standby-timeout-ac` no se capturaba ni se restauraba, revertir dejaba la pantalla/espera en 0 para
+  siempre — se cerró capturando los 3 valores (GUID del plan, `HibernateEnabled`,
+  `standby-timeout-ac` en segundos) directo en `TweakStateStore` antes de aplicar por primera vez.
+  Lectura de `standby-timeout-ac` sin parsear texto localizado: `powercfg /q` de un solo setting
+  imprime siempre 5 valores hex en el mismo orden estructural fijo sea cual sea el idioma — se toma
+  el 4to por posición, no por la etiqueta. **Revert confirmado con evidencia real sobre un original
+  no trivial** (plan Equilibrado + hibernación encendida + `standby-timeout-ac` en 900s forzado como
+  estado original, prompt 53 addendum): el original capturado en `tweak_state.json` coincidió
+  exactamente con lo restaurado tras un ciclo On/Off completo.
+- **Power — fallback real a "Alto Rendimiento" en desktop, diagnosticado sin encontrar bug**
+  (prompt 52): `PowerPlanTweaks()` tiene una rama de fallback real a `SCHEME_MIN` ("Alto
+  Rendimiento") cuando la creación/detección de "Ultimate Performance" falla — algo que el análisis
+  previo a implementar no contemplaba. Se releyó el código real tal como quedó implementado en el
+  prompt 51 y ya estaba bien resuelto: `LeerEstadoAsync` acepta los dos GUIDs como estados On
+  válidos, el texto honesto (`Motivo`) distingue cuál de los dos quedó activo sin sugerir Ultimate
+  Performance falsamente, y `AplicarAsync`/`RevertirAsync` son agnósticos al GUID resultante (nunca
+  asumen cuál de las dos ramas tuvo éxito). No hizo falta ningún cambio de código.
+
+### 7.5 Pendiente real (no resuelto, no es "decisión futura teórica" — son huecos concretos)
+
+- **Decisión de retiro del tab Optimizar clásico.** Con los 26 tweaks individuales + Limpieza ya
+  migrados a su propio hogar (universo completo, ver 7.2), el tab clásico quedó redundante en todo
+  su contenido, pero sigue activo en paralelo — nadie decidió todavía si/cuándo retirarlo. Es una
+  decisión de producto de Tomy, no técnica.
+- **SvcSysMain/SvcWSearch — rama `NoAplicable` (sin SSD) implementada pero no validada en máquina
+  real.** La máquina de Tomy tiene SSD; falta probarlo en una VM o equipo con disco mecánico real
+  (ver CHANGELOG, Tanda 4).
+- **Bug latente en `BackupService.RestoreNetshFromSession`** (ver 7.4) — mismo bug de idioma que ya
+  se corrigió en el path nuevo de TCP, nunca corregido en el mecanismo viejo de sesión completa.
+- **Power y FastStartup — hallazgo de incompatibilidad, sin confirmar en vivo ni corregir**
+  (prompt 53). Los dos comparten el mismo `HibernateEnabled` de Windows: Fast Startup necesita
+  hibernación habilitada para funcionar, Power la apaga por completo al activarse en desktop.
+  Confirmado contra el código real que ninguno de los dos `LeerEstadoAsync` verifica el estado del
+  otro tweak — aplicar/revertir uno puede alterar en silencio lo que el otro reporta (ej. revertir
+  FastStartup con Power todavía aplicado podría reactivar hibernación y desarmar parte de lo que
+  Power dejó configurado, sin que ninguna de las dos cards lo avise). Documentado a propósito sin
+  arreglar — la decisión de cómo comunicarlo o resolverlo queda aparte.

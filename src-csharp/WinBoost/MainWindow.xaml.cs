@@ -84,6 +84,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private bool _tweaksSyncing = false;
     private readonly Dictionary<string, (Wpf.Ui.Controls.ToggleSwitch Switch, TextBlock Status)> _tweakCardRefs = [];
 
+    // Network (Fase C, Paso 1, 47_fase_c_paso1_seccion_network.txt): panel hermano de Tweaks, misma
+    // mecanica de carga lazy -- comparte _tweakCardRefs/_tweaksSyncing con Tweaks (dict indexado por
+    // Id de tweak, unico en todo el registro, asi que convive sin choques entre los dos paneles).
+    private bool _networkLoaded = false;
+    // Limpieza (Fase C, Paso 3, 49_fase_c_paso3_seccion_limpieza.txt): sin dictionary de card refs
+    // propio -- es UNA sola card con checkboxes + boton, no una lista de N cards generadas.
+    private bool _limpiezaLoaded = false;
+
     // Reporte HTML (4.7): estado de la ultima optimizacion para el reporte
     private double                _lastFreedMb;
     private StateSnapshot?        _snapshotAfter;
@@ -164,6 +172,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             navLicencia,     // 7  — icono
             navTuning,       // 8
             navTweaks,       // 9  — piloto Fase A
+            navNetwork,      // 10 — Fase C, Paso 1
+            navLimpieza,     // 11 — Fase C, Paso 3
         ];
         _iconNavButtons = [navAjustes, navLicencia];
 
@@ -177,13 +187,73 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         navLicencia.Click     += (_, _) => SetActiveNav(7);
         navTuning.Click       += (_, _) => SetActiveNav(8);
         navTweaks.Click       += (_, _) => SetActiveNav(9);
+        navNetwork.Click      += (_, _) => SetActiveNav(10);  // Network, Fase C Paso 1
+        navLimpieza.Click     += (_, _) => SetActiveNav(11);  // Limpieza, Fase C Paso 3
         // Consola: el icono ABRE EL OVERLAY en modo consulta (no navega a ninguna tab).
         navConsola.Click      += (_, _) => OpenConsoleOverlay(running: false);
+
+        // Network / DNS (Fase C, Paso 2, 48_fase_c_paso2_dns_dnsflush.txt): card propia, no
+        // generada por BuildTweakCard -- Aplicar/Restaurar son dos botones separados, no un toggle.
+        btnNetDnsApply.Click += async (_, _) =>
+        {
+            btnNetDnsApply.IsEnabled = false;
+            try
+            {
+                var provider = OptimizationService.DnsProviders[cboNetDnsProvider.SelectedIndex];
+                await DnsPresetService.ApplyAsync(provider);
+                await RefreshDnsCardAsync();
+            }
+            catch (Exception ex)
+            {
+                lblNetDnsStatus.Text       = $"Error al aplicar: {ex.Message}";
+                lblNetDnsStatus.Foreground = BrushRed;
+            }
+            finally { btnNetDnsApply.IsEnabled = true; }
+        };
+        btnNetDnsRestore.Click += async (_, _) =>
+        {
+            btnNetDnsRestore.IsEnabled = false;
+            try
+            {
+                await DnsPresetService.RestoreAsync();
+                await RefreshDnsCardAsync(); // recalcula IsEnabled segun HasOriginalCaptured()
+            }
+            catch (Exception ex)
+            {
+                lblNetDnsStatus.Text       = $"Error al restaurar: {ex.Message}";
+                lblNetDnsStatus.Foreground = BrushRed;
+                btnNetDnsRestore.IsEnabled = true;
+            }
+        };
+
+        // Limpieza (Fase C, Paso 3, 49_fase_c_paso3_seccion_limpieza.txt): dialogo de confirmacion
+        // (mismo ConfirmOptimizationDialog del tab Optimizar clasico) + OptimizationService.
+        // CleanupTweaks (subida a internal para reusarla sin duplicar las 8 rutinas de borrado).
+        btnRunLimpieza.Click += async (_, _) => await RunLimpiezaAsync();
+
+        // TRIM/Desfrag (Fase C, Paso 4, tab Herramientas): App.Worker.RunAsync + OpenConsoleOverlay,
+        // el mismo mecanismo ya usado por la optimizacion completa y por Desinstalar bloatware --
+        // "Detener" del overlay ya cancela via App.Worker.Cancel() de forma generica, sin cablear
+        // un boton propio.
+        btnRunTrim.Click += async (_, _) => await RunTrimAsync();
 
         // Home (fix 30): botones de bienvenida + card de ultima optimizacion.
         btnHomeSysInfo.Click     += (_, _) => OpenSystemInfoOverlay();
         btnHomeOptimize.Click    += (_, _) => SetActiveNav(0);
         btnHomeViewHistory.Click += (_, _) => SetActiveNav(5);
+        // Fase C, Paso 5: QuickActionDefinition "RestorePoint" -- resultado via ShowToast, mismo
+        // mecanismo que ya usa Home para el resumen post-optimizacion (no una card dedicada).
+        btnHomeRestorePoint.Click += async (_, _) =>
+        {
+            btnHomeRestorePoint.IsEnabled = false;
+            try
+            {
+                var action = App.QuickActions.Find("RestorePoint");
+                if (action is not null) ShowToast(await action.EjecutarAsync());
+            }
+            catch (Exception ex) { ShowToast($"Error: {ex.Message}"); }
+            finally { btnHomeRestorePoint.IsEnabled = true; }
+        };
         // System Info overlay: siempre cerrable (no hay operacion que proteger).
         btnSysInfoClose.Click += (_, _) => CloseSystemInfoOverlay();
         systemInfoOverlay.MouseLeftButtonDown += (_, e) =>
@@ -1092,13 +1162,29 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             _ = LoadTuningTabAsync();
         }
 
-        // Tab Tweaks (9): carga lazy de las cards (App.Tweaks.All, 22: 14 de la Tanda 1 + 4 de la
-        // Tanda 2 + 2 de la Tanda 3 + 2 de la Tanda 4 de Fase B -- categoria Servicios 7/7 completa)
-        // + estado real la primera vez
+        // Tab Tweaks (9): carga lazy de las cards (App.Tweaks.All filtrado a Categoria!="Red", 21
+        // de las 24 del registro -- Nagle/TCP/DisableIPv6 viven en Network; Power (prompt 51)
+        // completa el universo de 26/26 tweaks individuales migrados) + estado real la primera vez
         if (mainTabs.SelectedIndex == 9 && !_tweaksLoaded)
         {
             _tweaksLoaded = true;
             _ = LoadTweaksTabAsync();
+        }
+
+        // Tab Network (10, Fase C Paso 1): carga lazy de las cards de categoria Red (Nagle/TCP
+        // mudados desde Tweaks + DisableIPv6 nuevo) + estado real la primera vez.
+        if (mainTabs.SelectedIndex == 10 && !_networkLoaded)
+        {
+            _networkLoaded = true;
+            _ = LoadNetworkTabAsync();
+        }
+
+        // Tab Limpieza (11, Fase C Paso 3): carga lazy -- solo necesita saber si hay SSD para
+        // deshabilitar el checkbox de Prefetch (WMI, evitar la consulta en cada apertura de tab).
+        if (mainTabs.SelectedIndex == 11 && !_limpiezaLoaded)
+        {
+            _limpiezaLoaded = true;
+            _ = LoadLimpiezaTabAsync();
         }
     }
 
@@ -2737,15 +2823,244 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // las cards se generan en codigo para no tener que duplicar bloques XAML por tweak cuando la
     // Fase B escale esto a ~25.
 
+    // Fase C, Paso 1: excluye Categoria=="Red" -- esos tweaks (Nagle, TCP, + DisableIPv6 nuevo) se
+    // mudaron al panel Network (LoadNetworkTabAsync), misma definicion, solo cambia donde se
+    // renderiza la card. _tweakCardRefs.Clear() se saco a proposito: el dict ahora es compartido
+    // entre dos paneles con carga lazy independiente (Tweaks y Network) -- si el usuario abre
+    // Network primero y Tweaks despues, un Clear() aca borraria las referencias de las cards de
+    // Network ya construidas, dejando sus toggles sin efecto (UpdateTweakCardUi no encontraria su
+    // entrada). No hace falta: cada Id es unico en todo el registro, y _xLoaded ya evita que este
+    // metodo corra mas de una vez, asi que nunca hay nada viejo que limpiar.
     private async Task LoadTweaksTabAsync()
     {
         pnlTweaks.Children.Clear();
-        _tweakCardRefs.Clear();
-        foreach (var def in App.Tweaks.All)
+        var tweaks = App.Tweaks.All.Where(t => t.Categoria != "Red").ToList();
+        foreach (var def in tweaks)
             pnlTweaks.Children.Add(BuildTweakCard(def));
 
-        foreach (var def in App.Tweaks.All)
+        foreach (var def in tweaks)
             UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync());
+    }
+
+    // Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt): panel hermano de LoadTweaksTabAsync,
+    // filtrado a Categoria=="Red" -- Nagle/TCP (mudados, misma AplicarAsync/RevertirAsync/
+    // LeerEstadoAsync de siempre) + DisableIPv6 (nuevo). Mismo BuildTweakCard/UpdateTweakCardUi
+    // que Tweaks, sin duplicar nada.
+    private async Task LoadNetworkTabAsync()
+    {
+        pnlNetwork.Children.Clear();
+        var tweaks = App.Tweaks.All.Where(t => t.Categoria == "Red").ToList();
+        foreach (var def in tweaks)
+            pnlNetwork.Children.Add(BuildTweakCard(def));
+
+        // DNSFlush (Fase C, Paso 2): quick action, no TweakDefinition -- se agrega al mismo panel
+        // que las cards de toggle, despues de ellas.
+        var dnsFlush = App.QuickActions.Find("DNSFlush");
+        if (dnsFlush is not null) pnlNetwork.Children.Add(BuildQuickActionCard(dnsFlush));
+
+        foreach (var def in tweaks)
+            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync());
+
+        await RefreshDnsCardAsync();
+    }
+
+    // Fase C, Paso 2 (48_fase_c_paso2_dns_dnsflush.txt): estado de la card de DNS, siempre leido en
+    // vivo (nunca cacheado) -- mismo principio que UpdateTweakCardUi/LeerEstadoAsync.
+    private async Task RefreshDnsCardAsync()
+    {
+        var status = await DnsPresetService.ReadStatusAsync();
+        lblNetDnsStatus.Text = status.State switch
+        {
+            DnsState.Automatico     => "Estado actual: Automatico (DHCP).",
+            DnsState.Proveedor      => $"Estado actual: {status.ProviderName}.",
+            DnsState.Personalizado  => "Estado actual: Configuracion personalizada (no coincide con ningun proveedor conocido).",
+            DnsState.SinAdaptadores => "No se detectaron adaptadores de red activos.",
+            _                       => "",
+        };
+        lblNetDnsStatus.Foreground = (Brush)FindResource("BrushFgMuted");
+        btnNetDnsRestore.IsEnabled = DnsPresetService.HasOriginalCaptured();
+    }
+
+    // Fase C, Paso 2 (48_fase_c_paso2_dns_dnsflush.txt): card reutilizable para
+    // QuickActionDefinition -- mismo look que BuildTweakCard (Border/titulo/descripcion/status)
+    // pero con un boton "Ejecutar" en vez del ToggleSwitch, ya que una accion rapida no tiene
+    // On/Off. Pensada para reusarse tal cual cuando TRIM/Desfrag y el punto de restauracion migren
+    // a este mismo patron.
+    private Border BuildQuickActionCard(QuickActionDefinition def)
+    {
+        var status = new TextBlock { FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap, Foreground = (Brush)FindResource("BrushFgMuted") };
+
+        var button = new Button { Content = "Ejecutar", Style = (Style)FindResource("BtnSec"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) };
+        button.Click += async (_, _) =>
+        {
+            button.IsEnabled = false;
+            try
+            {
+                status.Text       = await def.EjecutarAsync();
+                status.Foreground = BrushGreen;
+            }
+            catch (Exception ex)
+            {
+                status.Text       = $"Error: {ex.Message}";
+                status.Foreground = BrushRed;
+            }
+            finally { button.IsEnabled = true; }
+        };
+
+        var title = new TextBlock
+        {
+            Text       = def.Nombre.ToUpperInvariant(),
+            FontSize   = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("BrushAccent"),
+            Margin     = new Thickness(0, 0, 0, 12),
+        };
+
+        var left = new StackPanel();
+        left.Children.Add(new TextBlock
+        {
+            Text         = def.Descripcion,
+            FontSize     = 12,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground   = (Brush)FindResource("BrushFg2"),
+        });
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(left, 0);
+        Grid.SetColumn(button, 1);
+        grid.Children.Add(left);
+        grid.Children.Add(button);
+
+        var body = new StackPanel();
+        body.Children.Add(title);
+        body.Children.Add(grid);
+        body.Children.Add(status);
+
+        return new Border
+        {
+            Background      = (Brush)FindResource("BrushCard"),
+            BorderBrush     = (Brush)FindResource("BrushAccent"),
+            BorderThickness = new Thickness(0, 0, 0, 2),
+            CornerRadius    = new CornerRadius(8),
+            Padding         = new Thickness(18, 14, 18, 16),
+            Margin          = new Thickness(0, 0, 0, 14),
+            Child           = body,
+        };
+    }
+
+    // Fase C, Paso 3 (49_fase_c_paso3_seccion_limpieza.txt): unico dato que necesita esta seccion
+    // al abrir el tab -- si hay SSD, para Prefetch. Mismo SystemInfoService.HasSsd() liviano de la
+    // Tanda 4 (no el SystemSnapshot completo del tab Optimizar clasico, que dispara 5 consultas WMI
+    // de mas por un solo booleano).
+    private async Task LoadLimpiezaTabAsync()
+    {
+        bool hasSsd = await Task.Run(SystemInfoService.HasSsd);
+        if (!hasSsd)
+        {
+            // Mismo tratamiento visual que NoAplicable en la Tanda 4 (SvcSysMain/SvcWSearch):
+            // control deshabilitado + motivo en el mismo color "info" (BrushBlue). Un CheckBox no
+            // tiene una linea de status propia como las cards de toggle -- el motivo va directo en
+            // el label en vez de un TextBlock aparte.
+            chkCleanPrefetch.IsChecked  = false;
+            chkCleanPrefetch.IsEnabled  = false;
+            chkCleanPrefetch.Content    = "Prefetch (requiere SSD)";
+            chkCleanPrefetch.Foreground = BrushBlue;
+        }
+    }
+
+    // Fase C, Paso 3: dialogo de confirmacion (ConfirmOptimizationDialog, el mismo del tab
+    // Optimizar clasico -- agrupa por categoria y ya muestra el banner de impacto alto; con 8 items
+    // "Limpieza" arma un solo grupo y preserva la advertencia de EventLogs sin cambiar nada del
+    // dialogo) + OptimizationService.CleanupTweaks (subida a internal, Paso 4) sobre una instancia
+    // NUEVA -- new OptimizationService(), no App.Optimizer -- mismo criterio que
+    // TweakRegistry.ApplyPageFileAsync (Fase B): evita compartir _applied/_skipped/Log con la
+    // instancia singleton que usa el tab Optimizar clasico.
+    private async Task RunLimpiezaAsync()
+    {
+        var items = new (string Id, CheckBox Chk, string Label, string Detail, string Impact)[]
+        {
+            ("TempUser",  chkCleanTempUser,  "Temp usuario",         "%TEMP% - archivos temporales del perfil de usuario",         "low"),
+            ("TempSys",   chkCleanTempSys,   "Temp sistema",         @"C:\Windows\Temp - temporales del sistema operativo",        "low"),
+            ("Prefetch",  chkCleanPrefetch,  "Prefetch (SSD)",       @"C:\Windows\Prefetch - solo recomendado en SSD",             "low"),
+            ("WinUpdate", chkCleanWinUpdate, "Cache Windows Update", @"SoftwareDistribution\Download - paquetes ya instalados",    "low"),
+            ("Browsers",  chkCleanBrowsers,  "Cache navegadores",    "Chrome, Edge, Firefox, Brave, Opera - no borra contrasenas", "low"),
+            ("Thumb",     chkCleanThumb,     "Thumbnails",           "Cache de miniaturas del Explorador - se regenera solo",      "low"),
+            ("Recycle",   chkCleanRecycle,   "Papelera",             "Vacia la papelera permanentemente",                          "low"),
+            ("EventLogs", chkCleanEventLogs, "Logs de eventos",
+                "Borra logs Aplicacion/Sistema/etc. Log de Seguridad NO se toca. Elimina registros forenses.", "high"),
+        };
+
+        var sel  = items.ToDictionary(i => i.Id, i => i.Chk.IsChecked == true);
+        var plan = items.Where(i => i.Chk.IsChecked == true)
+                         .Select(i => new PlanAction("Limpieza", i.Label, i.Detail, i.Impact))
+                         .ToList();
+
+        if (plan.Count == 0)
+        {
+            lblLimpiezaResult.Text       = "No hay items seleccionados.";
+            lblLimpiezaResult.Foreground = (Brush)FindResource("BrushFgMuted");
+            return;
+        }
+
+        var dialog = new ConfirmOptimizationDialog(plan) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+
+        btnRunLimpieza.IsEnabled    = false;
+        lblLimpiezaResult.Text       = "Limpiando...";
+        lblLimpiezaResult.Foreground = (Brush)FindResource("BrushFgMuted");
+        try
+        {
+            bool   hasSsd   = await Task.Run(SystemInfoService.HasSsd);
+            string sysDrive = (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + @"\";
+            double freedMb  = await Task.Run(() => new OptimizationService().CleanupTweaks(sel, hasSsd, sysDrive));
+
+            lblLimpiezaResult.Text       = $"Limpieza completada: {freedMb:F1} MB liberados. Detalle por item en la Consola.";
+            lblLimpiezaResult.Foreground = BrushGreen;
+        }
+        catch (Exception ex)
+        {
+            lblLimpiezaResult.Text       = $"Error: {ex.Message}";
+            lblLimpiezaResult.Foreground = BrushRed;
+        }
+        finally { btnRunLimpieza.IsEnabled = true; }
+    }
+
+    // Fase C, Paso 4 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt): mismo mecanismo que
+    // OnRunOptimizationAsync/Desinstalar bloatware para una operacion larga y cancelable --
+    // App.Worker.RunAsync (lock IsRunning + CancellationTokenSource) + OpenConsoleOverlay (progreso
+    // y log en vivo + "Detener", ya cableado a App.Worker.Cancel()). No se inventa un mecanismo de
+    // progreso/cancelacion propio: TrimTweaksAsync ya tiene el suyo (CancellationToken + loop de
+    // progreso cada 1s) -- forzarlo en un patron mas simple (tipo QuickActionDefinition) lo habria
+    // perdido.
+    private async Task RunTrimAsync()
+    {
+        if (App.Worker.IsRunning)
+        {
+            lblTrimStatus.Text       = "Ya hay una operacion en curso (revisa la Consola).";
+            lblTrimStatus.Foreground = BrushRed;
+            return;
+        }
+
+        btnRunTrim.IsEnabled     = false;
+        lblTrimStatus.Text       = "Iniciando...";
+        lblTrimStatus.Foreground = (Brush)FindResource("BrushFgMuted");
+
+        bool hasSsd = (_systemInfo ?? await App.SystemInfo.GetSystemInfoAsync()).HasSsd;
+
+        OpenConsoleOverlay(running: true);
+        bool ok = await App.Worker.RunAsync(
+            ct => new OptimizationService().TrimTweaksAsync(hasSsd, ct),
+            startMsg: "Iniciando TRIM/Desfrag...",
+            doneMsg:  "TRIM/Desfrag completado");
+        ConsoleOperationCompleted();
+
+        btnRunTrim.IsEnabled     = true;
+        lblTrimStatus.Text       = ok
+            ? "TRIM/Desfrag completado. Detalle en la Consola."
+            : "Cancelado o con errores -- revisa la Consola para el detalle.";
+        lblTrimStatus.Foreground = ok ? BrushGreen : BrushYellow;
     }
 
     private Border BuildTweakCard(TweakDefinition def)
@@ -2828,9 +3143,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         finally { _tweaksSyncing = false; }
 
         refs.Switch.IsEnabled = status.State != TweakState.NoAplicable;
+        // status.Motivo en On (prompt 51, tweak "Power"): la mayoria de los tweaks no lo setea
+        // (queda null, TweakStatus.On es el static field compartido) y cae en el "Aplicado."
+        // generico de siempre -- Power es el primer caso que necesita decir la verdad de que se
+        // aplico realmente segun el tipo de maquina (Ultimate Performance vs. Alto Rendimiento),
+        // en vez de un texto identico en desktop y laptop.
         refs.Status.Text = status.State switch
         {
-            TweakState.On          => "Aplicado.",
+            TweakState.On          => status.Motivo ?? "Aplicado.",
             TweakState.Off         => "No aplicado.",
             TweakState.NoAplicable => $"No disponible: {status.Motivo}",
             _                      => "",
@@ -2854,10 +3174,15 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         try
         {
             await def.AplicarAsync();
-            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync());
+            var status = await def.LeerEstadoAsync();
+            UpdateTweakCardUi(def.Id, status);
+            // Mismo Motivo honesto que UpdateTweakCardUi (prompt 51) -- sin el, este texto pisaba
+            // el de arriba con un "Aplicado." generico apenas 2 lineas despues de haberlo seteado
+            // bien.
+            string baseText = status.Motivo ?? "Aplicado.";
             refs.Status.Text = def.RequiereReinicio
-                ? "Aplicado. Reinicia el equipo para que tenga efecto completo."
-                : "Aplicado.";
+                ? $"{baseText} Reinicia el equipo para que tenga efecto completo."
+                : baseText;
             refs.Status.Foreground = def.RequiereReinicio ? BrushYellow : BrushGreen;
             App.Logger.Log($"{def.Nombre}: aplicado", "ok");
         }

@@ -70,6 +70,22 @@ ocupa su slot (indice 2) y es la ENTRADA de la app (arranca en `SetActiveNav(2)`
   PRINCIPAL/SISTEMA. Cards generadas en codigo desde `App.Tweaks.All` (`TweakRegistry`), NO en
   XAML a mano. No reemplaza ni toca el tab Optimizar (checkboxes + Ejecutar siguen igual, en
   paralelo) — ver `docs/ARQUITECTURA_TWEAKS.md`.
+- 10 = **Network** (corte 47, Fase C Paso 1; DNS + DNSFlush sumados en el Paso 2, corte 48). Grupo
+  propio en el sidebar (`navNetwork`), hermano de Tweaks (no anidado bajo el). Misma mecanica que
+  Tweaks: cards generadas en codigo (`LoadNetworkTabAsync`, `MainWindow.xaml.cs`) desde
+  `App.Tweaks.All` filtrado a `Categoria=="Red"` — comparten el mismo
+  `_tweakCardRefs`/`BuildTweakCard`/`UpdateTweakCardUi` que Tweaks (`LoadTweaksTabAsync` excluye esa
+  categoria). Nagle y TCP viven ahi (mudados desde Tweaks, misma definicion/Id, sin cambio de
+  logica) junto con DisableIPv6. DNS (selector de 4 proveedores + revert real por-adaptador,
+  `DnsPresetService.cs`) y DNSFlush (primer caso de `QuickActionRegistry.cs`, acciones de un solo
+  click sin estado) son card propias hechas a mano, no generadas por `BuildTweakCard` — ninguno de
+  los dos encaja en el molde `TweakDefinition`.
+- 11 = **Limpieza** (corte 49, Fase C Paso 3). Grupo propio en el sidebar (`navLimpieza`), hermano
+  de Tweaks/Network — cierra la reorganizacion que saca categorias del item unico "Tweaks". UNA sola
+  card hecha a mano (`LoadLimpiezaTabAsync`/`RunLimpiezaAsync`, `MainWindow.xaml.cs`) con los 8
+  items de limpieza ya existentes en `OptimizationService.CleanupTweaks` (subido a `internal` para
+  reusarlo) + `ConfirmOptimizationDialog` (el mismo del tab Optimizar clasico) antes de ejecutar.
+  Sin revert (borrar temporales/cache/logs no es reversible) y sin TweakStateStore de por medio.
 - Consola: ya NO es tab. Overlay modal (`consoleOverlay`) via `OpenConsoleOverlay()` (icono `navConsola`,
   badge de errores, o automatico al correr optimizacion/bloatware).
 - Info del sistema: ya NO es tab. Hardware + componentes -> overlay `systemInfoOverlay`

@@ -959,6 +959,32 @@
                   <TextBlock Text="Tweaks" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
+
+              <!-- Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt): seccion hermana de Tweaks,
+                   grupo propio (no anidada bajo TWEAKS). Arranca la reorganizacion que saca la
+                   categoria Red (y, en un corte posterior, Limpieza) del item unico "Tweaks". -->
+              <TextBlock Text="NETWORK" FontSize="9.5" FontWeight="SemiBold"
+                         Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
+              <Button x:Name="navNetwork" Style="{StaticResource BtnNav}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#x21C4;" FontFamily="Segoe UI Symbol"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Network" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+
+              <!-- Fase C, Paso 3 (49_fase_c_paso3_seccion_limpieza.txt): tercera seccion hermana de
+                   Tweaks/Network, misma mecanica de navegacion. Cierra la reorganizacion que saca
+                   categorias del item unico "Tweaks" (Red en el Paso 1, Limpieza aca). -->
+              <TextBlock Text="LIMPIEZA" FontSize="9.5" FontWeight="SemiBold"
+                         Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
+              <Button x:Name="navLimpieza" Style="{StaticResource BtnNav}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#x267B;" FontFamily="Segoe UI Symbol"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Limpieza" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </StackPanel>
           </ScrollViewer>
 
@@ -1292,6 +1318,7 @@
               <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
@@ -1692,6 +1719,38 @@
               </Grid>
             </Border>
 
+            <!-- FILA COMPLETA: TRIM / Desfrag (Row 5, ColSpan 2) - Fase C, Paso 4
+                 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt). Mudado desde el tab
+                 Optimizar clasico (que lo sigue aplicando por su lado igual). Reusa
+                 OptimizationService.TrimTweaksAsync tal cual (subido a internal) via el mismo
+                 mecanismo ya usado por la optimizacion completa y por Desinstalar bloatware:
+                 App.Worker.RunAsync (lock + cancelacion) + OpenConsoleOverlay (progreso/log en
+                 vivo + boton Detener, ya cableado a App.Worker.Cancel() de forma generica). -->
+            <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
+                    Background="{DynamicResource BrushCard}" CornerRadius="8"
+                    BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                    Margin="0,0,0,10" Padding="0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="3"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="{StaticResource BrushAccent}" CornerRadius="8,0,0,8"/>
+                <StackPanel Grid.Column="1" Margin="14,12">
+                  <TextBlock Text="TRIM / DESFRAG" FontSize="11" FontWeight="SemiBold"
+                             Foreground="{StaticResource BrushAccent}" Margin="0,0,0,8"/>
+                  <TextBlock FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,0,0,10"
+                    Text="En SSD: re-habilita TRIM, activa el mantenimiento semanal (ScheduledDefrag) y corre Optimize-Volume ReTrim en las unidades SSD ya. En HDD: solo activa la desfragmentacion semanal automatica (no corre nada ahora)."/>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="btnRunTrim" Content="Ejecutar" Style="{StaticResource BtnSec}"
+                            Padding="14,7" Margin="0,0,8,0"/>
+                  </StackPanel>
+                  <TextBlock x:Name="lblTrimStatus" FontSize="11" TextWrapping="Wrap"
+                             Foreground="{DynamicResource BrushFgMuted}"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+
           </Grid>
         </ScrollViewer>
       </TabItem>
@@ -1722,6 +1781,12 @@
                          Foreground="{DynamicResource BrushFgMuted}" Margin="0,5,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+              <!-- Fase C, Paso 5 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt): primer
+                   QuickActionDefinition renderizado fuera de Network. Sin card dedicada (el Grid
+                   estirable de abajo, malla de salud + ultima optimizacion, no tiene aire para una
+                   card mas sin reestructurar layout ajeno a este paso), resultado via ShowToast, el
+                   mismo mecanismo que ya usa esta pestaña para el resumen post-optimizacion. -->
+              <Button x:Name="btnHomeRestorePoint" Content="Punto de restauracion" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
               <Button x:Name="btnHomeSysInfo" Content="System Info" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
               <Button x:Name="btnHomeOptimize" Content="Optimizar ahora" Style="{StaticResource BtnGlossyCyan}"/>
             </StackPanel>
@@ -2834,6 +2899,117 @@
                        FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
                        TextWrapping="Wrap"/>
             <StackPanel x:Name="pnlTweaks"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- TAB NETWORK (10) — Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt). Misma mecanica
+           que Tweaks (cards generadas en codigo via BuildTweakCard a partir de App.Tweaks.All),
+           filtrado a Categoria=="Red": Nagle y TCP se MUDAN aca desde Tweaks (misma definicion,
+           mismo Id, solo cambia el panel donde se renderiza la card) + DisableIPv6 nuevo. -->
+      <TabItem Header="Network">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="20,14,20,20">
+            <TextBlock Text="Toggles de aplicacion inmediata, mas DNS (selector con revert real) y limpieza de cache DNS."
+                       FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
+                       TextWrapping="Wrap"/>
+
+            <!-- DNS: Fase C, Paso 2 (48_fase_c_paso2_dns_dnsflush.txt). NO es una card generada por
+                 BuildTweakCard: es un selector de 4 proveedores + Aplicar + Restaurar original
+                 propios (DnsPresetService.cs), card hecha a mano igual que el resto de la app
+                 (Tweaks/Network son la excepcion code-generada, no la regla). -->
+            <Border Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushAccent}"
+                    BorderThickness="0,0,0,2" CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="DNS" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource BrushAccent}" Margin="0,0,0,12"/>
+                <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource BrushFg2}"
+                           Text="Cambia el DNS de todos los adaptadores activos al proveedor elegido. Restaurar original devuelve exactamente lo que tenia cada adaptador antes de tocar nada (automatico o servidores manuales), no solo 'volver a automatico'."/>
+                <Grid Margin="0,12,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <ComboBox x:Name="cboNetDnsProvider" Grid.Column="0" Style="{StaticResource ComboDark}"
+                            HorizontalAlignment="Left" Width="240" SelectedIndex="0">
+                    <ComboBoxItem Content="Cloudflare  --  1.1.1.1 / 1.0.0.1"/>
+                    <ComboBoxItem Content="Google      --  8.8.8.8 / 8.8.4.4"/>
+                    <ComboBoxItem Content="Quad9       --  9.9.9.9 / 149.112.112.112"/>
+                    <ComboBoxItem Content="AdGuard     --  94.140.14.14 / 94.140.15.15"/>
+                  </ComboBox>
+                  <Button x:Name="btnNetDnsApply" Grid.Column="1" Content="Aplicar"
+                          Style="{StaticResource BtnSec}" Margin="10,0,0,0"/>
+                  <Button x:Name="btnNetDnsRestore" Grid.Column="2" Content="Restaurar original"
+                          Style="{StaticResource BtnSec}" Margin="8,0,0,0" IsEnabled="False"/>
+                </Grid>
+                <TextBlock x:Name="lblNetDnsStatus" Text="Estado actual: --" FontSize="11"
+                           Margin="0,10,0,0" TextWrapping="Wrap" Foreground="{DynamicResource BrushFgMuted}"/>
+              </StackPanel>
+            </Border>
+
+            <StackPanel x:Name="pnlNetwork"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- TAB LIMPIEZA (11) — Fase C, Paso 3 (49_fase_c_paso3_seccion_limpieza.txt). UNA sola card
+           con los 8 items de limpieza ya implementados y validados en
+           OptimizationService.CleanupTweaks (mismos Ids que el tab Optimizar clasico), seleccion
+           multiple + un boton. No es TweakDefinition ni QuickAction puro (no hay revert, y hay
+           seleccion multiple con dialogo de confirmacion antes de ejecutar): card hecha a mano,
+           mismo criterio que la card de DNS del Paso 2. -->
+      <TabItem Header="Limpieza">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="20,14,20,20">
+            <TextBlock Text="Selecciona que limpiar y ejecuta: mismas acciones que el tab Optimizar, acotadas a estos 8 items. No tiene revert (borrar temporales/cache/logs no es reversible)."
+                       FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
+                       TextWrapping="Wrap"/>
+
+            <Border Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushAccent}"
+                    BorderThickness="0,0,0,2" CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,14">
+              <StackPanel>
+                <TextBlock Text="LIMPIEZA DE ARCHIVOS" FontSize="10" FontWeight="SemiBold"
+                           Foreground="{DynamicResource BrushAccent}" Margin="0,0,0,12"/>
+                <WrapPanel>
+                  <CheckBox x:Name="chkCleanTempUser" Content="Temp usuario" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">%TEMP% - archivos temporales del perfil de usuario.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanTempSys" Content="Temp sistema" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">C:\Windows\Temp - temporales del sistema operativo.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanPrefetch" Content="Prefetch (SSD)" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">C:\Windows\Prefetch - solo recomendado en SSD.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanWinUpdate" Content="Cache Windows Update" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">SoftwareDistribution\Download - paquetes ya instalados.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanBrowsers" Content="Cache navegadores" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Chrome, Edge, Firefox, Brave, Opera - no borra contrasenas.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanThumb" Content="Thumbnails" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Cache de miniaturas del Explorador - se regenera solo.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanRecycle" Content="Papelera" IsChecked="True" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Vacia la papelera permanentemente.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <CheckBox x:Name="chkCleanEventLogs" Content="Logs de eventos" IsChecked="False" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Impacto alto: borra logs Aplicacion/Sistema/etc. Log de Seguridad NO se toca. Elimina registros forenses.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                </WrapPanel>
+                <Grid Margin="0,12,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                  </Grid.ColumnDefinitions>
+                  <TextBlock x:Name="lblLimpiezaResult" Grid.Column="0" Text="" FontSize="11"
+                             TextWrapping="Wrap" VerticalAlignment="Center"
+                             Foreground="{DynamicResource BrushFgMuted}"/>
+                  <Button x:Name="btnRunLimpieza" Grid.Column="1" Content="Ejecutar limpieza"
+                          Style="{StaticResource BtnSec}" Margin="10,0,0,0"/>
+                </Grid>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

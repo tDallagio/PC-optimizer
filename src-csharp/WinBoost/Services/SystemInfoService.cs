@@ -418,6 +418,32 @@ public sealed class SystemInfoService
         return false;
     }
 
+    // internal: reusado por TweakRegistry (prompt 51, tweak "Power") para la misma pregunta
+    // "es laptop o desktop" que ya resuelve GatherSystemInfo para el SystemSnapshot
+    // (Win32_SystemEnclosure, ChassisTypes en [8,9,10,14] = laptop/tablet/notebook/subnotebook),
+    // extraida a su propio metodo reusable -- mismo criterio que HasSsd() (Tanda 4): evita las
+    // otras 5 consultas WMI de GatherSystemInfo que no hacen falta para un solo booleano. No
+    // cachea nada: se re-consulta en cada llamada a proposito.
+    internal static bool IsLaptop()
+    {
+        try
+        {
+            using var q = new ManagementObjectSearcher("SELECT ChassisTypes FROM Win32_SystemEnclosure");
+            foreach (ManagementObject o in q.Get())
+            {
+                if (o["ChassisTypes"] is Array arr)
+                {
+                    int[] laptopTypes = [8, 9, 10, 14];
+                    foreach (var v in arr)
+                        if (laptopTypes.Contains(Convert.ToInt32(v))) return true;
+                }
+                break;
+            }
+        }
+        catch { }
+        return false;
+    }
+
     private static bool CheckSvcXbox()
     {
         string[] names = ["XblAuthManager", "XblGameSave", "XboxNetApiSvc"];

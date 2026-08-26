@@ -68,6 +68,50 @@ Checklist en orden de ejecución:
       checkboxes, ítems de limpieza de archivos separados a una sección "Limpieza" aparte) — este
       ítem probablemente se quede chico frente a ese alcance; evaluar expandirlo o reemplazarlo
       cuando se planifique esa remodelación.
+      **ACTUALIZACIÓN (2026-08-24, Fases A/B/C completas; 2026-08-25, Power migrado — universo
+      completo)**: la remodelación de arquitectura que pedía la nota de dirección de arriba ya se
+      construyó y quedó validada con evidencia real, en paralelo al tab Optimizar clásico (que no se
+      tocó ni se retiró). Arquitectura nueva: `TweakDefinition`/`TweakState` (On/Off/NoAplicable)/
+      `TweakRegistry`/`TweakStateStore` (registro de tweaks individuales con revert real por tweak,
+      persistencia propia en `tweak_state.json`, separada de `BackupService`). Secciones nuevas en
+      el sidebar: **Tweaks** (Fase A/B + Power, 21 tweaks con toggle propio) y **Network** (Fase C —
+      Nagle/TCP relocados sin cambio de lógica + DisableIPv6 nuevo + DNS con selector y revert real
+      por adaptador + DNSFlush) y **Limpieza** (Fase C — 1 card con los 8 ítems de limpieza clásicos
+      como checkboxes + botón ejecutar, sin revert — no aplica, borrar temporales nunca fue
+      reversible ni en el tab clásico). TRIM/Desfrag se migró íntegro a **Herramientas** (reusa
+      `App.Worker`/cancelación ya existente, no se forzó al patrón simple de acción rápida). Punto
+      de restauración se agregó como card en **Home** (patrón `QuickActionDefinition`, con manejo
+      honesto del límite de Windows de 1 punto cada 24hs). **Power** (plan de energía) se agregó
+      después (prompt 51) a la sección Tweaks: texto honesto distinto por tipo de máquina (laptop
+      vs. desktop, incluido el fallback real a "Alto Rendimiento" cuando falla la creación de
+      "Ultimate Performance" — diagnosticado a fondo en el prompt 52, ya estaba bien contemplado sin
+      necesitar ningún fix) y captura/revert de `standby-timeout-ac` (hueco de reversión que el
+      mecanismo viejo de sesión, `BackupService.SavePowerPlanBackup`/`RestoreSession`, nunca cubrió).
+      Revert de Power **confirmado con evidencia real sobre un original no trivial** (plan
+      Equilibrado + hibernación encendida + `standby-timeout-ac` en 900s forzado como estado
+      original): el original capturado en `tweak_state.json` coincidió exactamente con lo restaurado
+      tras un ciclo On/Off completo.
+      Con esto, **26 de los 26 tweaks individuales del tab clásico + el bloque de Limpieza ya tienen
+      hogar en la arquitectura nueva — universo completo**. Detalle completo del mapeo tweak-por-
+      tweak, los bugs reales encontrados en el camino (race condition en `TweakStateStore`, bug de
+      idioma en el revert de TCP, casos de "asumir default en vez de leer el original real", revert
+      de DNS con adaptadores huérfanos, etc.) y las divergencias respecto al plan original (sección
+      5) están documentados en `ARQUITECTURA_TWEAKS.md`, sección 7. No se marca `[x]` porque queda
+      pendiente:
+      - [ ] Decidir con Tomy si/cuándo retirar el tab Optimizar clásico, ahora que TODO lo que hace
+            tiene hogar nuevo (Tweaks/Network/Limpieza/Herramientas/Home, 26/26 + Limpieza) — es una
+            decisión de producto, no técnica; no tomarla unilateralmente.
+      - [ ] Validar en hardware o VM sin SSD real la rama `NoAplicable` (no-SSD) de
+            SvcSysMain/SvcWSearch (Fase B, Tanda 4) — implementada y revisada contra el código, pero
+            nunca ejercitada en vivo porque la máquina de build tiene SSD.
+      - [ ] Hallazgo sin confirmar en vivo ni corregir (prompt 53): Power y FastStartup comparten el
+            mismo `HibernateEnabled` de Windows — Fast Startup necesita hibernación habilitada para
+            funcionar, Power la apaga por completo al activarse en desktop. Confirmado contra el
+            código real que ninguno de los dos `LeerEstadoAsync` verifica el estado del otro tweak
+            hoy, así que aplicar/revertir uno puede alterar en silencio lo que el otro reporta (ej.
+            revertir FastStartup con Power todavía aplicado podría reactivar hibernación y
+            desarmar parte de lo que Power dejó configurado, sin que ninguna de las dos cards lo
+            avise). La decisión de cómo comunicarlo o resolverlo queda aparte, no tomada acá.
 - [ ] **4. Subir padding/espaciado global** (usar los escalones altos de la escala 4px). La UI
       actual aprieta; el rediseño pide más aire en pantallas de entrada/decisión.
 - [ ] **5. Reforzar jerarquía tipográfica** (Segoe UI en varios pesos): títulos claramente más
@@ -276,8 +320,14 @@ en el rediseño:
       real de `pnputil` (42/42 paquetes, sin regresión). **Los literales en portugués-BR NO se
       pudieron verificar contra una máquina real ni una fuente de Microsoft con ejemplo de salida real
       — quedan como mejor estimación documentada, pendiente de validación en un Windows en
-      portugués real** cuando haya oportunidad de probar. Revisar también cualquier otro
-      `RunCapture`/parseo de stdout que quede en el código (barrido no exhaustivo).
+      portugués real** cuando haya oportunidad de probar. **Nuevo hallazgo (2026-08-24, detectado
+      durante la Fase A/piloto, prompt 39):** el mecanismo viejo `BackupService.RestoreNetshFromSession()`
+      (usado por el revert del tab Optimizar clásico) tenía el mismo tipo de bug de idioma que ya se
+      encontró y se corrigió en el revert nuevo de TCP del registro de tweaks (`TweakRegistry.cs`) —
+      pero el fix se aplicó solo ahí; `RestoreNetshFromSession()` en sí **no se tocó** y queda como
+      sospechoso sin confirmar/corregir. Agregar a este barrido cuando se llegue a esta tarea (detalle
+      en `ARQUITECTURA_TWEAKS.md` sección 7.4). Revisar también cualquier otro `RunCapture`/parseo de
+      stdout que quede en el código (barrido no exhaustivo).
 - [ ] **Compatibilidad de la ventana fija con pantallas chicas y escala DPI.** La ventana quedó en
       tamaño FIJO 1000x720 no redimensionable (Módulo 1 item 10), así que el usuario no puede
       achicarla si no le entra. Los 720px **lógicos** entran en una pantalla de 768px SOLO al 100%

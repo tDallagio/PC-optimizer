@@ -5,6 +5,486 @@
 
 ---
 
+## Diagnóstico: Power y el fallback a Alto Rendimiento en desktop — sin bug, sin cambios (52_fix_power_fallback_altorendimiento.txt)
+
+Diagnóstico puntual disparado por un dato que salió en el reporte del prompt 51: en desktop,
+`PowerPlanTweaks()` tiene una rama de fallback real a "Alto Rendimiento" (`SCHEME_MIN`) cuando la
+creación/detección de "Ultimate Performance" falla, algo que el análisis original no contemplaba al
+pedir el criterio de `LeerEstadoAsync`. Se releyó el código real (no la intención) de
+`ReadPowerAsync`/`ApplyPowerAsync`/`RevertPowerAsync` tal como quedaron implementados en el prompt
+51: **ya estaba bien resuelto, no hizo falta ningún fix**.
+
+- `ReadPowerAsync` (rama desktop) ya construye `onUltimate` y `onFallback` (este último solo si
+  `onUltimate` es falso) como dos caminos igual de válidos hacia `On` — un desktop en Alto
+  Rendimiento por haber pasado por el fallback se reporta On, no Off.
+- El texto honesto (`Motivo`, generalizado en el prompt 51) ya distingue los dos casos: "Ultimate
+  Performance activado..." si `onUltimate`, o "Alto Rendimiento activado (Ultimate Performance no
+  disponible)..." si es el fallback — nunca sugiere Ultimate Performance cuando lo que quedó activo
+  es Alto Rendimiento.
+- `ApplyPowerAsync`/`RevertPowerAsync` son agnósticos al GUID resultante por diseño: la captura lee
+  el GUID activo en genérico (`ReadActiveSchemeGuid()`, sin asumir cuál) antes de tocar nada, y el
+  revert restaura ese mismo GUID capturado vía `/setactive` — ninguno de los dos métodos referencia
+  "Ultimate Performance" en su lógica.
+
+Nota menor registrada pero **no corregida a propósito** (no era el bug que pedía diagnosticar este
+prompt): el paréntesis "(Ultimate Performance no disponible)" es preciso cuando el fallback ocurre
+porque Apply no pudo crear/encontrar el plan, pero sería impreciso en el caso más raro de que
+Ultimate Performance exista pero el usuario haya cambiado manualmente a Alto Rendimiento después —
+el mensaje central (no Off, no Ultimate Performance falso) sigue siendo correcto en ese caso igual.
+
+No hubo cambio de código — no se recompiló ni se republicó (no hacía falta, mismo build que el
+prompt 51: SHA256 `791EA5C6ABC8A47ADA9D8C83AE6E5E510EF714E5D2E8F445D0A795449D847371`).
+
+---
+
+## Migración de Power al registro de tweaks — 26/26 (51_migracion_power.txt)
+
+Último tweak individual del tab Optimizar clásico que faltaba migrar. Con esto **se completa el
+universo de 26/26 tweaks individuales** en `TweakDefinition`/`TweakRegistry` (Limpieza sigue aparte,
+ya migrada como bloque no-togglable en la Fase C). Card nueva en la sección **Tweaks** existente
+(categoría "Sistema y Rendimiento", junto a HPET/GPUPrio), sin sección propia. La pregunta de
+si/cuándo jubilar el tab Optimizar clásico sigue sin resolver — es una decisión de producto aparte,
+no tomada en este prompt.
+
+### Qué hace realmente `PowerPlanTweaks` — confirmado contra el código real, corrige el resumen del prompt
+
+- **Desktop**: intenta activar "Ultimate Performance" (nombre bilingüe, duplicando el plan semilla
+  si no existe todavía); **si eso falla, cae a `SCHEME_MIN` ("Alto Rendimiento") como fallback** —
+  las dos ramas son un resultado exitoso real de Apply (ambas loguean "ok"). Después, **siempre**
+  apaga hibernación, sin importar cuál de las dos ramas se ejecutó.
+- **Laptop**: solo activa `SCHEME_MIN`. **No toca hibernación** — no hay ningún `/hibernate` en esa
+  rama del código real.
+- **`standby-timeout-ac=0` se aplica SIEMPRE, para las dos ramas** — el llamado está *fuera* del
+  `if/else isLaptop`, no adentro de ninguna rama. Esto corrige el resumen original del prompt, que
+  daba este punto como no confirmado para laptop: sí se aplica ahí también.
+
+### Detección laptop/desktop reusada — `SystemInfoService.IsLaptop()` (nuevo), no una detección propia
+
+La app ya tenía el mecanismo (`Win32_SystemEnclosure`, `ChassisTypes` en `[8,9,10,14]`), pero
+embebido dentro de `GatherSystemInfo()` (el snapshot completo, 6 consultas WMI). Se extrajo a su
+propio método `internal static bool IsLaptop()` en `SystemInfoService.cs`, mismo criterio que
+`HasSsd()` (Tanda 4): evita las otras 5 consultas WMI para un solo booleano que
+`AplicarAsync`/`RevertirAsync`/`LeerEstadoAsync` necesitan consultar fresco (sin cachear) en cada
+llamada.
+
+### Texto honesto por tipo de máquina — generalización de `Motivo`, no un mecanismo nuevo
+
+`TweakStatus` ya tenía un campo `Motivo` (hasta ahora solo usado en `NoAplicable`). Se generalizó
+`UpdateTweakCardUi` para usarlo también en `On` (`status.Motivo ?? "Aplicado."` — sin motivo, cae en
+el texto genérico de siempre, cero cambio para los otros 25 tweaks). Se encontró y corrigió un
+segundo lugar que pisaba ese texto: `ApplyTweakAsync` volvía a llamar `LeerEstadoAsync` pero
+descartaba el resultado, y escribía "Aplicado." a mano dos líneas después — el texto honesto se
+hubiera visto un instante y desaparecido apenas terminara de aplicarse. Se corrigió para reusar el
+mismo `status` ya leído. Mensajes finales: laptop → "Alto Rendimiento activado."; desktop (Ultimate
+Performance real) → "Ultimate Performance activado, hibernación desactivada, espera en CA
+desactivada."; desktop (rama de fallback a Alto Rendimiento) → mismo mensaje aclarando "(Ultimate
+Performance no disponible)" — para no afirmar Ultimate Performance si lo que realmente quedó activo
+fue el fallback.
+
+### El hueco de reversión que no existía en el mecanismo viejo — resuelto con captura real, no asumida
+
+`BackupService.SavePowerPlanBackup()`/`RestoreSession` (acción `"powerplan"`) restaura el GUID del
+plan y la hibernación, pero **nunca** capturó ni restauró `standby-timeout-ac` — revertir dejaba la
+pantalla/espera en 0 para siempre aunque el plan volviera al original. Para el tweak nuevo se captura
+el estado real de las 3 cosas (GUID activo, `HibernateEnabled`, y `standby-timeout-ac` en segundos)
+**antes** de aplicar por primera vez, directo en `TweakStateStore` — sin pasar por
+`SavePowerPlanBackup`/`RestoreSession` (mismo motivo de siempre: mecanismo de sesión, no per-tweak).
+En laptop, `HibernateWasOn` se guarda `null` a propósito (Apply nunca la toca ahí) y el revert nunca
+intenta tocarla tampoco — no se captura ni se restaura algo que Apply nunca cambió en esa rama.
+
+**Lectura de `standby-timeout-ac` sin parseo de texto localizado**: `powercfg /q` de un solo setting
+siempre imprime exactamente 5 valores hex en el mismo orden estructural fijo (mínimo, máximo,
+incremento, AC actual, DC actual) sea cual sea el idioma — se toma el 4to **por posición**, no por el
+texto de la etiqueta ("Current AC..." en inglés; en español ni siquiera es "CA" como en otros
+comandos de este proyecto, es "Índice de configuración de corriente alterna actual" completo,
+confirmado en vivo). El output mismo confirma "Unidades de configuración posibles: Segundos" — la
+CLI de `/change standby-timeout-ac` espera minutos, de ahí la conversión `/60` al revertir.
+
+**GUIDs resueltos en vivo, no hardcodeados de memoria**: `SCHEME_MIN`/`SUB_SLEEP`/`STANDBYIDLE` se
+resuelven vía `powercfg /aliases` (los alias en sí son tokens de línea de comandos fijos,
+reconocidos igual en cualquier idioma — mismo criterio que `SCHEME_MIN`/`SCHEME_CURRENT` ya usados
+tal cual en el resto del proyecto).
+
+### `LeerEstadoAsync` — On exige todo lo que Apply realmente toca en cada rama, comparando por GUID
+
+Sin `Check*` en el health score para Power (confirmado, no existía). Desktop: activo coincide con el
+GUID de "Ultimate Performance" (resuelto por nombre, `OptimizationService.FindSchemeGuidByName`
+subido a `internal`, sin GUID fijo posible — `-duplicatescheme` asigna uno random cada vez) **o**
+con el de `SCHEME_MIN` (el fallback real de Apply) **y** hibernación apagada **y**
+`standby-timeout-ac=0`. Laptop: activo coincide con `SCHEME_MIN` **y** `standby-timeout-ac=0` (sin
+chequear hibernación, Apply no la toca ahí). Mismo criterio "todos, no proxy parcial" del resto del
+registro.
+
+### `RequiereReinicio: false`
+
+Cambio de plan de energía, hibernación y `standby-timeout-ac` vía `powercfg` son todos de aplicación
+inmediata — mismo tipo de conclusión que ya se llegó para FastStartup (Tanda 3), ninguno es un
+parámetro que el kernel solo relea al arrancar.
+
+### Verificación
+
+Máquina de build: **desktop** (`ChassisTypes=3`, confirmado vía `Get-CimInstance
+Win32_SystemEnclosure`) — se pudo ejercitar en detalle la rama desktop, la rama laptop queda
+enteramente para que Tomy la pruebe. A diferencia de `bcdedit`/`Get-ComputerRestorePoint` (Tandas/
+Pasos anteriores), las lecturas de `powercfg` (`/getactivescheme`, `/list`, `/aliases`, `/q`) **no
+requieren elevación** — se pudieron correr en vivo sin admin y confirmar con evidencia real, no solo
+por lectura de código: los 3 GUIDs resueltos coincidieron exactamente con `SCHEME_MIN`/`SUB_SLEEP`/
+`STANDBYIDLE`, el parseo posicional del hex de `standby-timeout-ac` dio `0x00000000` (0 segundos,
+correcto) contra el output real en español, y `powercfg /list` confirmó "Máximo rendimiento" como
+plan activo con `HibernateEnabled=0` — exactamente lo que `ReadPowerAsync` tendría que reportar como
+On con el motivo de Ultimate Performance.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias** (sin ningún error de XAML esta vez —
+ningún archivo `.xaml` se tocó en este prompt). Publicado con `Publish-CSharp.ps1 -SkipInstaller`
+(single-file, 71 MB): **SHA256 `791EA5C6ABC8A47ADA9D8C83AE6E5E510EF714E5D2E8F445D0A795449D847371`,
+publicado 2026-08-25 16:08:44**. Queda para Tomy: ciclo completo aplicar/revertir en su máquina
+(aclarando si es laptop o desktop), confirmando con `powercfg /getactivescheme`, `powercfg /q` para
+`standby-timeout-ac`, y el estado de hibernación que las 3 cosas vuelven exactamente a lo que tenían
+antes.
+
+---
+
+## Fase C, Pasos 4 y 5: TRIM/Desfrag en Herramientas + Punto de restauración en Home (50_fase_c_paso4_5_trim_herramientas_restore_home.txt)
+
+Cierra la Fase C. Dos pasos chicos e independientes entre sí, en el mismo corte.
+
+### Paso 4 — TRIM/Desfrag movido a Herramientas
+
+**Decisión de patrón de UI, y por qué**: se evaluó el `QuickActionDefinition` simple del Paso 2
+(DNSFlush) y se descartó a propósito. `OptimizationService.TrimTweaksAsync(hasSsd, ct)` ya es
+async, ya tiene cancelación real vía `CancellationToken` y ya corre un loop de progreso cada 1s
+mientras `Optimize-Volume -ReTrim` corre en background (puede tardar varios minutos en un disco
+grande) — forzar eso dentro de un `Func<Task<string>>` que solo espera un mensaje final habría
+tirado esas dos cosas a la basura. Se confirmó qué existe hoy para acciones largas en Herramientas:
+**`App.Worker` (`WorkRunner.cs`)** — ya usado por la optimización completa
+(`OnRunOptimizationAsync`) y por Desinstalar bloatware — ya resuelve exactamente esto: lock
+(`IsRunning`, una sola operación grande a la vez en toda la app), ciclo de vida del
+`CancellationTokenSource`, y manejo de cancelación/error genérico. Se reusó tal cual, sin inventar
+ningún mecanismo nuevo: `OpenConsoleOverlay(running: true)` + `App.Worker.RunAsync(ct => new
+OptimizationService().TrimTweaksAsync(hasSsd, ct), ...)` + `ConsoleOperationCompleted()` al
+terminar — el botón "Detener" del overlay de Consola **ya está cableado** a
+`App.Worker.Cancel()` de forma genérica (no específica de Optimizar), así que TRIM/Desfrag queda
+cancelable sin cablear ningún botón propio. Progreso/log en vivo: mismo overlay compartido.
+
+**Visibilidad**: `TrimTweaksAsync` pasó de `private` a `internal`, mismo criterio que
+`CleanupTweaks` (Paso 3). Se llama sobre una instancia nueva (`new OptimizationService()`), no
+`App.Optimizer`.
+
+**Rama sin SSD, confirmada contra el código real** (no asumida): solo habilita la tarea programada
+`ScheduledDefrag` (desfragmentación semanal automática de Windows) y no corre nada de inmediato —
+`TrimTweaksAsync` arma una lista vacía de unidades y retorna apenas la arma, sin tocar el disco en
+esa corrida. La rama con SSD sí corre ya: re-habilita TRIM (`fsutil`), habilita `ScheduledDefrag`, y
+corre `Optimize-Volume -ReTrim` en cada unidad SSD detectada.
+
+Card nueva en Herramientas (Row 5, ancho completo, mismo estilo que "Limpieza del Driver Store"):
+nombre + descripción + botón "Ejecutar" + estado inline. Sin botón "Cancelar" propio en la card —
+deliberado, mismo criterio que Desinstalar bloatware (que tampoco tiene uno local): el overlay de
+Consola ya lo resuelve.
+
+**No se ejecutó TRIM real en la máquina de build** (instrucción explícita del prompt, toca el disco
+real) — se confirmaron ambas ramas leyendo el código completo, no ejecutándolas. La máquina de
+build tiene SSD NVMe (confirmado en tandas anteriores), así que si se hubiera ejecutado ahí habría
+corrido la rama SSD — pero no se corrió ninguna de las dos. Queda 100% para que Tomy lo pruebe sobre
+el .exe publicado, con evidencia de que corre y de que cancela si hace falta.
+
+### Paso 5 — Card de punto de restauración en Home
+
+Nombre exacto del método confirmado contra el código real: `OptimizationService.CreateRestorePoint
+(string sysDrive)` (se llama en `RunAsync` cuando el usuario tilda `"Startup"` en el tab clásico —
+el Id histórico no coincide con lo que hace, pero es el existente, no se tocó). Subido a `internal`
+para reusarlo desde `QuickActionRegistry.cs`, sin duplicar la llamada a `Checkpoint-Computer`.
+
+**El punto de atención central de este paso, resuelto con evidencia real, no asumido**: Windows por
+política default no permite crear más de UN punto de restauración cada 24 horas
+(`SystemRestorePointCreationFrequency`). `CreateRestorePoint` llama a `Checkpoint-Computer` y
+loguea "creado" si la llamada no tira excepción — pero eso **no confirma** que Windows haya creado
+un punto nuevo de verdad: dentro de la ventana de 24hs la llamada completa "con éxito" sin crear
+nada (mismo tipo de trampa que MouseAccel: "sin error" no es "funcionó de verdad"). Se resolvió
+comparando la lista real de puntos de restauración antes y después
+(`Get-ComputerRestorePoint`, vía subproceso `powershell.exe`, mismo mecanismo que ya usa el resto
+del proyecto para leer estado sin tocarlo): si el conteo sube, se creó un punto de verdad y el
+mensaje muestra la fecha/hora; si el conteo queda igual Y el último punto capturado está dentro de
+las últimas 24hs (evidencia directa, no una suposición), el mensaje dice explícitamente que Windows
+no dejó crear otro y cuándo fue el último; si el conteo queda igual pero el último punto NO está
+dentro de esa ventana, el mensaje no le atribuye la causa al límite de 24hs (podría ser Protección
+del sistema desactivada u otra causa) y deriva a la Consola para el detalle. `CreationTime` se lee
+en formato DMTF (el que devuelve WMI, fijo, no localizado) vía `ManagementDateTimeConverter`, no
+como texto libre — mismo criterio anti-parseo-frágil que el resto del proyecto.
+
+**Verificado con evidencia real, dentro de lo que permite este entorno**: `Get-ComputerRestorePoint`
+requiere elevación (igual que `bcdedit` en la Tanda 3) y esta sesión de build no la tiene — no se
+pudo ejercitar el camino de éxito (con puntos reales) end-to-end. Sí se verificó el camino de error
+con evidencia real: se corrió el mismo one-liner de PowerShell exacto que usa el código (mismas
+comillas, mismo `try{...-ErrorAction Stop}catch{'ERROR'}`) sin elevación, y devolvió el centinela
+`'ERROR'` esperado — confirma que el parseo/quoting es válido y que el catch realmente atrapa el
+fallo de permisos en vez de dejar pasar una salida ambigua. Falta la confirmación del camino
+completo (crear un punto, ver el conteo subir, click repetido bloqueado por la ventana de 24hs) que
+Tomy tiene que hacer sobre el .exe publicado, con `Get-ComputerRestorePoint` antes/después.
+
+Card en Home: sin card dedicada nueva — el `QuickActionDefinition` "RestorePoint" se expone como
+botón `btnHomeRestorePoint` en la fila de bienvenida (junto a "System Info"/"Optimizar ahora"), con
+el resultado mostrado vía `ShowToast`, el mismo mecanismo que Home ya usa para el resumen
+post-optimización (no el patrón de card inline de Network, que no tiene precedente en este tab y
+el Grid estirable de abajo no tiene aire para agregar una card más sin reestructurar layout ajeno a
+este paso).
+
+Verificado: `dotnet build` **0 errores, 0 advertencias** (mismo tipo de error de XAML en el camino
+que en los pasos anteriores: comentarios nuevos con `--`, corregidos a prosa sin doble guion).
+Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`87619C1D010F9E81486DA62DF8C691D9054C1623F2E79F370E49C70994B68ECE`, publicado 2026-08-24
+19:56:09**.
+
+---
+
+## Fase C, Paso 3: nueva sección "Limpieza" (49_fase_c_paso3_seccion_limpieza.txt)
+
+Cierra la Fase C: nueva sección **Limpieza** (tab índice **11**, `navLimpieza`, grupo propio hermano
+de Tweaks/Network) con UNA sola card que deja seleccionar los 8 ítems de limpieza existentes
+(TempUser, TempSys, Prefetch, WinUpdate, Browsers, Thumb, Recycle, EventLogs) y ejecutarlos juntos
+con un botón — acotado al flujo del tab Optimizar clásico, sin reescribir ninguna de las 8 rutinas
+de borrado. Sin revert a propósito (borrar temporales/cache/logs no es reversible, el tab clásico
+tampoco lo ofrece) y sin pasar por `TweakStateStore` — no es `TweakDefinition` ni encaja 1:1 en el
+`QuickActionDefinition` del Paso 2 (hay selección múltiple + un diálogo de confirmación antes del
+único botón "Ejecutar"), así que quedó como card propia hecha a mano, mismo criterio que la card de
+DNS del Paso 2.
+
+### Visibilidad de `CleanupTweaks`: `private` → `internal`
+
+Única visibilidad que hizo falta tocar. `OptimizationService.CleanupTweaks(sel, hasSsd, sysDrive)`
+ya implementaba las 8 acciones y ya devolvía el total de MB liberados (`double`) — se confirmó la
+firma exacta contra el código real antes de asumir nada. Se llama sobre una instancia **nueva**
+(`new OptimizationService()`), no `App.Optimizer` (el singleton que usa el tab Optimizar clásico) —
+mismo criterio que `TweakRegistry.ApplyPageFileAsync` (Fase B) ya usa para reusar
+`OptimizationService.PageFileTweaks`: evita compartir los contadores de instancia `_applied`/
+`_skipped` con la corrida del tab clásico. `Log`/`Prog` (que sí son estáticos, ruteando a
+`App.Logger`/`App.Progress`) se dejaron tal cual — agregan entradas a la Consola compartida, lo cual
+es correcto y deseable (el detalle por ítem queda ahí), sin abrir el overlay de Consola
+automáticamente.
+
+### Prefetch sin SSD — mismo tratamiento visual que `NoAplicable` de la Tanda 4, adaptado a checkbox
+
+Detección de SSD: `SystemInfoService.HasSsd()`, el mismo dato liviano ya usado en la Tanda 4
+(SvcSysMain/SvcWSearch) — no el `SystemSnapshot` completo del tab clásico (5 consultas WMI de más
+por un solo booleano). Se consulta al abrir la sección (`LoadLimpiezaTabAsync`, lazy) para decidir
+si el checkbox de Prefetch es seleccionable. Sin SSD: el checkbox queda deshabilitado
+(`IsEnabled=false`) y desmarcado, con el motivo ("Prefetch (requiere SSD)") en el mismo color
+"info" (`BrushBlue`, `#00C8FF`) que ya se usó para `NoAplicable` en la Tanda 4 — un `CheckBox`
+suelto en un `WrapPanel` no tiene una línea de status propia como las cards de toggle, así que el
+motivo va directo en el label en vez de en un `TextBlock` aparte. La protección real contra borrar
+Prefetch sin SSD no depende solo de este estado de UI: `CleanupTweaks` ya trae su propio guard
+interno (`if (hasSsd) ... else Log("Prefetch omitido (requiere SSD)")`), así que aunque el checkbox
+llegara marcado por algún camino no previsto, la rutina de borrado real nunca lo tocaría sin SSD.
+
+### Advertencia de EventLogs preservada — reuso directo de `ConfirmOptimizationDialog`, sin dialogo nuevo
+
+Se evaluó si el diálogo de confirmación existente del tab Optimizar clásico
+(`ConfirmOptimizationDialog`, que ya agrupa por categoría y muestra un banner de impacto alto)
+aplicaba limpio a este caso más chico — sí aplicó directo, sin ningún cambio: se arma un
+`List<PlanAction>` con categoría `"Limpieza"` fija y las mismas etiquetas/detalles que ya usa
+`BuildActionPlan` del tab clásico (incluida la nota de EventLogs: "Borra logs Aplicación/Sistema/
+etc. Log de Seguridad NO se toca. Elimina registros forenses.", impacto `"high"`) para **solo** los
+ítems tildados, y se muestra con `new ConfirmOptimizationDialog(plan) { Owner = this }.ShowDialog()`
+— mismo patrón exacto que ya usa `OnRunOptimizationAsync`. Con 8 ítems de una sola categoría arma un
+único grupo "LIMPIEZA" y el banner de impacto alto sigue disparando para EventLogs sin tocar nada
+del diálogo. No hizo falta un diálogo más simple.
+
+### Resultado
+
+`RunLimpiezaAsync` construye el diccionario `sel` con los 8 Ids (tildado → `true`, resto `false`),
+confirma con el diálogo, y si se confirma corre `CleanupTweaks` con el `hasSsd`/`sysDrive` reales
+de la máquina (mismo `sysDrive` que ya usa `ApplyPageFileAsync`:
+`Environment.GetEnvironmentVariable("SystemDrive") + "\"`). El resultado (MB liberados) se muestra
+inline en la misma card, verde en éxito / rojo en error — mismo patrón visual que las acciones
+rápidas del Paso 2, aunque no se instanció como `QuickActionDefinition` (no encaja: hay selección
+múltiple y un paso de confirmación previo que ese modelo minimalista no cubre). El detalle por ítem
+(qué se saltó y por qué, más allá del caso Prefetch ya resuelto en la UI) queda en la Consola vía
+los mismos `Log()` que `CleanupTweaks` ya emite — no se intentó hacer que `CleanupTweaks` devolviera
+esa información estructurada, habría sido reescribir más lógica de la que pedía este paso.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias** (mismo tipo de error de XAML que en los
+Pasos 1 y 2 en el camino: un comentario nuevo con `--` en medio del texto, inválido en XML —
+corregido a prosa sin doble guion). Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file,
+71 MB): **SHA256 `A1AE88F8428C6905C061880ECBFA2572FB1EE24D1A1AB107C45456F14D8D8F2C`, publicado
+2026-08-24 19:33:30**. Queda para Tomy: seleccionar un subconjunto, confirmar que el diálogo lista
+exactamente lo tildado, ejecutar, y confirmar que los MB liberados tienen sentido con lo
+efectivamente borrado.
+
+---
+
+## Fase C, Paso 2: DNS + DNSFlush en Network (48_fase_c_paso2_dns_dnsflush.txt)
+
+Cierra la sección Network con los 2 ítems de Red que quedaban. Ninguno de los dos encaja en el
+molde `TweakDefinition`/toggle — son estructuralmente distintos, y se resolvieron con dos modelos
+nuevos separados, sin forzar la arquitectura existente.
+
+### Tipo nuevo "acción rápida" (`QuickActionRegistry.cs`) — reutilizable, pensado para TRIM/Desfrag y el punto de restauración
+
+`QuickActionDefinition` (`Id`, `Nombre`, `Descripcion`, `Func<Task<string>> EjecutarAsync`) +
+`QuickActionRegistry` (mismo `All`/`Find` que `TweakRegistry`, expuesto como `App.QuickActions`),
+completamente separado de `TweakDefinition`/`TweakRegistry`/`TweakStateStore` — una acción rápida no
+tiene estado que leer ni nada que persistir, forzarla en ese molde habría sido artificial.
+`EjecutarAsync` devuelve un `string` de resultado en éxito (no solo `Task`) para que la card pueda
+mostrar un mensaje real ("Cache DNS limpiada."), pensando ya en los próximos usos (TRIM/Desfrag con
+MB liberados, punto de restauración con la fecha creada). **DNSFlush** es el primer caso real:
+`ipconfig /flushdns`, sin `RunProcess` compartido que trague la excepción (a diferencia del
+`RunProcess` privado de `TweakRegistry`/`OptimizationService`) — una acción rápida existe
+justamente para que el click reporte éxito o error real; no se inspecciona stdout (evita repetir el
+parseo de texto localizado ya identificado como frágil en `docs/PENDIENTES.md`).
+
+**Card nueva y reutilizable en UI**: `BuildQuickActionCard` (`MainWindow.xaml.cs`) — mismo look que
+`BuildTweakCard` (Border/título/descripción/status) pero con un botón "Ejecutar" en vez del
+`ToggleSwitch` (no hay On/Off). Feedback elegido: **mensaje inline en la card** (no toast) — todas
+las demás cards de esta misma sección (Nagle/TCP/DisableIPv6, y ahora DNS) ya muestran su estado
+inline debajo de la card; un toast de esquina hubiera roto la consistencia visual con el resto de
+la pantalla. Se reusó el `TextBlock` de status existente, sin inventar ningún componente nuevo.
+
+### DNS — selector con revert real por-adaptador, no un simple "volver a automático"
+
+No es un `TweakDefinition` (evaluado explícitamente): el estado real tiene más de 2 formas —
+automático, uno de los 4 proveedores conocidos (`OptimizationService.DnsProviders`, sin agregar
+más, ver `docs/PENDIENTES.md`), o configuración personalizada — forzarlo en
+`TweakStatus.On/Off/NoAplicable` habría mentido sobre lo que realmente hay, y el selector +
+"Aplicar" + "Restaurar original" (dos botones separados) tampoco encajan en un `ToggleSwitch`
+único. Vive en `DnsPresetService.cs`, servicio chico propio.
+
+**Captura/revert por-adaptador**: antes de aplicar un proveedor por primera vez desde este panel
+(sin entrada en `TweakStateStore` para el Id `"DNS"`), se lee y guarda el `DNSServerSearchOrder`
+actual de cada adaptador activo (`IPEnabled = True AND MACAddress IS NOT NULL`, mismo filtro que ya
+usa `OptimizationService.NetworkTweaks` para el Apply real) — vacío/null se guarda tal cual
+(significa automático/DHCP), no un valor global único (mismo criterio estructural que Nagle,
+Tanda 1: N unidades, no una sola clave).
+
+**Técnica reusada de `BackupService`, y por qué no se llamó directo**: se basa en la técnica que ya
+usan `SaveNetBackup()`/`RestoreNetworkFromSession()` (ya saben leer/restaurar `DNSServerSearchOrder`
+por adaptador, incluyendo "vacío = automático" → `null` a `SetDNSServerSearchOrder`) — pero sin
+llamarlas directo, mismo motivo de siempre: ese guardado es session-scoped (ligado a una corrida del
+tab Optimizar clásico), el original tiene que vivir en `TweakStateStore`, disponible siempre (ver
+SvcDiag, Tanda 2). Además se simplificó el mecanismo: `SaveNetBackup` lee DNS vía
+`System.Net.NetworkInformation.NetworkInterface` (una API) y `RestoreNetworkFromSession` después
+busca el adaptador correspondiente por `InterfaceIndex` contra `Win32_NetworkAdapterConfiguration`
+(otra API) — una correlación cruzada entre dos fuentes distintas. `DnsPresetService` lee y escribe
+`DNSServerSearchOrder` e `InterfaceIndex` del **mismo** objeto WMI de punta a punta, sin cruzar
+APIs. El binding de IPv6 que también toca `SaveNetBackup`/`RestoreNetworkFromSession` no aplica acá.
+
+**Bug propio evitado en el camino**: la primera versión de `RestoreAsync` iteraba los adaptadores
+*actuales* y, para uno sin entrada en el original capturado, lo forzaba a "automático" — pero un
+adaptador sin entrada significa que no existía cuando se capturó (ej. una VPN que se conectó
+después de aplicar un proveedor), y WinBoost nunca lo tocó ni al aplicar ni ahora. Forzarlo a
+automático habría sido cambiar algo fuera de su control. Se corrigió para saltear (no tocar) los
+adaptadores sin entrada — mismo criterio que `RevertNagleAsync` (Tanda 1) ya usa para adaptadores
+que dejaron de existir.
+
+**Card en la UI**: estado leído en vivo (nunca cacheado) — nombre del proveedor si **todos** los
+adaptadores activos coinciden exactamente (orden incluido) con las IPs de alguno de los 4
+conocidos; "Automático (DHCP)" si todos están vacíos; "Configuración personalizada" en cualquier
+otro caso (mixto, o servidores manuales que no coinciden con ningún proveedor) — sin forzar que
+encaje en una de las 4 opciones. Guard explícito para 0 adaptadores elegibles ahora mismo (mismo bug
+de vacuous truth ya identificado y evitado para Nagle): sin él, comparar contra una lista vacía
+daría "Automático" falso. Botón "Restaurar original" habilitado solo si hay una captura guardada
+(`DnsPresetService.HasOriginalCaptured()`, mismo guard "no revertir sin original" de siempre).
+
+**`RequiereReinicio`: no aplica, no requiere reinicio** — `SetDNSServerSearchOrder` vía WMI es de
+efecto inmediato (misma API que ya usa el tab clásico para el Apply real). Se agregó un flush de
+DNS (`ipconfig /flushdns`) al final de Aplicar y de Restaurar, mismo criterio que
+`RestoreNetworkFromSession` ("Flush DNS siempre al restaurar red") — sin esto, resoluciones ya
+cacheadas contra el servidor viejo seguirían devolviendo esas respuestas hasta expirar solas, y el
+cambio se sentiría como que "no hizo nada" aunque el adaptador ya apunte al servidor nuevo.
+
+Verificado: `dotnet build` **0 errores, 0 advertencias** (dos errores de XAML propios en el camino,
+mismo tipo que en el Paso 1: comentarios nuevos con `--` en medio del texto, inválido en XML —
+corregidos a prosa sin doble guion). Se confirmó contra la máquina real (solo lectura,
+`Get-CimInstance Win32_NetworkAdapterConfiguration`) que `DNSServerSearchOrder` devuelve el array
+esperado (adaptador activo detectado ya en Cloudflare `{1.1.1.1, 1.0.0.1}`) antes de publicar.
+Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`7D21D25ED7CC821E1F3CAA5223A7956D738D3810E530FC338E7675187CC8A101`, publicado 2026-08-24
+19:13:27**. DNSFlush es trivial de confirmar; DNS queda para que Tomy lo pruebe con el mismo rigor
+de siempre (estado real de los adaptadores antes/después vía `Get-DnsClientServerAddress` o
+registro, ciclo completo aplicar → restaurar).
+
+---
+
+## Fase C, Paso 1: nueva sección "Network" — muda Nagle/TCP, agrega DisableIPv6 (47_fase_c_paso1_seccion_network.txt)
+
+Primer paso de la reorganización de navegación (Fase C): en vez de que todo viva bajo el item único
+"Tweaks" del sidebar, la categoría Red pasa a su propia sección **Network** (índice de tab **10**,
+`navNetwork`). Limpieza tendrá su propia sección en un corte posterior, fuera de este alcance.
+`docs/CLAUDE.md` (sección "Orden de tabs") se actualizó con el nuevo índice.
+
+### Sidebar y tab nuevos — mismo mecanismo que Tweaks, sin patrón nuevo
+
+`navNetwork` (`MainWindow.xaml`) sigue exactamente el mismo estilo/mecanismo que los items
+existentes (`BtnNav`/`BtnNavActive`), como grupo propio "NETWORK" — hermano de "TWEAKS", no anidado
+bajo él, para reflejar que es una sección de primer nivel, no un sub-ítem de Tweaks. Se agregó al
+final del `TabControl` (índice 10, sin insertarlo en el medio) para no correr ninguno de los
+índices 0-9 ya cableados a mano en el resto de `MainWindow.xaml.cs` (`SetActiveNav(N)` con N
+hardcodeado en varios lugares). Mismo patrón de `SetActiveNav`/`_navButtons` que ya usa Tweaks —
+`SetActiveNav` en sí no necesitó ningún cambio, itera `_navButtons` por longitud, no por una
+constante.
+
+### Relocación de Nagle y TCP — solo UI, cero cambio de lógica
+
+`TweakRegistry.cs` no se tocó en la definición de Nagle ni TCP: mismo Id, mismo
+`AplicarAsync`/`RevertirAsync`/`LeerEstadoAsync` ya validados (piloto y Tanda 1). El registro de
+tweaks ya separaba "definición" (`TweakDefinition.Categoria`, campo que existía desde el piloto
+pero no se usaba para nada en la UI hasta ahora) de "qué aparece en cada panel", así que la
+relocación fue trivial: `LoadTweaksTabAsync` (`MainWindow.xaml.cs`) ahora filtra
+`Categoria != "Red"` y `LoadNetworkTabAsync` (nuevo) filtra `Categoria == "Red"` — mismo
+`BuildTweakCard`/`UpdateTweakCardUi`, sin duplicar ninguno de los dos.
+
+**Bug evitado en el camino**: `LoadTweaksTabAsync` tenía un `_tweakCardRefs.Clear()` al principio
+(inofensivo mientras solo existía un panel). Con dos paneles de carga lazy independiente
+compartiendo el mismo diccionario (`_tweakCardRefs`, indexado por Id de tweak), ese `Clear()` se
+volvía una trampa de orden de visita: si el usuario abría Network primero y Tweaks después, el
+`Clear()` de `LoadTweaksTabAsync` borraba las referencias de las cards de Network ya construidas,
+dejando sus toggles sin efecto (`UpdateTweakCardUi` no encuentra la entrada y no hace nada). Se
+sacó el `Clear()` — no hacía falta: cada Id es único en todo el registro y los flags
+`_tweaksLoaded`/`_networkLoaded` ya garantizan que cada método de carga corre una sola vez, así que
+nunca hay nada viejo que limpiar.
+
+Smoke test propio (no reemplaza la validación completa que ya hizo Tomy sobre Nagle/TCP): se
+verificó estáticamente contra `TweakRegistry.cs` que `Categoria=="Red"` da exactamente {TCP,
+Nagle, DisableIPv6} y ningún otro — los 20 tweaks restantes quedan en Tweaks. No se pudo hacer un
+smoke test en vivo (click-through) de la app publicada: WinBoost corre elevado (UAC) y este entorno
+de build no tiene forma de aprobar esa elevación de forma no interactiva, así que lanzar el .exe
+para verificar visualmente que las cards cargan y responden quedó fuera de lo que se pudo hacer acá
+— sí se confirmó que `dotnet build` compila limpio (por lo tanto el XAML nuevo parsea y los
+`x:Name` resuelven) y que ningún `SetActiveNav(N)` existente (0-9) cambió de significado.
+
+### DisableIPv6 — tweak nuevo, sin checker previo, mismo patrón simple de la Tanda 1
+
+Apply hoy (`OptimizationService`, bloque `DisableIPv6` de `NetworkTweaks`) escribe
+`HKLM\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\DisabledComponents=0x20` — 1 sola clave,
+sin asimetría. Se confirmó que no hay `"DisableIPv6"` en el switch `Check(id)` de
+`SystemInfoService` (no existía). En vez de mecanismo nuevo, se reusó tal cual el helper genérico de
+la Tanda 1 (`ApplyRegEntriesAsync`/`RevertRegEntriesAsync`/`ReadRegEntriesAsync` + `RegEntry`) —
+mismo patrón exacto que `PowerThrot`/`Cortana` (1 clave, sin asimetría). `LeerEstadoAsync`: On si
+`DisabledComponents == 0x20`. Revertir: primera vez sin entrada en el store, lee el valor ACTUAL
+(contempla que la value puede no existir — "no existía" es un original válido, distinto de
+"existía en 0x20" o en cualquier otro valor, ej. `0xFF`, el que dejaba el código viejo del PS1 antes
+del fix ya documentado en este mismo CHANGELOG); al revertir, restaura exactamente eso.
+
+**Semántica del valor** (Nombre/Descripción del tweak la repiten a propósito, mismo texto que ya usa
+el tab clásico): `DisabledComponents=0x20` **no deshabilita IPv6** — hace que Windows prefiera IPv4
+sobre IPv6 cuando ambos están disponibles; IPv6 sigue activo. Muy distinto de `0xFF` (deshabilita
+todos los componentes IPv6), que cortaba conectividad en redes IPv6-nativas — ya identificado como
+bug del PS1 y corregido.
+
+**`RequiereReinicio: true`**, decidido contra el comportamiento real documentado por Microsoft, no
+asumido: `DisabledComponents` es de los parámetros de la pila TCP/IP que Windows solo relee al
+inicializar el stack de red en el arranque (KB929852: "debe reiniciar el equipo para que el cambio
+surta efecto"), no algo que se reaplique reiniciando el adaptador o el servicio en caliente. El
+registro queda escrito ya, pero el efecto real no se nota hasta el próximo arranque — mismo
+criterio que HPET (Tanda 3), no el de FastStartup (que sí es inmediato).
+
+Verificado: `dotnet build` **0 errores, 0 advertencias** (tras corregir un error de XAML propio:
+un comentario nuevo usaba `--` en medio del texto, inválido en comentarios XML — se corrigió a
+prosa sin doble guion). Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB):
+**SHA256 `21B454332A51E6F0D01D23A317FDBB85B2256AFABB6341A310ED17DBE821CF71`, publicado 2026-08-24
+18:20:25**. DisableIPv6 queda para que Tomy lo pruebe sobre este .exe con el mismo rigor de
+siempre (estado forzado a mano, ciclo completo aplicar/revertir con evidencia de registro).
+
+---
+
 ## Fase B, Tanda 4: SvcSysMain + SvcWSearch — categoría Servicios completa (46_fase_b_tanda_4_svcsysmain_svcwsearch.txt)
 
 Cuarta tanda de la Fase B: 2 tweaks más — **SvcSysMain** (SysMain/Superfetch) y **SvcWSearch**

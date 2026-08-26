@@ -32,6 +32,10 @@ public partial class App : Application
     // persistencia por-tweak, separado a proposito de Backup.
     internal static TweakRegistry        Tweaks     { get; } = new();
     internal static TweakStateStore      TweakState { get; } = new();
+    // Fase C, Paso 2 (48_fase_c_paso2_dns_dnsflush.txt): registro separado para acciones de un
+    // solo click sin estado (DNSFlush, y mas adelante TRIM/Desfrag + punto de restauracion) --
+    // no pasa por TweakStateStore, no hay nada que persistir.
+    internal static QuickActionRegistry  QuickActions { get; } = new();
     // Captura tomada justo antes de optimizar (FASE 3 la escribe, FASE 4+ la lee)
     internal static StateSnapshot?     SnapshotBefore { get; set; }
 
