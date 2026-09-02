@@ -30,7 +30,15 @@ public sealed record TweakDefinition(
     bool RequiereReinicio,
     Func<Task> AplicarAsync,
     Func<Task> RevertirAsync,
-    Func<Task<TweakStatus>> LeerEstadoAsync);
+    Func<Task<TweakStatus>> LeerEstadoAsync,
+    // Prompt 71: escribe el valor de FABRICA de Windows para este tweak, sin tocar
+    // TweakStateStore (no es un original real). Solo != null para los 20 tweaks "Seguro"
+    // (default documentado y confiable, ver docs/ARQUITECTURA_TWEAKS.md 7.7). null para los 7
+    // "Riesgoso" (TCP, GPUPrio, GameDVR, SvcFax, Power, Win32PrioritySep, PoliticaTermica) y
+    // para cualquier otro elemento del registro que no sea TweakDefinition. La UI muestra el
+    // boton "Restablecer a default de Windows" solo si esto != null Y el tweak esta On Y no hay
+    // Original capturado -- el mismo escenario que hoy bloquea "Revertir".
+    Func<Task>? RestablecerDefaultAsync = null);
 
 public sealed class TweakRegistry
 {
@@ -48,7 +56,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     ApplyTelemetryAsync,
                 RevertirAsync:    RevertTelemetryAsync,
-                LeerEstadoAsync:  ReadTelemetryAsync),
+                LeerEstadoAsync:  ReadTelemetryAsync,
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(TelemetryDefaults())),
 
             new TweakDefinition(
                 Id:               "SvcDiag",
@@ -58,7 +67,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     ApplySvcDiagAsync,
                 RevertirAsync:    RevertSvcDiagAsync,
-                LeerEstadoAsync:  ReadSvcDiagAsync),
+                LeerEstadoAsync:  ReadSvcDiagAsync,
+                RestablecerDefaultAsync: () => RestablecerSvcDefaultAsync([SvcDiagName], 2)),
 
             new TweakDefinition(
                 Id:               "Tasks",
@@ -68,7 +78,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     ApplyTasksAsync,
                 RevertirAsync:    RevertTasksAsync,
-                LeerEstadoAsync:  ReadTasksAsync),
+                LeerEstadoAsync:  ReadTasksAsync,
+                RestablecerDefaultAsync: RestablecerTasksDefaultAsync),
 
             new TweakDefinition(
                 Id:               "TCP",
@@ -88,7 +99,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: true,
                 AplicarAsync:     ApplyPageFileAsync,
                 RevertirAsync:    RevertPageFileAsync,
-                LeerEstadoAsync:  ReadPageFileAsync),
+                LeerEstadoAsync:  ReadPageFileAsync,
+                RestablecerDefaultAsync: RestablecerPageFileDefaultAsync),
 
             // ── Fase B, Tanda 1 (40_fase_b_tanda_1_registro_directo.txt) ──────────────────
 
@@ -110,7 +122,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplyRegEntriesAsync("PowerThrot", PowerThrotEntries()),
                 RevertirAsync:    () => RevertRegEntriesAsync("PowerThrot", PowerThrotEntries()),
-                LeerEstadoAsync:  () => ReadRegEntriesAsync(PowerThrotEntries())),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(PowerThrotEntries()),
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(PowerThrotDefaults())),
 
             new TweakDefinition(
                 Id:               "MouseAccel",
@@ -120,7 +133,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: true,
                 AplicarAsync:     ApplyMouseAccelAsync,
                 RevertirAsync:    RevertMouseAccelAsync,
-                LeerEstadoAsync:  () => ReadRegEntriesAsync(MouseAccelEntries())),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(MouseAccelEntries()),
+                RestablecerDefaultAsync: RestablecerMouseAccelDefaultAsync),
 
             new TweakDefinition(
                 Id:               "GameDVR",
@@ -140,7 +154,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplyRegEntriesAsync("GameMode", GameModeEntries()),
                 RevertirAsync:    () => RevertRegEntriesAsync("GameMode", GameModeEntries()),
-                LeerEstadoAsync:  () => ReadRegEntriesAsync(GameModeEntries())),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(GameModeEntries()),
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(GameModeDefaults())),
 
             new TweakDefinition(
                 Id:               "Cortana",
@@ -150,7 +165,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplyRegEntriesAsync("Cortana", CortanaEntries()),
                 RevertirAsync:    () => RevertRegEntriesAsync("Cortana", CortanaEntries()),
-                LeerEstadoAsync:  () => ReadRegEntriesAsync(CortanaEntries())),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(CortanaEntries()),
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(CortanaDefaults())),
 
             new TweakDefinition(
                 Id:               "Notif",
@@ -160,7 +176,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplyRegEntriesAsync("Notif", NotifEntries()),
                 RevertirAsync:    () => RevertRegEntriesAsync("Notif", NotifEntries()),
-                LeerEstadoAsync:  () => ReadRegEntriesAsync(NotifEntries())),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(NotifEntries()),
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(NotifDefaults())),
 
             new TweakDefinition(
                 Id:               "Nagle",
@@ -170,7 +187,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     ApplyNagleAsync,
                 RevertirAsync:    RevertNagleAsync,
-                LeerEstadoAsync:  ReadNagleAsync),
+                LeerEstadoAsync:  ReadNagleAsync,
+                RestablecerDefaultAsync: RestablecerNagleDefaultAsync),
 
             new TweakDefinition(
                 Id:               "Visual",
@@ -180,7 +198,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     ApplyVisualAsync,
                 RevertirAsync:    RevertVisualAsync,
-                LeerEstadoAsync:  ReadVisualAsync),
+                LeerEstadoAsync:  ReadVisualAsync,
+                RestablecerDefaultAsync: RestablecerVisualDefaultAsync),
 
             // ── Fase B, Tanda 2 (44_fase_b_tanda_2_servicios.txt) ──────────────────────────
             // Extiende el patron de servicios validado por SvcDiag (piloto) a 2-3 servicios por
@@ -194,7 +213,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplySvcEntriesAsync("SvcXbox", SvcXboxNames),
                 RevertirAsync:    () => RevertSvcEntriesAsync("SvcXbox", SvcXboxNames),
-                LeerEstadoAsync:  ReadSvcXboxAsync),
+                LeerEstadoAsync:  ReadSvcXboxAsync,
+                RestablecerDefaultAsync: () => RestablecerSvcDefaultAsync(SvcXboxNames, 3)),
 
             new TweakDefinition(
                 Id:               "SvcWER",
@@ -204,7 +224,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplySvcEntriesAsync("SvcWER", SvcWerNames),
                 RevertirAsync:    () => RevertSvcEntriesAsync("SvcWER", SvcWerNames),
-                LeerEstadoAsync:  ReadSvcWerAsync),
+                LeerEstadoAsync:  ReadSvcWerAsync,
+                RestablecerDefaultAsync: () => RestablecerSvcDefaultAsync(SvcWerNames, 3)),
 
             new TweakDefinition(
                 Id:               "SvcMaps",
@@ -214,7 +235,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplySvcEntriesAsync("SvcMaps", SvcMapsNames),
                 RevertirAsync:    () => RevertSvcEntriesAsync("SvcMaps", SvcMapsNames),
-                LeerEstadoAsync:  ReadSvcMapsAsync),
+                LeerEstadoAsync:  ReadSvcMapsAsync,
+                RestablecerDefaultAsync: () => RestablecerSvcDefaultAsync(SvcMapsNames, 3)),
 
             new TweakDefinition(
                 Id:               "SvcFax",
@@ -236,7 +258,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: true,
                 AplicarAsync:     ApplyHpetAsync,
                 RevertirAsync:    RevertHpetAsync,
-                LeerEstadoAsync:  ReadHpetAsync),
+                LeerEstadoAsync:  ReadHpetAsync,
+                RestablecerDefaultAsync: RestablecerHpetDefaultAsync),
 
             new TweakDefinition(
                 Id:               "FastStartup",
@@ -246,7 +269,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     ApplyFastStartupAsync,
                 RevertirAsync:    RevertFastStartupAsync,
-                LeerEstadoAsync:  ReadFastStartupAsync),
+                LeerEstadoAsync:  ReadFastStartupAsync,
+                RestablecerDefaultAsync: RestablecerFastStartupDefaultAsync),
 
             // ── Fase B, Tanda 4 (46_fase_b_tanda_4_svcsysmain_svcwsearch.txt) ──────────────
             // Cierra la categoria Servicios (7/7).
@@ -259,7 +283,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplySvcIfSsdAsync("SvcSysMain", "SysMain"),
                 RevertirAsync:    () => RevertSvcIfSsdAsync("SvcSysMain", "SysMain"),
-                LeerEstadoAsync:  () => ReadSvcIfSsdAsync("SysMain")),
+                LeerEstadoAsync:  () => ReadSvcIfSsdAsync("SysMain"),
+                RestablecerDefaultAsync: () => RestablecerSvcDefaultAsync(["SysMain"], 2)),
 
             new TweakDefinition(
                 Id:               "SvcWSearch",
@@ -269,7 +294,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: false,
                 AplicarAsync:     () => ApplySvcIfSsdAsync("SvcWSearch", "WSearch"),
                 RevertirAsync:    () => RevertSvcIfSsdAsync("SvcWSearch", "WSearch"),
-                LeerEstadoAsync:  () => ReadSvcIfSsdAsync("WSearch")),
+                LeerEstadoAsync:  () => ReadSvcIfSsdAsync("WSearch"),
+                RestablecerDefaultAsync: () => RestablecerSvcDefaultAsync(["WSearch"], 2, delayed: true)),
 
             // ── Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt) ───────────────────────
             // Nueva seccion "Network" del sidebar: Categoria "Red" ahora se renderiza en su propio
@@ -287,7 +313,8 @@ public sealed class TweakRegistry
                 RequiereReinicio: true,
                 AplicarAsync:     () => ApplyRegEntriesAsync("DisableIPv6", DisableIpv6Entries()),
                 RevertirAsync:    () => RevertRegEntriesAsync("DisableIPv6", DisableIpv6Entries()),
-                LeerEstadoAsync:  () => ReadRegEntriesAsync(DisableIpv6Entries())),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(DisableIpv6Entries()),
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(DisableIpv6Defaults())),
 
             // ── Prompt 51 (51_migracion_power.txt) ──────────────────────────────────────────
             // Ultimo de los 26 tweaks individuales del tab clasico: con este se completa el
@@ -302,6 +329,45 @@ public sealed class TweakRegistry
                 AplicarAsync:     ApplyPowerAsync,
                 RevertirAsync:    RevertPowerAsync,
                 LeerEstadoAsync:  ReadPowerAsync),
+
+            // ══ Prompt 56 (56_migracion_tuning_avanzado.txt) ══════════════════════════════
+            // Los 3 controles de la vieja pestana "Tuning Avanzado" (corte 16B, previos a toda
+            // esta arquitectura) migran aca. Win32PrioritySep/HAGS llamaban BackupService.
+            // SaveRegBackup directo (ver diagnostico prompt 54, ARQUITECTURA_TWEAKS.md 7.6);
+            // Politica termica no tenia NINGUN revert (toggle inmediato sin memoria del
+            // original). Con esto TuningService.cs queda sin ninguna dependencia de
+            // BackupService -- ver reporte del prompt 56 para el mapa actualizado.
+
+            new TweakDefinition(
+                Id:               "Win32PrioritySep",
+                Nombre:           "Scheduler de CPU (prioridad al proceso activo)",
+                Descripcion:      "Da mas prioridad de CPU al proceso en primer plano frente a los de fondo (0x28). El efecto varia segun el sistema y el juego: puede notarse en la fluidez percibida y en los 1% low, o no notarse en hardware moderno.",
+                Categoria:        "Sistema y Rendimiento",
+                RequiereReinicio: false,
+                AplicarAsync:     () => ApplyRegEntriesAsync("Win32PrioritySep", Win32PrioritySepEntries()),
+                RevertirAsync:    () => RevertRegEntriesAsync("Win32PrioritySep", Win32PrioritySepEntries()),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(Win32PrioritySepEntries())),
+
+            new TweakDefinition(
+                Id:               "HAGS",
+                Nombre:           "Aceleracion de GPU por hardware (HAGS)",
+                Descripcion:      "Delega el scheduling de frames de GPU al hardware en lugar del driver de pantalla. Reduce latencia de GPU en juegos y aplicaciones graficas intensivas. Requiere Windows 10 v2004+ y GPU compatible.",
+                Categoria:        "Sistema y Rendimiento",
+                RequiereReinicio: true,
+                AplicarAsync:     () => ApplyRegEntriesAsync("HAGS", HagsEntries()),
+                RevertirAsync:    () => RevertRegEntriesAsync("HAGS", HagsEntries()),
+                LeerEstadoAsync:  () => ReadRegEntriesAsync(HagsEntries()),
+                RestablecerDefaultAsync: () => WriteRegDefaultsAsync(HagsDefaults())),
+
+            new TweakDefinition(
+                Id:               "PoliticaTermica",
+                Nombre:           "Politica termica activa",
+                Descripcion:      "Activa: el plan de energia permite maxima frecuencia de CPU y ventiladores para mantener temperatura. Pasiva (default de Windows): el sistema reduce frecuencia de CPU antes de acelerar ventiladores (mas silencioso, algo menos de rendimiento).",
+                Categoria:        "Sistema y Rendimiento",
+                RequiereReinicio: false,
+                AplicarAsync:     ApplyCoolingAsync,
+                RevertirAsync:    RevertCoolingAsync,
+                LeerEstadoAsync:  ReadCoolingAsync),
         ];
     }
 
@@ -1358,6 +1424,25 @@ public sealed class TweakRegistry
             "DisabledComponents", RegistryValueKind.DWord, 0x20),
     ];
 
+    // ══ Prompt 56 (56_migracion_tuning_avanzado.txt) ══════════════════════════════════════
+    // Win32PrioritySep/HAGS son un solo DWORD bajo una key fija -- mismo patron generico que
+    // GPUPrio/PowerThrot/DisableIpv6 (ApplyRegEntriesAsync ya usa RegistryPrivilegeHelper para
+    // TODAS las entradas). ON = el valor que Apply escribe; OFF = lo que haya capturado como
+    // original la primera vez (no un valor fijo alternativo -- a diferencia de la vieja
+    // TuningService.SetHagsState, que forzaba HwSchMode=1 al apagar en vez de restaurar el
+    // original real).
+    private static RegEntry[] Win32PrioritySepEntries() =>
+    [
+        new(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\PriorityControl",
+            "Win32PrioritySeparation", RegistryValueKind.DWord, 0x28),
+    ];
+
+    private static RegEntry[] HagsEntries() =>
+    [
+        new(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
+            "HwSchMode", RegistryValueKind.DWord, 2),
+    ];
+
     // ══ Prompt 51 (51_migracion_power.txt) ══════════════════════════════════════════════════
     // ── Power (plan de energia) ───────────────────────────────────────────────
     // Reusa OptimizationService.PowerPlanTweaks(isLaptop) tal cual (subida a internal) -- no
@@ -1513,6 +1598,252 @@ public sealed class TweakRegistry
             ? "Ultimate Performance activado, hibernacion desactivada, espera en CA desactivada."
             : "Alto Rendimiento activado (Ultimate Performance no disponible), hibernacion desactivada, espera en CA desactivada.";
         return new TweakStatus(TweakState.On, motivo);
+    });
+
+    // ── Politica termica (ex "Tuning Avanzado", prompt 56) ────────────────────
+    // Reusa TuningService.SetCoolingPolicy/GetCoolingPolicyState tal cual -- ninguno de los dos
+    // tocaba BackupService (a diferencia de SetWin32PrioritySep/SetHagsState, que si lo hacian y
+    // por eso se removieron de TuningService.cs). GetCoolingPolicyState ya lee ACSettingIndex
+    // directo del registro, libre del bug de idioma que tenia parsear "powercfg /query" -- se
+    // reusa tal cual para LeerEstadoAsync en vez de escribir un lector nuevo. Lo unico que faltaba
+    // era el revert real: la vieja UI de Tuning Avanzado aplicaba directo, sin capturar el
+    // original en ningun lado.
+    private static Task ApplyCoolingAsync() => Task.Run(() =>
+    {
+        if (!App.TweakState.HasEntry("PoliticaTermica"))
+            App.TweakState.SaveOriginal("PoliticaTermica", App.Tuning.GetCoolingPolicyState());
+
+        App.Tuning.SetCoolingPolicy(1); // Activa
+        App.TweakState.SetAppliedByWinBoost("PoliticaTermica", true);
+    });
+
+    private static Task RevertCoolingAsync() => Task.Run(() =>
+    {
+        if (!App.TweakState.HasEntry("PoliticaTermica")) return;
+
+        int? original = App.TweakState.ReadOriginal<int?>("PoliticaTermica");
+        // -1 = "no disponible" ya en la captura original (plan personalizado sin este ajuste):
+        // nada coherente que restaurar, mismo criterio que los adaptadores huerfanos de DNS.
+        if (original is 0 or 1) App.Tuning.SetCoolingPolicy(original.Value);
+
+        App.TweakState.SetAppliedByWinBoost("PoliticaTermica", false);
+    });
+
+    private static Task<TweakStatus> ReadCoolingAsync() => Task.Run(() =>
+        App.Tuning.GetCoolingPolicyState() == 1 ? TweakStatus.On : TweakStatus.Off);
+
+    // ══ Prompt 71 (71_restablecer_default_windows_20_seguros.txt) ══════════════════════════
+    // "Restablecer a default de Windows" -- accion NUEVA, separada de "Revertir".
+    //
+    // Contexto: un tweak ya On desde antes de tocar el toggle (config externa, o remanente de
+    // una version vieja de WinBoost) no tiene Original en TweakStateStore, asi que "Revertir"
+    // queda bloqueado honestamente ("WinBoost no tiene un valor original guardado"). La
+    // alternativa -- adivinar un default -- es el mismo placebo que ya se corrigio en HAGS. Este
+    // boton no promete restaurar "tu" configuracion: escribe el valor de FABRICA de Windows,
+    // que puede o no coincidir con lo que habia antes en este equipo.
+    //
+    // Alcance: SOLO los 20 tweaks "Seguro" del mapeo del prompt 57 (validado en el 58, tabla en
+    // docs/ARQUITECTURA_TWEAKS.md 7.7). Los 7 "Riesgoso" (TCP, GPUPrio, GameDVR, SvcFax, Power,
+    // Win32PrioritySep, PoliticaTermica) quedan con RestablecerDefaultAsync == null -> la UI no
+    // les muestra el boton. Sin mecanismo en lote: por tweak individual, igual que el resto.
+    //
+    // NO se escribe nada como "Original" en TweakStateStore al restablecer (no es un original
+    // real). El ciclo normal de captura-en-el-primer-toggle sigue funcionando: la proxima vez
+    // que el usuario prenda el toggle desde ese punto, AplicarAsync captura un Original real como
+    // siempre (el estado que este boton dejo = el default de Windows).
+    //
+    // Estado resultante confirmado tweak-por-tweak: tras restablecer, el LeerEstadoAsync de cada
+    // uno de los 20 devuelve Off limpiamente sin ningun caso especial (el valor de fabrica nunca
+    // coincide con lo que ese LeerEstadoAsync exige para reportar On).
+
+    // "Default de Windows" para un valor de registro: DefaultValue == null significa "el default
+    // es que el valor NO exista" (borrar); != null significa "escribir este valor".
+    private sealed record RegDefault(RegistryHive Hive, string SubKey, string Name, RegistryValueKind Kind, object? DefaultValue);
+
+    private static Task WriteRegDefaultsAsync(RegDefault[] defaults) => Task.Run(() =>
+    {
+        foreach (var d in defaults)
+        {
+            if (d.DefaultValue is null)
+            {
+                // Solo abrir para escritura si el valor existe ahora -- OpenWritable crearia la
+                // subkey de la nada, y no tiene sentido crearla solo para borrar algo que ya no esta.
+                if (ReadRegValueAsString(d.Hive, d.SubKey, d.Name) is null) continue;
+                using var key = RegistryPrivilegeHelper.OpenWritable(d.Hive, d.SubKey);
+                key?.DeleteValue(d.Name, throwOnMissingValue: false);
+            }
+            else
+            {
+                using var key = RegistryPrivilegeHelper.OpenWritable(d.Hive, d.SubKey);
+                key?.SetValue(d.Name, d.DefaultValue, d.Kind);
+            }
+        }
+    });
+
+    // Escribe el StartType de fabrica de un servicio directo al registro, sin tocar
+    // TweakStateStore. startValue: 2 = Automatic, 3 = Manual (los unicos que necesitan los 6
+    // tweaks de servicio "Seguro"). Con Automatic ademas intenta arrancarlo (best-effort, igual
+    // que RevertSvcEntriesAsync cuando el original estaba corriendo); Manual = el default es
+    // "detenido hasta que algo lo pida".
+    private static void SetServiceStart(string svcName, int startValue, bool delayedAutoStart)
+    {
+        // No crear la key si el servicio no existe en esta edicion de Windows.
+        using (var probe = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{svcName}"))
+            if (probe is null) return;
+
+        using (var key = RegistryPrivilegeHelper.OpenWritable(
+            RegistryHive.LocalMachine, $@"SYSTEM\CurrentControlSet\Services\{svcName}"))
+        {
+            if (key is null) return;
+            key.SetValue("Start", startValue, RegistryValueKind.DWord);
+            if (delayedAutoStart) key.SetValue("DelayedAutoStart", 1, RegistryValueKind.DWord);
+            else key.DeleteValue("DelayedAutoStart", throwOnMissingValue: false);
+        }
+
+        if (startValue == 2)
+            try
+            {
+                using var svc = new ServiceController(svcName);
+                if (svc.Status != ServiceControllerStatus.Running) svc.Start();
+            }
+            catch { }
+    }
+
+    private static Task RestablecerSvcDefaultAsync(string[] svcNames, int startValue, bool delayed = false) => Task.Run(() =>
+    {
+        foreach (string name in svcNames) SetServiceStart(name, startValue, delayed);
+    });
+
+    // ── Defaults por tweak (los 20 "Seguro") ──────────────────────────────────
+    // Cada uno confirmado contra el Apply/LeerEstadoAsync real del tweak + ARQUITECTURA_TWEAKS 7.7.
+
+    // Telemetry -> borrar AllowTelemetry en las 2 keys de politica ("no configurado").
+    private static RegDefault[] TelemetryDefaults() =>
+        [.. TelemetryKeys.Select(k => new RegDefault(RegistryHive.LocalMachine, k.Path, k.Name, RegistryValueKind.DWord, null))];
+
+    // PowerThrot -> borrar PowerThrottlingOff (Windows decide caso por caso).
+    private static RegDefault[] PowerThrotDefaults() =>
+        [.. PowerThrotEntries().Select(e => new RegDefault(e.Hive, e.SubKey, e.Name, e.Kind, null))];
+
+    // Cortana -> borrar la politica AllowCortana ("no configurado").
+    private static RegDefault[] CortanaDefaults() =>
+        [.. CortanaEntries().Select(e => new RegDefault(e.Hive, e.SubKey, e.Name, e.Kind, null))];
+
+    // DisableIPv6 -> borrar DisabledComponents (IPv6 sin preferencia forzada).
+    private static RegDefault[] DisableIpv6Defaults() =>
+        [.. DisableIpv6Entries().Select(e => new RegDefault(e.Hive, e.SubKey, e.Name, e.Kind, null))];
+
+    // GameMode -> AutoGameModeEnabled=1 (Auto Game Mode habilitado, documentado por Microsoft
+    // como default desde Win10 1903+). AllowAutoGameMode no es un valor de fabrica de Windows
+    // (el tweak lo pone en 0 junto con el otro) -> borrar.
+    private static RegDefault[] GameModeDefaults() =>
+    [
+        new(RegistryHive.CurrentUser, @"Software\Microsoft\GameBar", "AutoGameModeEnabled", RegistryValueKind.DWord, 1),
+        new(RegistryHive.CurrentUser, @"Software\Microsoft\GameBar", "AllowAutoGameMode",   RegistryValueKind.DWord, null),
+    ];
+
+    // Notif -> ToastEnabled=1 (notificaciones activas, el default ampliamente documentado).
+    private static RegDefault[] NotifDefaults() =>
+    [
+        new(RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\PushNotifications",
+            "ToastEnabled", RegistryValueKind.DWord, 1),
+    ];
+
+    // HAGS -> HwSchMode=1 (off/opt-in, el default documentado por Microsoft para esta caracteristica).
+    private static RegDefault[] HagsDefaults() =>
+    [
+        new(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers",
+            "HwSchMode", RegistryValueKind.DWord, 1),
+    ];
+
+    // MouseAccel -> "Mejorar precision del puntero" viene ACTIVADO de fabrica:
+    // MouseSpeed=1 / MouseThreshold1=6 / MouseThreshold2=10 (string, HKCU) + MouseDataQueueSize=100
+    // (DWORD, HKLM). Empuja el cambio a la sesion en curso igual que Apply/Revert.
+    private static async Task RestablecerMouseAccelDefaultAsync()
+    {
+        await WriteRegDefaultsAsync(
+        [
+            new(RegistryHive.CurrentUser,  @"Control Panel\Mouse", "MouseSpeed",      RegistryValueKind.String, "1"),
+            new(RegistryHive.CurrentUser,  @"Control Panel\Mouse", "MouseThreshold1", RegistryValueKind.String, "6"),
+            new(RegistryHive.CurrentUser,  @"Control Panel\Mouse", "MouseThreshold2", RegistryValueKind.String, "10"),
+            new(RegistryHive.LocalMachine, @"SYSTEM\CurrentControlSet\Services\mouclass\Parameters",
+                "MouseDataQueueSize", RegistryValueKind.DWord, 100),
+        ]);
+        NotifyMouseSettingsChanged();
+    }
+
+    // Visual -> VisualFXSetting=0 ("Dejar que Windows elija", el default de fabrica) + FontSmoothing=2
+    // (ClearType activo). EnableTransparency=1 solo si el tweak lo toca en esta maquina (RAM <= 8GB),
+    // mismo criterio condicional que VisualEntries.
+    private static Task RestablecerVisualDefaultAsync()
+    {
+        var defaults = new List<RegDefault>
+        {
+            new(RegistryHive.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects",
+                "VisualFXSetting", RegistryValueKind.DWord, 0),
+            new(RegistryHive.CurrentUser, @"Control Panel\Desktop", "FontSmoothing", RegistryValueKind.String, "2"),
+        };
+        if (GetTotalRamGb() <= 8)
+            defaults.Add(new(RegistryHive.CurrentUser,
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "EnableTransparency",
+                RegistryValueKind.DWord, 1));
+        return WriteRegDefaultsAsync([.. defaults]);
+    }
+
+    // Nagle -> el default es que TcpAckFrequency/TCPNoDelay NO existan en ningun adaptador (Nagle
+    // activo). Misma iteracion por adaptador elegible que Apply/Revert.
+    private static Task RestablecerNagleDefaultAsync() => Task.Run(() =>
+    {
+        foreach (var sub in GetEligibleNagleAdapters())
+        {
+            using (var probe = Registry.LocalMachine.OpenSubKey($@"{NagleIfRoot}\{sub}"))
+                if (probe is null) continue;
+            using var key = RegistryPrivilegeHelper.OpenWritable(RegistryHive.LocalMachine, $@"{NagleIfRoot}\{sub}");
+            if (key is null) continue;
+            key.DeleteValue("TcpAckFrequency", throwOnMissingValue: false);
+            key.DeleteValue("TCPNoDelay",      throwOnMissingValue: false);
+        }
+    });
+
+    // Tasks -> el default es que las 5 tareas esten HABILITADAS. Enable incondicional de las 5
+    // (distinto de Revert, que solo re-habilita las que el original decia enabled).
+    private static Task RestablecerTasksDefaultAsync() => Task.Run(() =>
+    {
+        foreach (var t in TaskPaths) RunProcess("schtasks", $"/change /tn \"{t}\" /enable");
+    });
+
+    // HPET -> el default es que los 3 elementos BCD NO esten seteados (Windows elige el reloj
+    // solo). Delete incondicional -- la forma documentada de volver a ese estado.
+    private static Task RestablecerHpetDefaultAsync() => Task.Run(() =>
+    {
+        foreach (string element in HpetElements) RunProcess("bcdedit", $"/deletevalue {element}");
+    });
+
+    // PageFile -> el default universal es la gestion automatica. Subconjunto de la rama
+    // AutomaticManaged de RevertPageFileAsync, sin tocar TweakStateStore.
+    private static Task RestablecerPageFileDefaultAsync() => Task.Run(() =>
+    {
+        ManagementObject? cs = null;
+        try
+        {
+            using var csSearcher = new ManagementObjectSearcher("SELECT * FROM Win32_ComputerSystem");
+            using var csCol = csSearcher.Get();
+            foreach (ManagementObject mo in csCol) { cs = mo; break; }
+            if (cs is null) return;
+            cs["AutomaticManagedPagefile"] = true;
+            cs.Put();
+            App.Logger?.Log("PageFile: gestion automatica de Windows restablecida (efectivo tras reinicio)", "info");
+        }
+        catch (Exception ex) { App.Logger?.Log($"Error restableciendo PageFile: {ex.Message}", "err"); }
+        finally { cs?.Dispose(); }
+    });
+
+    // FastStartup -> el default es Fast Startup activo: HiberbootEnabled=1 + hibernacion habilitada.
+    private static Task RestablecerFastStartupDefaultAsync() => Task.Run(() =>
+    {
+        using (var key = RegistryPrivilegeHelper.OpenWritable(RegistryHive.LocalMachine, FastStartupPowerKey))
+            key?.SetValue("HiberbootEnabled", 1, RegistryValueKind.DWord);
+        RunProcess("powercfg", "/hibernate on");
     });
 
     // ── Helpers compartidos ────────────────────────────────────────────────────

@@ -19,13 +19,17 @@ internal sealed record DriverPackage(
 // F2.18/F2.19 - TUNING AVANZADO (motor)
 // Mirror de los helpers Get/Set del PS1: Win32PrioritySeparation,
 // HAGS, politica termica, info extendida y limpieza del Driver Store.
-// La UI vive declarativa en el XAML (tab "Tuning Avanzado").
+// Prompt 56: la pestana "Tuning Avanzado" se retiro -- los 3 toggles migraron a
+// TweakRegistry.cs (seccion Tweaks). SetWin32PrioritySep/SetHagsState/EnsureBackupSession
+// se eliminaron de aca (llamaban BackupService directo, reemplazados por el revert real via
+// TweakStateStore en TweakRegistry). Quedan los Get* (reusados por TweakRegistry y por el
+// overlay System Info) y SetCoolingPolicy (reusado tal cual por TweakRegistry, nunca toco
+// BackupService), mas la info extendida de componentes y la limpieza del Driver Store, que no
+// son parte de esta migracion.
 // ============================================================
 internal sealed class TuningService
 {
-    private const string PriorityKeyPs = @"HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl";
     private const string PriorityKey   = @"SYSTEM\CurrentControlSet\Control\PriorityControl";
-    private const string GraphicsKeyPs = @"HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers";
     private const string GraphicsKey   = @"SYSTEM\CurrentControlSet\Control\GraphicsDrivers";
 
     // GUIDs de la politica termica del sistema (subgrupo + ajuste).
@@ -44,14 +48,6 @@ internal sealed class TuningService
         catch { return 2; }
     }
 
-    internal void SetWin32PrioritySep(int value)
-    {
-        EnsureBackupSession();
-        App.Backup.SaveRegBackup(PriorityKeyPs, "Win32PrioritySep_backup");
-        using var k = RegistryPrivilegeHelper.OpenWritable(RegistryHive.LocalMachine, PriorityKey);
-        k?.SetValue("Win32PrioritySeparation", value, RegistryValueKind.DWord);
-    }
-
     // ── HAGS (Hardware-Accelerated GPU Scheduling) ────────────────────────────
     internal bool GetHagsState()
     {
@@ -61,14 +57,6 @@ internal sealed class TuningService
             return Convert.ToInt32(k?.GetValue("HwSchMode") ?? 0) == 2;
         }
         catch { return false; }
-    }
-
-    internal void SetHagsState(bool enable)
-    {
-        EnsureBackupSession();
-        App.Backup.SaveRegBackup(GraphicsKeyPs, "HAGS_backup");
-        using var k = RegistryPrivilegeHelper.OpenWritable(RegistryHive.LocalMachine, GraphicsKey);
-        k?.SetValue("HwSchMode", enable ? 2 : 1, RegistryValueKind.DWord);
     }
 
     // ── Politica termica (Cooling Policy) ─────────────────────────────────────
@@ -395,11 +383,6 @@ internal sealed class TuningService
     });
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    private static void EnsureBackupSession()
-    {
-        if (!App.Backup.HasSession) App.Backup.NewBackupSession();
-    }
-
     private static string RunCapture(string exe, string args)
     {
         using var p = new Process

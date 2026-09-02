@@ -98,9 +98,15 @@ Checklist en orden de ejecución:
       de DNS con adaptadores huérfanos, etc.) y las divergencias respecto al plan original (sección
       5) están documentados en `ARQUITECTURA_TWEAKS.md`, sección 7. No se marca `[x]` porque queda
       pendiente:
-      - [ ] Decidir con Tomy si/cuándo retirar el tab Optimizar clásico, ahora que TODO lo que hace
-            tiene hogar nuevo (Tweaks/Network/Limpieza/Herramientas/Home, 26/26 + Limpieza) — es una
-            decisión de producto, no técnica; no tomarla unilateralmente.
+      - [x] Decidir con Tomy si/cuándo retirar el tab Optimizar clásico — **retirado completo en el
+            corte 66**: pantalla (XAML + `footerBar`) y code-behind exclusivo eliminados
+            (`OnRunOptimizationAsync`, `FinishOptimizationAsync`, `ShowCompareDialog` + las clases
+            `FinishOptimizationDialog`/`CompareDialog`, `ApplyPreset`, `AllOptCheckboxes`,
+            `GetCurrentSel`, `SelectAll`, `UpdateDnsHint`, `UpdatePlanSummary`,
+            `SaveProfile`/`LoadProfile`, `OptimizationService.BuildActionPlan`).
+            `OptimizationService.RunAsync`/`GetPreset` se preservaron intactos — motor exclusivo del
+            modo `-Silent` de CLI desde este corte. Probado por Tomy sobre el .exe publicado. Detalle
+            completo en `ARQUITECTURA_TWEAKS.md` sección 7.9.
       - [ ] Validar en hardware o VM sin SSD real la rama `NoAplicable` (no-SSD) de
             SvcSysMain/SvcWSearch (Fase B, Tanda 4) — implementada y revisada contra el código, pero
             nunca ejercitada en vivo porque la máquina de build tiene SSD.
@@ -112,6 +118,102 @@ Checklist en orden de ejecución:
             revertir FastStartup con Power todavía aplicado podría reactivar hibernación y
             desarmar parte de lo que Power dejó configurado, sin que ninguna de las dos cards lo
             avise). La decisión de cómo comunicarlo o resolverlo queda aparte, no tomada acá.
+      - [x] Historial — confirmado que NO se degrada tras retirar el tab clásico (corte 66): la
+            preocupación (diagnóstico prompt 54) era que, sin ningún flujo llamando
+            `SaveSessionMetadata`, las stats agregadas y el gráfico de score quedaran congelados.
+            `OptimizationService.RunAsync`/`GetPreset` no se tocaron — el modo `-Silent` sigue
+            llamando `SaveSessionMetadata` exactamente igual, así que Historial sigue recibiendo
+            sesiones con metadata completa (más las de Bloatware, sin metadata; su fila en Historial
+            ya no ofrece "Revertir" desde el corte 69, ver abajo). Detalle en
+            `ARQUITECTURA_TWEAKS.md` sección 7.6, hallazgo 1.
+      - [x] Tuning Avanzado (Scheduler CPU, HAGS y Política térmica, los 3 controles ex-`ui:ToggleSwitch`
+            del corte 16B) **ya no depende de `BackupService`** — migrado completo a
+            `TweakRegistry`/`TweakStateStore` en el corte 56, pestaña retirada del sidebar
+            (`SetWin32PrioritySep`/`SetHagsState`/`EnsureBackupSession` se eliminaron de
+            `TuningService.cs`, sin caller). El mapa de dependencias de `BackupService` queda: (a) el
+            tab Optimizar clásico, (b) el modo `-Silent` de CLI, (c) Bloatware. Detalle en
+            `ARQUITECTURA_TWEAKS.md` sección 7.6.
+      - [x] Bloatware: el botón "Revertir" de Historial sobre una sesión de desinstalación no
+            reinstalaba nada — y **peor**, reportaba éxito falso (el diálogo prometía restaurar
+            registro/servicios/red y, tras no hacer nada, la app decía "Sesión revertida
+            correctamente… reinicia el equipo"). **Diagnosticado en el corte 68, resuelto en el
+            corte 69.** El prompt 68 confirmó que un revert real no es viable de forma consistente
+            (remoción = usuario + todos los usuarios + deprovisión de imagen, sin payload local;
+            todo camino de vuelta —Store, winget, DISM— necesita internet, no es instantáneo, y
+            varios casos no tienen solución real). Decisión de Tomy: se sacó el botón "Revertir"
+            para las sesiones de Bloatware en Historial, **sin reemplazo** — la fila queda como
+            registro informativo (badge "Bloatware", acción "—" inerte). Detección precisa vía
+            `BackupSessionInfo.HasBloatwareRef` (presencia de `bloatware_removed.json`) +
+            `IsBloatwareOnly` — deliberadamente NO se usó `HasMeta` solo (no es sinónimo exacto de
+            "es Bloatware": un `-Silent` que muriera entre `NewBackupSession` y `SaveSessionMetadata`
+            también daría `HasMeta=false`). `RestoreSession` endurecido con un guard explícito
+            (loguea el motivo real y devuelve `false` en vez de recorrer sus 7 pasos en 0/0/0 y
+            reportar éxito genérico). Segundo punto de entrada, no mapeado en el diagnóstico original
+            y también corregido: `btnRevertLast` ("Revertir última sesión") ahora avisa en vez de
+            revertir cuando la sesión más reciente es de Bloatware. Confirmado que no hay ningún otro
+            camino (sin atajos de teclado, sin menú contextual, sin acción en lote). Probado por Tomy
+            sobre el .exe publicado. Detalle en `ARQUITECTURA_TWEAKS.md` sección 7.6 (hallazgo 3) y
+            7.10 (fix completo).
+      - [ ] Bloatware — reinstalación automática (evaluar más adelante, sin compromiso): si algún
+            día vale la pena construir un revert *real* (reinstalar lo desinstalado) para el
+            subconjunto de apps de Store de consumo (Candy Crush, Bing*, etc.), donde `winget`/Store
+            serían un camino técnicamente posible. El prompt 68 dejó la advertencia clara: **ningún
+            camino es instantáneo ni offline**, y varios casos no tienen solución — apps de Xbox
+            protegidas/aprovisionadas, Skype (discontinuado por Microsoft), OEM que reinstalaría una
+            versión distinta a la original, y "Microsoft Print to PDF" que ni siquiera es una app (es
+            una feature de Windows, se restaura por DISM). Detalle en `ARQUITECTURA_TWEAKS.md`
+            sección 7.5.
+      - [x] Bug real (card "Última optimización" del Home sin filtrar `HasMeta`) — **resuelto en los
+            cortes 62/63, no con un parche de filtro**: Tomy notó que el problema de fondo no era el
+            filtro sino que los 4 datos de esa card (MB liberados, acciones, score, fecha) pertenecían
+            por completo al mecanismo de sesión del tab clásico que se viene retirando. Se reemplazó la
+            card entera (`UpdateLastOptCardAsync` y sus 4 campos ya no existen) por un contador en vivo
+            de "Tweaks activos" (`TweakRegistry.All` + `LeerEstadoAsync`, cache en memoria con ajuste
+            incremental), desacoplado por completo de `BackupService`/`BackupSessionInfo` — sin nada
+            que filtrar porque ya no lee sesiones. El corte 63 además confirmó y corrigió una race
+            condition real entre el barrido inicial y los ajustes incrementales. Detalle completo en
+            `ARQUITECTURA_TWEAKS.md` sección 7.8.
+      - [x] La comparativa antes/después (`ShowCompareDialog`) y el reporte HTML
+            (`ExportHtmlReportAsync`) — **resuelto retirando el código, no reemplazándolo (corte
+            66, decisión de producto de Tomy)**: en vez de dejarlos exportando/mostrando datos
+            vacíos o desactualizados, `ShowCompareDialog`/`FinishOptimizationDialog`/`CompareDialog`
+            se eliminaron por completo y `ExportHtmlReportAsync` se eliminó con su botón
+            (`btnExportHTML`, vive en el overlay de Consola) oculto explícito. Detalle en
+            `ARQUITECTURA_TWEAKS.md` sección 7.6, hallazgo 5.
+      - [ ] Nota menor: `CleanupOldBackups(keepDays)` en `BackupService.cs` no tiene ningún caller en
+            todo el árbol — parece código muerto, sin relación directa con el tab clásico, candidato a
+            limpieza de repo.
+      - [ ] Onboarding: el paso de selección de perfil quedó pausado sin diseño real (corte 66). Se
+            sacó del wizard (aplicaba `ApplyPreset`, eliminado junto con el tab clásico) sin construir
+            ningún reemplazo — hace falta diseñar de fondo cómo elegir un perfil podría tener un
+            efecto real contra la arquitectura nueva (aplicar un subconjunto de tweaks vía
+            `TweakRegistry`, o rediseñar el paso para que no prometa algo que no hace) antes de poder
+            reintroducirlo. `OnboardingDialog` quedó en 3 pasos (hardware, score, listo). Detalle en
+            `ARQUITECTURA_TWEAKS.md` sección 7.9.
+      - [ ] Tweaks/Network sin mecanismo de "aplicar varios de una" (decisión de alcance, corte 66):
+            se evaluó construirlo al retirar el tab clásico y se decidió NO hacerlo en ese corte —
+            evaluar más adelante, según uso real, si hace falta selección múltiple + aplicar en
+            bloque para Tweaks/Network (mismo patrón que ya tiene Limpieza). Prioridad baja, sin
+            fecha. Detalle en `ARQUITECTURA_TWEAKS.md` sección 7.9.
+      - [ ] Mapeo de "defaults seguros de Windows" para una futura acción "Restablecer a un valor
+            predeterminado" (prompt 57, diagnóstico puro, nada implementado): de los 27
+            `TweakDefinition` reales de `TweakRegistry.All`, 20 tienen un default de Windows confiable
+            para ofrecer (Telemetry, SvcDiag, Tasks, PageFile, PowerThrot, MouseAccel, GameMode,
+            Cortana, Notif, Nagle, Visual, SvcXbox, SvcWER, SvcMaps, HPET, FastStartup, SvcSysMain,
+            SvcWSearch, DisableIPv6, HAGS) y 7 son riesgosos/inciertos, sub-divididos en **Grupo A**
+            (aproximable con advertencia explícita — la mayoría de fuentes coincide aunque no sea 100%
+            universal: TCP, GPUPrio, GameDVR, SvcFax) y **Grupo B** (sin ningún valor defendible,
+            ofrecer uno sería inventarlo: Power —puntualmente `standby-timeout-ac`, el GUID de plan sí
+            tiene un default razonable en Equilibrado—, Win32PrioritySep, PoliticaTermica —el caso más
+            incierto de los 27, ni "restablecer a Equilibrado" resuelve nada porque el propio
+            Equilibrado varía por OEM—). Motivo real del hallazgo: si un tweak ya está On desde antes
+            de tocar el toggle (config externa del usuario, o una sesión vieja de WinBoost)
+            `TweakStateStore` nunca capturó un original, y hoy no hay forma de apagarlo desde la app
+            salvo editando el registro a mano — "Revertir" queda como no-op honesto, no es un bug.
+            Detalle completo (tabla de los 27 + las 4 opciones de alcance evaluadas) en
+            `ARQUITECTURA_TWEAKS.md` sección 7.7. **Decisión de alcance sin tomar** — depende de que
+            Tomy elija entre: (A) solo los 20 Seguro, (B) sumar el Grupo A con advertencia explícita de
+            incertidumbre, (C) los 27 completos incluido el Grupo B, o (D) no construir la feature.
 - [ ] **4. Subir padding/espaciado global** (usar los escalones altos de la escala 4px). La UI
       actual aprieta; el rediseño pide más aire en pantallas de entrada/decisión.
 - [ ] **5. Reforzar jerarquía tipográfica** (Segoe UI en varios pesos): títulos claramente más
@@ -350,8 +452,10 @@ en el rediseño:
       descarga al release de GitHub, sección "Qué cambia exactamente" (desarma el escepticismo de
       Reddit/foros).
 - [ ] **Página de metodología pública** (la "landing de confianza"): cómo se mide el boot time, qué
-      toca cada tweak, por qué se removió `Win32PrioritySeparation`. **Nadie del segmento la tiene.**
-      Barata, alto diferencial.
+      toca cada tweak, cómo se eligió cada valor (ej. por qué `Win32PrioritySeparation` usa 0x28 en
+      vez del viejo preset "Responsividad" 0x24 — nota corregida en el prompt 56: el tweak sigue
+      activo como toggle opt-in, nunca se removió). **Nadie del segmento la tiene.** Barata, alto
+      diferencial.
 - [ ] **Primer feedback real** (3-5 usuarios: conocidos, Discord, foros de gaming). Feedback honesto
       (qué gustó, qué no funcionó, qué les parece el precio). Define la siguiente versión.
 

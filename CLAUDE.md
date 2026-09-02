@@ -55,22 +55,26 @@ excepcional y a pedido explicito), revisar ese historial antes de editar.
 - Estilos de boton: `BtnMain` / `BtnSec` / `BtnPreset` / `BtnDanger` / `BtnNav` / `BtnNavActive` / `BtnNavLicense` / `BtnNavIcon` / `BtnNavIconActive` / `BtnGlossyCyan` / `BtnGlossyDark` / `BtnToggleOn` / `BtnToggleOff` (+ `CardGlossy` para cards)
 
 ## Orden de tabs (SelectedIndex / SetActiveNav en MainWindow.xaml.cs)
-Corte 27: Consola dejo de ser tab (overlay). Corte 30: Info del sistema dejo de ser tab; el **Home**
-ocupa su slot (indice 2) y es la ENTRADA de la app (arranca en `SetActiveNav(2)`).
-- 0 = Optimizar
-- 1 = Herramientas
-- 2 = **Home** (dashboard de entrada; ex Info del sistema). Item `navHome`, arriba de todo del sidebar.
-- 3 = Arranque
-- 4 = Bloatware
-- 5 = Historial
-- 6 = Ajustes
-- 7 = Licencia
-- 8 = Tuning Avanzado
-- 9 = **Tweaks** (corte 38, piloto Fase A). Grupo propio en el sidebar (`navTweaks`), separado de
+Corte 27: Consola dejo de ser tab (overlay). Corte 30: Info del sistema dejo de ser tab; **Home**
+paso a ser la ENTRADA de la app. Corte 56: Tuning Avanzado dejo de ser tab (sus 3 controles
+migraron a Tweaks); Tweaks/Network/Limpieza corrieron un indice hacia abajo. Corte 66: el tab
+**Optimizar clasico** (el original, indice 0) se retiro completo — era la pantalla mas antigua y
+con mas superficie de toda la app, con sus 26/26 tweaks + Limpieza ya migrados a Tweaks/Network/
+Limpieza desde los cortes anteriores (ver `docs/ARQUITECTURA_TWEAKS.md` 7.2). TODOS los indices
+restantes corrieron un lugar hacia abajo; Home arranca ahora en `SetActiveNav(1)`.
+- 0 = Herramientas
+- 1 = **Home** (dashboard de entrada; ex Info del sistema). Item `navHome`, arriba de todo del sidebar.
+- 2 = Arranque
+- 3 = Bloatware
+- 4 = Historial
+- 5 = Ajustes
+- 6 = Licencia
+- 7 = **Tweaks** (corte 38, piloto Fase A; Scheduler CPU/HAGS/Politica termica sumados en el corte
+  56, ex tab Tuning Avanzado). Grupo propio en el sidebar (`navTweaks`), separado de
   PRINCIPAL/SISTEMA. Cards generadas en codigo desde `App.Tweaks.All` (`TweakRegistry`), NO en
-  XAML a mano. No reemplaza ni toca el tab Optimizar (checkboxes + Ejecutar siguen igual, en
-  paralelo) — ver `docs/ARQUITECTURA_TWEAKS.md`.
-- 10 = **Network** (corte 47, Fase C Paso 1; DNS + DNSFlush sumados en el Paso 2, corte 48). Grupo
+  XAML a mano. Universo completo de 27 tweaks (24 acá + 3 en Network) — ver
+  `docs/ARQUITECTURA_TWEAKS.md`.
+- 8 = **Network** (corte 47, Fase C Paso 1; DNS + DNSFlush sumados en el Paso 2, corte 48). Grupo
   propio en el sidebar (`navNetwork`), hermano de Tweaks (no anidado bajo el). Misma mecanica que
   Tweaks: cards generadas en codigo (`LoadNetworkTabAsync`, `MainWindow.xaml.cs`) desde
   `App.Tweaks.All` filtrado a `Categoria=="Red"` — comparten el mismo
@@ -80,17 +84,35 @@ ocupa su slot (indice 2) y es la ENTRADA de la app (arranca en `SetActiveNav(2)`
   `DnsPresetService.cs`) y DNSFlush (primer caso de `QuickActionRegistry.cs`, acciones de un solo
   click sin estado) son card propias hechas a mano, no generadas por `BuildTweakCard` — ninguno de
   los dos encaja en el molde `TweakDefinition`.
-- 11 = **Limpieza** (corte 49, Fase C Paso 3). Grupo propio en el sidebar (`navLimpieza`), hermano
+- 9 = **Limpieza** (corte 49, Fase C Paso 3). Grupo propio en el sidebar (`navLimpieza`), hermano
   de Tweaks/Network — cierra la reorganizacion que saca categorias del item unico "Tweaks". UNA sola
   card hecha a mano (`LoadLimpiezaTabAsync`/`RunLimpiezaAsync`, `MainWindow.xaml.cs`) con los 8
   items de limpieza ya existentes en `OptimizationService.CleanupTweaks` (subido a `internal` para
-  reusarlo) + `ConfirmOptimizationDialog` (el mismo del tab Optimizar clasico) antes de ejecutar.
-  Sin revert (borrar temporales/cache/logs no es reversible) y sin TweakStateStore de por medio.
+  reusarlo) + `ConfirmOptimizationDialog` (compartido con el ex-tab Optimizar clasico, retirado en
+  el corte 66) antes de ejecutar. Sin revert (borrar temporales/cache/logs no es reversible) y sin
+  TweakStateStore de por medio.
 - Consola: ya NO es tab. Overlay modal (`consoleOverlay`) via `OpenConsoleOverlay()` (icono `navConsola`,
   badge de errores, o automatico al correr optimizacion/bloatware).
 - Info del sistema: ya NO es tab. Hardware + componentes -> overlay `systemInfoOverlay`
   (`OpenSystemInfoOverlay()`, boton "System Info" del Home). El monitor en vivo alimenta los medidores
   circulares del Home; el score alimenta la malla de salud del Home.
+- Tuning Avanzado: ya NO es tab (corte 56). Scheduler de CPU (Win32PrioritySeparation), HAGS y
+  Politica termica migraron a la seccion **Tweaks** (categoria "Sistema y Rendimiento"), con revert
+  real via `TweakStateStore` en vez del viejo mecanismo que llamaba `BackupService` directo.
+- **Optimizar (clasico): ya NO es tab (corte 66).** Retirado completo — XAML (`<TabItem
+  Header="Optimizar">` + `footerBar` anidado adentro) y code-behind exclusivo
+  (`OnRunOptimizationAsync`, `FinishOptimizationAsync`, `ShowCompareDialog`, `ApplyPreset`,
+  `AllOptCheckboxes`, `GetCurrentSel`, `SelectAll`, `UpdateDnsHint`, `UpdatePlanSummary`,
+  `SaveProfile`/`LoadProfile`, `OptimizationService.BuildActionPlan`) eliminados; `FinishOptimizationDialog`
+  y `CompareDialog` (clases enteras, sin otro caller) tambien. `OptimizationService.RunAsync`/
+  `GetPreset` **NO se tocaron** — siguen intactos como motor exclusivo del modo `-Silent` de CLI
+  (`App.RunSilentAsync`, `App.xaml.cs`), que ya llamaba a esos dos directo sin pasar por la pantalla
+  ni por ningun metodo de `MainWindow.xaml.cs`. `btnExportHTML` (Consola) quedo oculto
+  (`Visibility="Collapsed"`) por falta de fuente de datos; `ExportHtmlReportAsync` se elimino sin
+  caller. `btnHomeOptimize` ahora navega a Tweaks (no a Optimizar). El banner de trial
+  (`bannerTrial`/`lblTrialText`/`btnTrialUpgrade`, `UpdateTrialBanner`) vivia anidado en `footerBar`
+  — se reubico en Home (nueva entrada de la app) en vez de perderse. El paso de seleccion de perfil
+  del `OnboardingDialog` (aplicaba `ApplyPreset`) se saco del wizard, que quedo en 3 pasos.
 
 ## Modulos implementados
 Ver `docs/PENDIENTES.md` (fases 0-6, todas completas salvo pendientes de producto/

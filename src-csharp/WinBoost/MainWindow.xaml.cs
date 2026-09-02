@@ -40,9 +40,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private bool             _procLoaded        = false;  // carga lazy al entrar a Herramientas
     private const int        ProcTimerIntervalSec = 3;
 
-    // Optimizacion (3.1): cache del system info + score previo
+    // Cache del system info, reusada por varias secciones (Limpieza, TRIM, Reporte HTML ex-3.1)
     private SystemSnapshot?  _systemInfo;
-    private int              _scoreBefore;
 
     // Bloatware (4.1): cache de la lista detectada + checks por indice
     private IReadOnlyList<DetectedApp>? _bloatList;
@@ -69,11 +68,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Info de componentes (tab Info): cache de la info extendida (WMI) leida una vez
     private ExtendedSystemInfo? _extendedInfo;
 
-    // Tuning Avanzado (6.1): carga lazy + estado del Driver Store
-    private bool _tuningLoaded = false;
-    // true mientras se setea IsChecked de los ToggleSwitch por codigo (init o revert tras error):
-    // los handlers Checked/Unchecked lo chequean primero para no auto-aplicar el tweak (16B).
-    private bool _tuningSyncing = false;
+    // Estado del Driver Store (Herramientas). _tuningLoaded/_tuningSyncing (6.1, los 3 toggles
+    // de la ex pestana Tuning Avanzado) se eliminaron en el prompt 56 -- migraron a la seccion
+    // Tweaks, que ya tiene su propio _tweaksSyncing generico (ver abajo).
     private IReadOnlyList<DriverPackage> _driverPackages = [];
     private readonly List<CheckBox> _driverChecks = [];
     private bool _driverBackupDone = false;
@@ -82,7 +79,30 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // _syncing que Tuning Avanzado (evita que cargar el estado inicial dispare Aplicar/Revertir).
     private bool _tweaksLoaded  = false;
     private bool _tweaksSyncing = false;
-    private readonly Dictionary<string, (Wpf.Ui.Controls.ToggleSwitch Switch, TextBlock Status)> _tweakCardRefs = [];
+    // ResetPanel (prompt 71): panel "Restablecer a default de Windows", != null solo para los 20
+    // tweaks "Seguro" (def.RestablecerDefaultAsync != null). UpdateTweakCardUi decide su
+    // visibilidad (On + sin Original capturado). null para el resto.
+    private readonly Dictionary<string, (Wpf.Ui.Controls.ToggleSwitch Switch, TextBlock Status, StackPanel? ResetPanel)> _tweakCardRefs = [];
+
+    // Card "Tweaks activos" del Home (prompt 62, reemplaza a la vieja "Ultima optimizacion" atada a
+    // BackupSessionInfo). Cache en memoria SOLO -- no tiene sentido persistirla entre sesiones, es
+    // un conteo "ahora mismo". null = todavia no se barrieron los 27 TweakDefinition ni una vez.
+    private int? _activeTweaksCount;
+    private bool _activeTweaksLoading;
+    // Prompt 63: si un Aplicar/Revertir toca cualquier tweak MIENTRAS el barrido inicial todavia
+    // esta en vuelo, el numero que ese barrido termine leyendo puede no reflejar ese cambio (el
+    // LeerEstadoAsync de ESE tweak especifico pudo haber corrido antes del cambio real) -- y como
+    // el mecanismo nunca vuelve a barrer despues del primer calculo (solo incrementa de ahi en
+    // mas), ese desfasaje quedaria fijo por el resto de la sesion. AdjustActiveTweaksCache marca
+    // esto en true mientras _activeTweaksLoading es true; UpdateActiveTweaksCardAsync lo usa para
+    // descartar el resultado del barrido y repetirlo en vez de cachear un numero que ya sabe que
+    // esta desactualizado.
+    private bool _activeTweaksDirtyDuringSweep;
+    // Ultimo TweakState conocido por Id, para poder calcular el delta (+1/-1) cuando un
+    // Aplicar/Revertir individual cambia el estado real, sin tener que re-barrer los 27. Se
+    // alimenta gratis desde UpdateTweakCardUi (todo render de una card pasa por ahi), tanto en la
+    // carga inicial de Tweaks/Network como en cada Aplicar/Revertir.
+    private readonly Dictionary<string, TweakState> _lastKnownTweakState = [];
 
     // Network (Fase C, Paso 1, 47_fase_c_paso1_seccion_network.txt): panel hermano de Tweaks, misma
     // mecanica de carga lazy -- comparte _tweakCardRefs/_tweaksSyncing con Tweaks (dict indexado por
@@ -91,15 +111,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Limpieza (Fase C, Paso 3, 49_fase_c_paso3_seccion_limpieza.txt): sin dictionary de card refs
     // propio -- es UNA sola card con checkboxes + boton, no una lista de N cards generadas.
     private bool _limpiezaLoaded = false;
-
-    // Reporte HTML (4.7): estado de la ultima optimizacion para el reporte
-    private double                _lastFreedMb;
-    private StateSnapshot?        _snapshotAfter;
-    private IReadOnlyList<string> _lastReportActions = [];
-
-    private static readonly string _optProfilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".OptimizarPC", "opt_profile.json");
 
     private static readonly SolidColorBrush BrushGreen  = FreezeBrush(Color.FromRgb(0x22, 0xC5, 0x5E));
     private static readonly SolidColorBrush BrushYellow = FreezeBrush(Color.FromRgb(0xF5, 0x9E, 0x0B));
@@ -119,9 +130,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static readonly SolidColorBrush BrushDriverName = FreezeBrush(Color.FromRgb(0xDD, 0xDD, 0xDD));
     private static readonly SolidColorBrush BrushDriverDate = FreezeBrush(Color.FromRgb(0x66, 0x66, 0x66));
 
-    // nav buttons indexados por TAB (0-9 tras eliminar la pestaña Consola, fix 27; navTuning = 8,
-    // navTweaks = 9 desde el piloto Fase A). navConsola NO esta aca: dejo de ser tab y ahora abre
-    // el overlay.
+    // nav buttons indexados por TAB (0-10 tras eliminar la pestaña Consola, fix 27, y la pestaña
+    // Tuning Avanzado, prompt 56; navTweaks = 8 desde el piloto Fase A). navConsola NO esta aca:
+    // dejo de ser tab y ahora abre el overlay.
     private Button[] _navButtons = [];
     // Subconjunto que usa el estilo de ICONO (fila inferior del sidebar): Ajustes y Licencia.
     // navConsola tambien es icono pero se maneja aparte (no mapea a tab). Fix 27.
@@ -158,37 +169,37 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Indexado por TAB (0-8). Consola abre overlay (fuera del array). Fix 30: el tab index 2
-        // (ex Info del sistema) ahora es el HOME -> navHome ocupa esa posicion; navInfo se elimino.
+        // Indexado por TAB (0-9). Consola abre overlay (fuera del array). Fix 30: el tab index de
+        // Home (ex Info del sistema) -> navHome ocupa esa posicion; navInfo se elimino.
+        // Prompt 56: navTuning se elimino (pestana Tuning Avanzado retirada, migrada a Tweaks) --
+        // Tweaks/Network/Limpieza corrieron un indice hacia abajo (9/10/11 -> 8/9/10).
+        // Prompt 66: navOptimizar se elimino (tab Optimizar clasico retirado) -- TODOS los indices
+        // corrieron un lugar hacia abajo (era 0-10 con Optimizar=0/Home=2, ahora 0-9 con Home=1).
         _navButtons =
         [
-            navOptimizar,    // 0
-            navHerramientas, // 1
-            navHome,         // 2  (era navInfo; el tab index 2 ahora es Home)
-            navArranque,     // 3
-            navBloatware,    // 4
-            navHistorial,    // 5
-            navAjustes,      // 6  — icono
-            navLicencia,     // 7  — icono
-            navTuning,       // 8
-            navTweaks,       // 9  — piloto Fase A
-            navNetwork,      // 10 — Fase C, Paso 1
-            navLimpieza,     // 11 — Fase C, Paso 3
+            navHerramientas, // 0  (era 1)
+            navHome,         // 1  (era navInfo; el tab index ahora es Home; era 2)
+            navArranque,     // 2  (era 3)
+            navBloatware,    // 3  (era 4)
+            navHistorial,    // 4  (era 5)
+            navAjustes,      // 5  — icono (era 6)
+            navLicencia,     // 6  — icono (era 7)
+            navTweaks,       // 7  — piloto Fase A (era 8)
+            navNetwork,      // 8  — Fase C, Paso 1 (era 9)
+            navLimpieza,     // 9  — Fase C, Paso 3 (era 10)
         ];
         _iconNavButtons = [navAjustes, navLicencia];
 
-        navOptimizar.Click    += (_, _) => SetActiveNav(0);
-        navHerramientas.Click += (_, _) => SetActiveNav(1);
-        navHome.Click         += (_, _) => SetActiveNav(2);   // Home (ex Info, fix 30)
-        navArranque.Click     += (_, _) => SetActiveNav(3);
-        navBloatware.Click    += (_, _) => SetActiveNav(4);
-        navHistorial.Click    += (_, _) => SetActiveNav(5);
-        navAjustes.Click      += (_, _) => SetActiveNav(6);
-        navLicencia.Click     += (_, _) => SetActiveNav(7);
-        navTuning.Click       += (_, _) => SetActiveNav(8);
-        navTweaks.Click       += (_, _) => SetActiveNav(9);
-        navNetwork.Click      += (_, _) => SetActiveNav(10);  // Network, Fase C Paso 1
-        navLimpieza.Click     += (_, _) => SetActiveNav(11);  // Limpieza, Fase C Paso 3
+        navHerramientas.Click += (_, _) => SetActiveNav(0);   // era 1, prompt 66 (retiro tab Optimizar)
+        navHome.Click         += (_, _) => SetActiveNav(1);   // Home (ex Info, fix 30; era 2)
+        navArranque.Click     += (_, _) => SetActiveNav(2);   // era 3
+        navBloatware.Click    += (_, _) => SetActiveNav(3);   // era 4
+        navHistorial.Click    += (_, _) => SetActiveNav(4);   // era 5
+        navAjustes.Click      += (_, _) => SetActiveNav(5);   // era 6
+        navLicencia.Click     += (_, _) => SetActiveNav(6);   // era 7
+        navTweaks.Click       += (_, _) => SetActiveNav(7);   // Tweaks (era 8, prompt 56 lo dejo en 8; era 9)
+        navNetwork.Click      += (_, _) => SetActiveNav(8);   // Network, Fase C Paso 1 (era 9)
+        navLimpieza.Click     += (_, _) => SetActiveNav(9);   // Limpieza, Fase C Paso 3 (era 10)
         // Consola: el icono ABRE EL OVERLAY en modo consulta (no navega a ninguna tab).
         navConsola.Click      += (_, _) => OpenConsoleOverlay(running: false);
 
@@ -237,10 +248,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // un boton propio.
         btnRunTrim.Click += async (_, _) => await RunTrimAsync();
 
-        // Home (fix 30): botones de bienvenida + card de ultima optimizacion.
+        // Home (fix 30): botones de bienvenida + card de tweaks activos (prompt 62).
         btnHomeSysInfo.Click     += (_, _) => OpenSystemInfoOverlay();
-        btnHomeOptimize.Click    += (_, _) => SetActiveNav(0);
-        btnHomeViewHistory.Click += (_, _) => SetActiveNav(5);
+        // Prompt 66: el tab Optimizar clasico se retiro -- btnHomeOptimize ahora lleva a Tweaks
+        // (antes SetActiveNav(0), el indice viejo del tab clasico).
+        btnHomeOptimize.Click    += (_, _) => SetActiveNav(7);
+        btnHomeViewTweaks.Click += (_, _) => SetActiveNav(7); // Tweaks (prompt 62, era 8; prompt 66 lo corrio a 7)
         // Fase C, Paso 5: QuickActionDefinition "RestorePoint" -- resultado via ShowToast, mismo
         // mecanismo que ya usa Home para el resumen post-optimizacion (no una card dedicada).
         btnHomeRestorePoint.Click += async (_, _) =>
@@ -310,23 +323,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnToggleProcTimer.Click  += (_, _) => ToggleProcTimer();
         chkShowSysProcs.Click     += async (_, _) => await RefreshProcessListAsync();
 
-        // Optimizacion (3.1)
-        btnPresetGaming.Click += (_, _) => ApplyPreset("Gaming");
-        btnPresetProd.Click   += (_, _) => ApplyPreset("Prod");
-        btnPresetSafe.Click   += (_, _) => ApplyPreset("Safe");
-        btnSaveProfile.Click  += (_, _) => SaveProfile();
-        btnSelAll.Click       += (_, _) => SelectAll(true);
-        btnSelNone.Click      += (_, _) => SelectAll(false);
-        chkDNS.Click          += (_, _) => UpdatePlanSummary();
-        cboDNSProvider.SelectionChanged += (_, _) => UpdatePlanSummary();
-        btnRun.Click          += async (_, _) => await OnRunOptimizationAsync();
-        btnCancelOpt.Click    += (_, _) => App.Worker.Cancel();
-        // Wire todos los checkboxes para actualizar resumen en tiempo real (3.2)
-        foreach (var (_, cb) in AllOptCheckboxes())
-            cb.Click += (_, _) => UpdatePlanSummary();
-        cboDNSProvider.SelectedIndex = 0;
-        LoadProfile(); // llama UpdatePlanSummary al final
-
         // Dispositivos con problemas (2.5)
         btnScanDevices.Click    += async (_, _) => await ScanDevicesAsync();
         btnOpenDevMgmt.Click    += (_, _) =>
@@ -364,14 +360,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnOpenBackupFolder.Click += (_, _) => OpenBackupFolder();
         btnRevertLast.Click       += async (_, _) => await RevertLastSessionAsync();
 
-        // Reporte HTML (4.7)
-        btnExportHTML.Click += async (_, _) => await ExportHtmlReportAsync();
+        // Reporte HTML (4.7) -- prompt 66: sin fuente de datos tras retirar el tab Optimizar
+        // clasico (ExportHtmlReportAsync dependia de _lastReportActions/_lastFreedMb/_scoreBefore,
+        // solo poblados por ese flujo). btnExportHTML se oculta en el XAML del overlay de Consola
+        // (Visibility="Collapsed") en vez de exportar datos vacios para siempre; sin caller,
+        // ExportHtmlReportAsync se elimino del code-behind.
 
         // Licencias + trial (5.1, modulo 12C)
         btnCopyHWID.Click        += (_, _) => CopyHardwareId();
         btnActivateLicense.Click += (_, _) => ActivateLicense();
         btnGetLicense.Click      += (_, _) => GetLicense();
-        btnTrialUpgrade.Click    += (_, _) => SetActiveNav(7); // Licencia (era 8, fix 27)
+        btnTrialUpgrade.Click    += (_, _) => SetActiveNav(6); // Licencia (era 7, prompt 66)
         _ = InitLicenseAsync();
 
         // Auto-updater (5.3, modulo 14)
@@ -382,17 +381,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnCheckUpdatesSettings.Click += async (_, _) => await CheckForUpdatesAsync(manual: true);
         _ = CheckForUpdatesAsync(manual: false);
 
-        // Tuning Avanzado (6.1, modulo F2.18/F2.19) — 3 ui:ToggleSwitch (16B, ex pares de
-        // botones Activar/Desactivar). Wpf.Ui.Controls.ToggleSwitch hereda de ToggleButton:
-        // no tiene IsOn/Toggled (API de WinUI), se cablea con IsChecked + Checked/Unchecked.
-        // _tuningSyncing evita que el set programatico de IsChecked (carga inicial o revert
-        // tras error) dispare el Set* real — ver Update*Ui, que es quien lo prende/apaga.
-        swPrio.Checked   += (_, _) => { if (!_tuningSyncing) SetPrio(true); };
-        swPrio.Unchecked += (_, _) => { if (!_tuningSyncing) SetPrio(false); };
-        swHags.Checked   += (_, _) => { if (!_tuningSyncing) SetHags(true); };
-        swHags.Unchecked += (_, _) => { if (!_tuningSyncing) SetHags(false); };
-        swCool.Checked   += async (_, _) => { if (!_tuningSyncing) await SetCoolingPolicyAsync(1); };
-        swCool.Unchecked += async (_, _) => { if (!_tuningSyncing) await SetCoolingPolicyAsync(0); };
+        // Prompt 56: pestana Tuning Avanzado retirada (3 ui:ToggleSwitch 16B — Scheduler CPU,
+        // HAGS, Politica termica). Migraron a la seccion Tweaks (TweakRegistry.cs), cableados
+        // via BuildTweakCard/_tweaksSyncing como el resto del registro.
         btnScanDrvStore.Click += async (_, _) => await ScanObsoleteDriversAsync();
         btnDriverBackup.Click += async (_, _) => await ExportDriverBackupAsync();
         btnDriverDelete.Click += async (_, _) => await DeleteSelectedDriversAsync();
@@ -403,7 +394,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Toast in-app (BUG 6): al vencer el timer, oculta el toast
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); toastHost.Visibility = Visibility.Collapsed; };
 
-        SetActiveNav(2); // Home = entrada de la app (fix 30)
+        SetActiveNav(1); // Home = entrada de la app (fix 30; era 2, prompt 66)
         App.Logger.Log("WinBoost iniciado", "head");
 
         _ = LoadSystemInfoAsync();
@@ -561,18 +552,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // mientras el overlay esta abierto (eso lo maneja OpenConsoleOverlay/CloseConsoleOverlay).
         if (consoleOverlay.Visibility != Visibility.Visible)
             navConsola.Style = icoInactive;
-
-        // footer solo visible en Optimizar (index 0)
-        if (index == 0)
-        {
-            footerBar.Visibility = Visibility.Visible;
-            footerBar.Height = double.NaN;
-        }
-        else
-        {
-            footerBar.Visibility = Visibility.Collapsed;
-            footerBar.Height = 0;
-        }
 
         // animacion de opacidad 0->1 sobre el contenido de la tab activa
         try
@@ -870,7 +849,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (info.IsLaptop) badgeLaptop.Visibility = Visibility.Visible;
     }
 
-    // ── Home: overlay System Info + card de ultima optimizacion (fix 30) ─────
+    // ── Home: overlay System Info + card de tweaks activos (fix 30, rediseño prompt 62) ─────
     // El overlay reusa el patron del overlay de consola. Siempre cerrable.
     private void OpenSystemInfoOverlay()
     {
@@ -883,44 +862,75 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         systemInfoOverlay.Visibility = Visibility.Collapsed;
     }
 
-    // Card "ULTIMA OPTIMIZACION": datos REALES del ultimo backup de Historial, o estado vacio.
-    private async Task UpdateLastOptCardAsync()
+    // Card "TWEAKS ACTIVOS" del Home (prompt 62, reemplaza a la vieja "Ultima optimizacion" --
+    // esa dependia 100% de BackupSessionInfo/SessionMetadata, el mecanismo del tab Optimizar
+    // clasico que el proyecto viene jubilando, ver diagnostico prompt 61). Cuenta cuantos de
+    // TweakRegistry.All tienen LeerEstadoAsync() == On ahora mismo, EN VIVO -- a proposito NO
+    // reusa AuditResult/RunAuditAsync (la malla de salud): son 17 checks con criterios mas laxos
+    // que los 27 toggles reales (ej. CheckSvcXbox tolera 2 de 3, el TweakDefinition exige los 3),
+    // mostrar ese numero como "tweaks activos" seria inconsistente con lo que el usuario ve en
+    // Tweaks/Network.
+    private async Task UpdateActiveTweaksCardAsync()
     {
+        if (_activeTweaksCount is int cached)
+        {
+            RenderActiveTweaksCard(cached, App.Tweaks.All.Count);
+            return;
+        }
+        // Primera vez que hace falta el numero (tipico: el usuario entra a Home antes de haber
+        // visitado nunca Tweaks o Network) -- barre los 27 en paralelo (cada LeerEstadoAsync ya es
+        // su propio Task.Run, Task.WhenAll no bloquea el hilo UI) y cachea el resultado en memoria
+        // para no repetir el barrido en cada visita a Home. Guard contra doble barrido si el
+        // usuario rebota a Home varias veces mientras el primero todavia esta en vuelo.
+        if (_activeTweaksLoading) return;
+        _activeTweaksLoading = true;
+
+        panelHomeTweaksData.Visibility    = Visibility.Collapsed;
+        panelHomeTweaksLoading.Visibility = Visibility.Visible;
         try
         {
-            var sessions = await Task.Run(() => App.Backup.GetBackupSessions());
-            var last = sessions.FirstOrDefault();
-            if (last is null)
+            // Reintenta si algun Aplicar/Revertir marco el barrido como "sucio" mientras corria
+            // (prompt 63) -- tope chico solo como resguardo contra un caso patologico (alguien
+            // togglea sin parar durante varios barridos seguidos); en el uso real no deberia hacer
+            // falta mas de un reintento, si acaso.
+            int on;
+            int attempts = 0;
+            do
             {
-                panelHomeLastData.Visibility  = Visibility.Collapsed;
-                panelHomeLastEmpty.Visibility = Visibility.Visible;
-                return;
-            }
+                _activeTweaksDirtyDuringSweep = false;
+                var statuses = await Task.WhenAll(App.Tweaks.All.Select(t => t.LeerEstadoAsync()));
+                on = statuses.Count(s => s.State == TweakState.On);
+            } while (_activeTweaksDirtyDuringSweep && ++attempts < 5);
 
-            int delta = last.Meta is { } m ? m.ScoreAfter - m.ScoreBefore : 0;
-            DateTime when;
-            try { when = Directory.GetLastWriteTime(last.Path); } catch { when = DateTime.Now; }
-
-            lblHomeLastWhen.Text    = RelativeTime(when);
-            lblHomeLastFreed.Text   = $"{last.FreedMb} MB";
-            lblHomeLastScore.Text   = delta >= 0 ? $"+{delta}" : $"{delta}";
-            lblHomeLastActions.Text = $"{last.Actions}";
-
-            panelHomeLastEmpty.Visibility = Visibility.Collapsed;
-            panelHomeLastData.Visibility  = Visibility.Visible;
+            _activeTweaksCount = on;
+            RenderActiveTweaksCard(on, App.Tweaks.All.Count);
         }
-        catch { }
+        catch { panelHomeTweaksLoading.Visibility = Visibility.Visible; }
+        finally { _activeTweaksLoading = false; }
     }
 
-    private static string RelativeTime(DateTime dt)
+    private void RenderActiveTweaksCard(int on, int total)
     {
-        var span = DateTime.Now - dt;
-        if (span.TotalDays    >= 2) return $"hace {(int)span.TotalDays} dias";
-        if (span.TotalDays    >= 1) return "hace 1 dia";
-        if (span.TotalHours   >= 2) return $"hace {(int)span.TotalHours} horas";
-        if (span.TotalHours   >= 1) return "hace 1 hora";
-        if (span.TotalMinutes >= 2) return $"hace {(int)span.TotalMinutes} minutos";
-        return "recien";
+        lblHomeTweaksOn.Text    = $"{on}";
+        lblHomeTweaksTotal.Text = $" / {total}";
+        panelHomeTweaksLoading.Visibility = Visibility.Collapsed;
+        panelHomeTweaksData.Visibility    = Visibility.Visible;
+    }
+
+    // Ajusta el cache +1/-1 cuando Aplicar/Revertir cambia el estado REAL de un tweak (comparado
+    // contra el ultimo estado conocido de ese Id, no contra lo que el usuario intento hacer -- un
+    // Revertir no-op o un Aplicar que fallo no deben mover el contador). Si el cache todavia no se
+    // calculo ni una vez (_activeTweaksCount null), no hay nada que ajustar todavia -- pero si un
+    // barrido esta en vuelo en ese momento, igual se marca sucio (ver _activeTweaksDirtyDuringSweep)
+    // para que ese barrido se descarte y se repita en vez de cachear un numero que ya sabe que no
+    // incluyo este cambio.
+    private void AdjustActiveTweaksCache(string id, TweakState newState)
+    {
+        if (_activeTweaksLoading) _activeTweaksDirtyDuringSweep = true;
+        if (_activeTweaksCount is not int count) return;
+        bool wasOn = _lastKnownTweakState.TryGetValue(id, out var previous) && previous == TweakState.On;
+        bool isOn  = newState == TweakState.On;
+        if (wasOn != isOn) _activeTweaksCount = count + (isOn ? 1 : -1);
     }
 
     // ── Limpieza profunda de cache (Herramientas) ────────────────────────────
@@ -1002,20 +1012,18 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         string disk  = (info?.HasSsd ?? false) ? "SSD" : "HDD";
         bool laptop  = info?.IsLaptop ?? false;
 
-        // Preset recomendado (mismo criterio que el PS1)
-        string rec = laptop ? "prod" : ram >= 8 ? "gaming" : "safe";
-
         try
         {
-            var dlg = new OnboardingDialog(cpu, gpu, ram, disk, laptop, score, rec) { Owner = this };
+            // Prompt 66: el wizard ya no elige ni aplica ningun preset (ese paso se saco --
+            // aplicaba los checkboxes del tab Optimizar clasico, retirado en este mismo corte).
+            var dlg = new OnboardingDialog(cpu, gpu, ram, disk, laptop, score) { Owner = this };
             dlg.ShowDialog();
 
-            if (dlg.ChosenPreset is { } preset)
+            if (dlg.Completed)
             {
-                ApplyPreset(preset);                              // aplica el perfil elegido
                 App.Settings.Current.FirstRunCompleted = true;   // Set-FirstRunComplete
                 App.Settings.Save();
-                App.Logger.Log($"Onboarding completado · perfil {preset}", "ok");
+                App.Logger.Log("Onboarding completado", "ok");
             }
         }
         catch { }
@@ -1109,79 +1117,73 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         if (e.Source != mainTabs) return;
 
-        // Tab Herramientas (1): carga lazy de procesos pesados la primera vez +
-        // arranca el auto-refresh (ON por defecto). El scan corre async, no traba la UI.
-        if (mainTabs.SelectedIndex == 1 && !_procLoaded)
+        // Tab Herramientas (0, era 1 -- prompt 66 retiro el tab Optimizar clasico, indice 0
+        // original): carga lazy de procesos pesados la primera vez + arranca el auto-refresh (ON
+        // por defecto). El scan corre async, no traba la UI.
+        if (mainTabs.SelectedIndex == 0 && !_procLoaded)
         {
             _procLoaded = true;
             _ = InitProcessesAsync();
         }
 
-        // Tab Home (2, fix 30): refresca la malla de salud + la card de ultima optimizacion.
-        // (Los componentes ya NO se cargan aca: viven en el overlay System Info, que los pide al
-        // abrirse.)
-        if (mainTabs.SelectedIndex == 2)
+        // Tab Home (1, era 2, fix 30): refresca la malla de salud + la card de tweaks activos
+        // (prompt 62). (Los componentes ya NO se cargan aca: viven en el overlay System Info, que
+        // los pide al abrirse.)
+        if (mainTabs.SelectedIndex == 1)
         {
             if (_lastAuditResult is { } r)
                 Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() => UpdateScorePanel(r)));
-            _ = UpdateLastOptCardAsync();
+            _ = UpdateActiveTweaksCardAsync();
         }
 
-        // Tab Arranque (3): carga lazy de la lista de startup la primera vez
-        if (mainTabs.SelectedIndex == 3 && !_startupLoaded)
+        // Tab Arranque (2, era 3): carga lazy de la lista de startup la primera vez
+        if (mainTabs.SelectedIndex == 2 && !_startupLoaded)
         {
             _startupLoaded = true;
             _ = RefreshStartupAsync();
         }
 
-        // Tab Bloatware (4): escanea lazy la primera vez (el scan enumera AppX y
+        // Tab Bloatware (3, era 4): escanea lazy la primera vez (el scan enumera AppX y
         // tarda; dispararlo aca y no en el arranque evita penalizar el startup).
         // El boton "Actualizar lista" sigue refrescando manualmente despues.
-        if (mainTabs.SelectedIndex == 4 && !_bloatLoaded)
+        if (mainTabs.SelectedIndex == 3 && !_bloatLoaded)
         {
             _bloatLoaded = true;
             _ = ScanBloatwareAsync();
         }
 
-        // Tab Historial (5, era 6 antes del fix 27): carga lazy la primera vez
-        if (mainTabs.SelectedIndex == 5 && !_historyLoaded)
+        // Tab Historial (4, era 5): carga lazy la primera vez
+        if (mainTabs.SelectedIndex == 4 && !_historyLoaded)
         {
             _historyLoaded = true;
             _ = RefreshHistoryAsync();
         }
 
-        // Tab Ajustes (6, era 7): calcula el tamano de la carpeta de backups la primera vez
+        // Tab Ajustes (5, era 6): calcula el tamano de la carpeta de backups la primera vez
         // (async, fuera del hilo UI; BUG 3)
-        if (mainTabs.SelectedIndex == 6 && !_settingsLoaded)
+        if (mainTabs.SelectedIndex == 5 && !_settingsLoaded)
             _ = LoadBackupInfoAsync();
 
-        // Tab Tuning Avanzado (8, era 9): carga lazy de estados + info la primera vez
-        if (mainTabs.SelectedIndex == 8 && !_tuningLoaded)
-        {
-            _tuningLoaded = true;
-            _ = LoadTuningTabAsync();
-        }
-
-        // Tab Tweaks (9): carga lazy de las cards (App.Tweaks.All filtrado a Categoria!="Red", 21
-        // de las 24 del registro -- Nagle/TCP/DisableIPv6 viven en Network; Power (prompt 51)
-        // completa el universo de 26/26 tweaks individuales migrados) + estado real la primera vez
-        if (mainTabs.SelectedIndex == 9 && !_tweaksLoaded)
+        // Tab Tweaks (7, era 8 -- prompt 66 retiro el tab Optimizar clasico): carga lazy de las
+        // cards (App.Tweaks.All filtrado a Categoria!="Red", 24 de las 27 del registro --
+        // Nagle/TCP/DisableIPv6 viven en Network) + estado real la primera vez
+        if (mainTabs.SelectedIndex == 7 && !_tweaksLoaded)
         {
             _tweaksLoaded = true;
             _ = LoadTweaksTabAsync();
         }
 
-        // Tab Network (10, Fase C Paso 1): carga lazy de las cards de categoria Red (Nagle/TCP
-        // mudados desde Tweaks + DisableIPv6 nuevo) + estado real la primera vez.
-        if (mainTabs.SelectedIndex == 10 && !_networkLoaded)
+        // Tab Network (8, era 9, Fase C Paso 1): carga lazy de las cards de categoria Red
+        // (Nagle/TCP mudados desde Tweaks + DisableIPv6 nuevo) + estado real la primera vez.
+        if (mainTabs.SelectedIndex == 8 && !_networkLoaded)
         {
             _networkLoaded = true;
             _ = LoadNetworkTabAsync();
         }
 
-        // Tab Limpieza (11, Fase C Paso 3): carga lazy -- solo necesita saber si hay SSD para
-        // deshabilitar el checkbox de Prefetch (WMI, evitar la consulta en cada apertura de tab).
-        if (mainTabs.SelectedIndex == 11 && !_limpiezaLoaded)
+        // Tab Limpieza (9, era 10, Fase C Paso 3): carga lazy -- solo necesita saber si hay SSD
+        // para deshabilitar el checkbox de Prefetch (WMI, evitar la consulta en cada apertura de tab).
+        if (mainTabs.SelectedIndex == 9 && !_limpiezaLoaded)
         {
             _limpiezaLoaded = true;
             _ = LoadLimpiezaTabAsync();
@@ -1571,274 +1573,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    // ── Optimizacion (3.1) ───────────────────────────────────────────────────
-
-    private void ApplyPreset(string name)
-    {
-        var preset = OptimizationService.GetPreset(name);
-        foreach (var (key, cb) in AllOptCheckboxes())
-            cb.IsChecked = preset.TryGetValue(key, out bool val) && val;
-        UpdatePlanSummary();
-        App.Logger.Log($"Preset '{name}' aplicado", "info");
-    }
-
-    private Dictionary<string, CheckBox> AllOptCheckboxes() => new()
-    {
-        ["TempUser"]    = chkTempUser,    ["TempSys"]     = chkTempSys,     ["Prefetch"]    = chkPrefetch,
-        ["WinUpdate"]   = chkWinUpdate,   ["Browsers"]    = chkBrowsers,    ["Thumb"]       = chkThumb,
-        ["Recycle"]     = chkRecycle,     ["EventLogs"]   = chkEventLogs,
-        ["Power"]       = chkPower,       ["HPET"]        = chkHPET,        ["GPUPrio"]     = chkGPUPrio,
-        ["PowerThrot"]  = chkPowerThrot,  ["Visual"]      = chkVisual,      ["MouseAccel"]  = chkMouseAccel,
-        ["Startup"]     = chkStartup,     ["FastStartup"] = chkFastStartup, ["PageFile"]    = chkPageFile,
-        ["TrimDesfrag"] = chkTrimDesfrag,
-        ["GameDVR"]     = chkGameDVR,     ["GameMode"]    = chkGameMode,    ["Telemetry"]   = chkTelemetry,
-        ["Cortana"]     = chkCortana,     ["Notif"]       = chkNotif,       ["Tasks"]       = chkTasks,
-        ["Nagle"]       = chkNagle,       ["TCP"]         = chkTCP,         ["DNS"]         = chkDNS,
-        ["DNSFlush"]    = chkDNSFlush,    ["DisableIPv6"] = chkDisableIPv6,
-        ["SvcXbox"]     = chkSvcXbox,     ["SvcDiag"]     = chkSvcDiag,     ["SvcWER"]      = chkSvcWER,
-        ["SvcSysMain"]  = chkSvcSysMain,  ["SvcMaps"]     = chkSvcMaps,     ["SvcFax"]      = chkSvcFax,
-        ["SvcWSearch"]  = chkSvcWSearch,
-    };
-
-    private IReadOnlyDictionary<string, bool> GetCurrentSel() =>
-        AllOptCheckboxes().ToDictionary(kv => kv.Key, kv => kv.Value.IsChecked == true);
-
-    private void SelectAll(bool value)
-    {
-        foreach (var (_, cb) in AllOptCheckboxes())
-            cb.IsChecked = value;
-        // EventLogs siempre off en seleccionar todo (destructivo)
-        if (value) chkEventLogs.IsChecked = false;
-        UpdatePlanSummary();
-    }
-
-    private void UpdateDnsHint()
-    {
-        if (chkDNS.IsChecked != true) { lblDNSHint.Text = ""; return; }
-        int idx = Math.Clamp(cboDNSProvider.SelectedIndex, 0, OptimizationService.DnsProviders.Count - 1);
-        var p   = OptimizationService.DnsProviders[idx];
-        lblDNSHint.Text = $"{p.Primary} / {p.Secondary}";
-    }
-
-    // Mirror de Build-ActionPlan del PS1: cuenta acciones y categorias en tiempo real (3.2)
-    private void UpdatePlanSummary()
-    {
-        UpdateDnsHint();
-
-        var sel  = GetCurrentSel();
-        int dnsIdx = Math.Clamp(cboDNSProvider.SelectedIndex, 0, OptimizationService.DnsProviders.Count - 1);
-        var plan = OptimizationService.BuildActionPlan(sel, dnsIdx);
-
-        if (plan.Count == 0)
-        {
-            lblPlanSummary.Text       = "Nada seleccionado";
-            lblPlanSummary.Foreground = BrushGray;
-            lblPlanWarning.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        var cats = plan.Select(a => a.Category).Distinct().ToList();
-        lblPlanSummary.Text       = $"{plan.Count} acciones · {string.Join(" · ", cats)}";
-        lblPlanSummary.Foreground = BrushBlue;
-
-        // Advertir si hay acciones de impacto alto (EventLogs, PageFile)
-        bool hasHighImpact = plan.Any(a => a.Impact == "high");
-        if (hasHighImpact)
-        {
-            var highLabels = plan.Where(a => a.Impact == "high").Select(a => a.Label);
-            lblPlanWarning.Text       = $"Impacto alto: {string.Join(", ", highLabels)}";
-            lblPlanWarning.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            lblPlanWarning.Visibility = Visibility.Collapsed;
-        }
-    }
-
-    private void SaveProfile()
-    {
-        try
-        {
-            var dir = Path.GetDirectoryName(_optProfilePath)!;
-            Directory.CreateDirectory(dir);
-            File.WriteAllText(_optProfilePath,
-                System.Text.Json.JsonSerializer.Serialize(GetCurrentSel(),
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-            App.Logger.Log("Perfil de optimizacion guardado", "ok");
-            // Feedback al usuario (mirror del MessageBox del btnSaveProfile del PS1):
-            // sin esto el boton parecia "no hacer nada" aunque el JSON se escribia bien.
-            System.Windows.MessageBox.Show(
-                $"Perfil guardado:\n{_optProfilePath}",
-                "WinBoost", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
-        catch (Exception ex)
-        {
-            App.Logger.Log($"Error guardando perfil: {ex.Message}", "err");
-            System.Windows.MessageBox.Show(
-                $"Error al guardar el perfil:\n{ex.Message}",
-                "WinBoost", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    private void LoadProfile()
-    {
-        try
-        {
-            if (!File.Exists(_optProfilePath)) { ApplyPreset("Safe"); return; }
-            var dict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(
-                File.ReadAllText(_optProfilePath));
-            if (dict is null) { ApplyPreset("Safe"); return; }
-            foreach (var (key, cb) in AllOptCheckboxes())
-                cb.IsChecked = dict.TryGetValue(key, out bool v) && v;
-            UpdatePlanSummary();
-        }
-        catch { ApplyPreset("Safe"); }
-    }
-
-    private async Task OnRunOptimizationAsync()
-    {
-        // Gate Pro: tweaks de registro y servicios (5.1)
-        if (LockProFeature("Tweaks de registro y servicios")) return;
-
-        if (App.Worker.IsRunning) return;
-
-        var sel    = GetCurrentSel();
-        int dnsIdx = Math.Clamp(cboDNSProvider.SelectedIndex, 0, OptimizationService.DnsProviders.Count - 1);
-
-        if (!sel.Values.Any(v => v))
-        {
-            System.Windows.MessageBox.Show(
-                "Selecciona al menos una opcion antes de optimizar.",
-                "WinBoost", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        // Dialogo de confirmacion / analisis (3.3)
-        var plan   = OptimizationService.BuildActionPlan(sel, dnsIdx);
-        var dialog = new ConfirmOptimizationDialog(plan) { Owner = this };
-        if (dialog.ShowDialog() != true) return;
-
-        // Capturar acciones para el reporte HTML (4.7)
-        _lastReportActions = plan.Select(a => $"{a.Category}: {a.Label}").ToList();
-
-        App.Backup.NewBackupSession();
-        _scoreBefore       = _lastAuditResult?.Score ?? 0;
-        App.SnapshotBefore = await App.Snapshots.TakeSnapshotAsync();
-
-        btnRun.IsEnabled        = false;
-        btnCancelOpt.Visibility = Visibility.Visible;
-        btnSelAll.IsEnabled     = false;
-        btnSelNone.IsEnabled    = false;
-
-        var sysInfo   = _systemInfo ?? await App.SystemInfo.GetSystemInfoAsync();
-        bool hasSsd   = sysInfo.HasSsd;
-        bool isLaptop = sysInfo.IsLaptop;
-        double ramGb  = sysInfo.TotalRamGb;
-        string sysDrv = (Environment.GetEnvironmentVariable("SystemDrive") ?? "C:") + @"\";
-
-        OptResult? optResult = null;
-
-        OpenConsoleOverlay(running: true); // fix 27: overlay modal con "Detener" (era SetActiveNav(5))
-
-        bool ok = await App.Worker.RunAsync(async ct =>
-        {
-            var svc   = new OptimizationService();
-            optResult = await svc.RunAsync(
-                sel, hasSsd, isLaptop, ramGb, sysDrv, dnsIdx,
-                altDriveForPageFile: null, movePageFileToAlt: false, ct);
-        },
-        startMsg: "Iniciando optimizacion WinBoost...",
-        doneMsg:  "Optimizacion completada");
-
-        ConsoleOperationCompleted(); // fix 27: oculta "Detener", habilita "Cerrar", chip Completado
-
-        btnRun.IsEnabled        = true;
-        btnCancelOpt.Visibility = Visibility.Collapsed;
-        btnSelAll.IsEnabled     = true;
-        btnSelNone.IsEnabled    = true;
-
-        if (ok && optResult is { } res)
-        {
-            lblSpaceFreed.Text = res.FreedMb > 0.1
-                ? $"+{Math.Round(res.FreedMb, 1)} MB liberados"
-                : "";
-            App.Progress.Set(100, "Listo");
-            await RecalcScoreAsync();
-            await FinishOptimizationAsync(res, sel);
-        }
-    }
-
-    // Mirror de Invoke-OptimizeFinish del PS1 (3.4): metadata + toast + score delta + dialogo resumen
-    private async Task FinishOptimizationAsync(OptResult res, IReadOnlyDictionary<string, bool> sel)
-    {
-        int scoreAfter = _lastAuditResult?.Score ?? _scoreBefore;
-        int delta      = scoreAfter - _scoreBefore;
-
-        // Capturar estado para el reporte HTML (4.7)
-        _lastFreedMb   = res.FreedMb;
-        _snapshotAfter = await App.Snapshots.TakeSnapshotAsync(scoreAfter);
-
-        // Score delta badge en el widget
-        if (delta > 0)
-        {
-            lblScoreDelta.Text         = $"+{delta}";
-            scoreDeltaBadge.Visibility = Visibility.Visible;
-        }
-
-        // Metadata de sesion
-        App.Backup.SaveSessionMetadata(
-            freedMb:     (int)Math.Round(res.FreedMb),
-            scoreBefore: _scoreBefore,
-            scoreAfter:  scoreAfter,
-            preset:      "Manual");
-
-        // Forzar recarga del historial al entrar al tab (4.6)
-        _historyLoaded = false;
-
-        // Toast
-        string toastMsg = $"{res.Applied} acciones aplicadas"
-            + (res.FreedMb > 0.1 ? $" · {Math.Round(res.FreedMb, 1)} MB liberados" : "")
-            + (delta > 0 ? $" · score +{delta}" : "");
-        ShowToast(toastMsg);
-
-        // Dialogo de resumen — habilita "Ver comparativa" si hay ambos snapshots
-        bool needsReboot = sel.TryGetValue("PageFile", out bool pf) && pf;
-        bool canCompare  = App.SnapshotBefore != null && _snapshotAfter != null;
-        var dlg = new FinishOptimizationDialog(res, _scoreBefore, scoreAfter, needsReboot, canCompare)
-            { Owner = this };
-        dlg.ShowDialog();
-
-        if (dlg.GoToHistory) SetActiveNav(5); // Historial (era 6, fix 27)
-        else if (dlg.ShowCompare) ShowCompareDialog(res.FreedMb);
-    }
-
-    // Muestra el modal comparativo (4.8) con la comparativa de snapshots.
-    // Mirror del flujo Show-CompareDialog del PS1: "restart" | "later" | "log".
-    private void ShowCompareDialog(double freedMb)
-    {
-        if (App.SnapshotBefore is not { } before || _snapshotAfter is not { } after) return;
-
-        var compare = App.Snapshots.CompareSnapshots(before, after);
-        var dlg = new CompareDialog(compare, freedMb) { Owner = this };
-        dlg.ShowDialog();
-
-        switch (dlg.Result)
-        {
-            case "restart":
-                try
-                {
-                    Process.Start(new ProcessStartInfo("shutdown", "/r /t 0")
-                        { UseShellExecute = false, CreateNoWindow = true });
-                }
-                catch (Exception ex) { App.Logger.Log($"No se pudo reiniciar: {ex.Message}", "err"); }
-                break;
-            case "log":
-                OpenConsoleOverlay(running: false); // fix 27: overlay en modo consulta (era Consola)
-                break;
-            // "later": no hacer nada
-        }
-    }
-
     // ── Mantenimiento (4.3) ──────────────────────────────────────────────────
 
     private static readonly SolidColorBrush BrushMaintOnBg  = FreezeBrush(Color.FromRgb(0x12, 0x2A, 0x12));
@@ -2085,10 +1819,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             Grid.SetColumn(mbTxt, 3);
 
-            // Col 4 — Estado (tiene metadata o no)
-            var (stateBg, stateFg, stateLbl) = s.HasMeta
-                ? (Color.FromRgb(0x0A, 0x2A, 0x0A), Color.FromRgb(0x22, 0xC5, 0x5E), "Completo")
-                : (Color.FromRgb(0x2A, 0x2A, 0x0A), Color.FromRgb(0xF5, 0x9E, 0x0B), "Sin metadata");
+            // Col 4 — Estado. Prompt 69: una sesion de Bloatware (solo bloatware_removed.json)
+            // se rotula "Bloatware" en vez del generico "Sin metadata" -- asi la fila se lee
+            // como registro coherente y el hueco de la columna Accion (sin boton) tiene sentido.
+            var (stateBg, stateFg, stateLbl) = s.IsBloatwareOnly
+                ? (Color.FromRgb(0x1A, 0x1A, 0x1A), Color.FromRgb(0x88, 0x88, 0x88), "Bloatware")
+                : s.HasMeta
+                    ? (Color.FromRgb(0x0A, 0x2A, 0x0A), Color.FromRgb(0x22, 0xC5, 0x5E), "Completo")
+                    : (Color.FromRgb(0x2A, 0x2A, 0x0A), Color.FromRgb(0xF5, 0x9E, 0x0B), "Sin metadata");
             var stateBdr = new Border
             {
                 CornerRadius        = new CornerRadius(3),
@@ -2101,27 +1839,45 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             };
             Grid.SetColumn(stateBdr, 4);
 
-            // Col 5 — Boton revertir
-            var revertBtn = new Button
+            // Col 5 — Accion. "Revertir" salvo en sesiones de Bloatware: un revert de Bloatware
+            // no se puede cumplir (no se reinstalan apps), asi que la fila queda como registro
+            // informativo sin accion. Placeholder inerte "—" para que la columna no quede vacia.
+            UIElement col5;
+            if (s.IsBloatwareOnly)
             {
-                Content             = "Revertir",
-                Style               = (Style)FindResource("BtnDanger"),
-                Padding             = new Thickness(10, 4, 10, 4),
-                FontSize            = 11,
-                VerticalAlignment   = VerticalAlignment.Center,
-                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                ToolTip             = $"Revertir sesion del {s.Timestamp}",
-            };
-            string capturedPath = s.Path;
-            revertBtn.Click += async (_, _) => await InvokeRevertSessionAsync(capturedPath);
-            Grid.SetColumn(revertBtn, 5);
+                col5 = new TextBlock
+                {
+                    Text                = "—",
+                    FontSize            = 12,
+                    Foreground          = BrushGray,
+                    VerticalAlignment   = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                };
+            }
+            else
+            {
+                var revertBtn = new Button
+                {
+                    Content             = "Revertir",
+                    Style               = (Style)FindResource("BtnDanger"),
+                    Padding             = new Thickness(10, 4, 10, 4),
+                    FontSize            = 11,
+                    VerticalAlignment   = VerticalAlignment.Center,
+                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                    ToolTip             = $"Revertir sesion del {s.Timestamp}",
+                };
+                string capturedPath = s.Path;
+                revertBtn.Click += async (_, _) => await InvokeRevertSessionAsync(capturedPath);
+                col5 = revertBtn;
+            }
+            Grid.SetColumn(col5, 5);
 
             grid.Children.Add(tsTxt);
             grid.Children.Add(presetBdr);
             grid.Children.Add(actTxt);
             grid.Children.Add(mbTxt);
             grid.Children.Add(stateBdr);
-            grid.Children.Add(revertBtn);
+            grid.Children.Add(col5);
 
             rowBdr.Child = grid;
             icHistory.Items.Add(rowBdr);
@@ -2232,6 +1988,23 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+
+        // Prompt 69: "Revertir ultima sesion" apunta a la mas reciente. Si esa es una sesion
+        // de Bloatware (solo bloatware_removed.json) no se puede revertir -- no se reinstalan
+        // apps. Avisar honestamente en vez de mandarla a InvokeRevertSessionAsync, donde el
+        // dialogo de confirmacion prometeria restaurar "registro, servicios y red" y el guard
+        // de RestoreSession terminaria en "Restauracion con errores".
+        if (sessions[0].IsBloatwareOnly)
+        {
+            System.Windows.MessageBox.Show(
+                "La ultima sesion es un registro de desinstalacion de Bloatware.\n\n" +
+                "Las apps desinstaladas no se pueden reinstalar automaticamente desde WinBoost, " +
+                "asi que esa sesion no se puede revertir.",
+                "WinBoost - Historial",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         await InvokeRevertSessionAsync(sessions[0].Path);
     }
 
@@ -2328,49 +2101,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             System.Windows.MessageBox.Show($"Error al exportar: {ex.Message}",
                 "WinBoost - Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
-    }
-
-    // ── Reporte HTML (4.7) ───────────────────────────────────────────────────
-
-    // Mirror del Add_Click de btnExportHTML del PS1.
-    private async Task ExportHtmlReportAsync()
-    {
-        // Gate Pro: exportar reporte HTML (5.1)
-        if (LockProFeature("Exportar reporte HTML")) return;
-
-        btnExportHTML.IsEnabled = false;
-        try
-        {
-            var sysInfo = _systemInfo ?? await App.SystemInfo.GetSystemInfoAsync();
-            string sysDrv = Environment.GetEnvironmentVariable("SystemDrive") ?? "C:";
-            int scoreAfter = _lastAuditResult?.Score ?? _scoreBefore;
-
-            string? techName = !string.IsNullOrWhiteSpace(App.Settings.Current.TechnicianName)
-                ? App.Settings.Current.TechnicianName
-                : null;
-
-            var data = new ReportData(
-                Sys:            sysInfo,
-                SysDrive:       sysDrv,
-                ScoreBefore:    _scoreBefore,
-                ScoreAfter:     scoreAfter,
-                Before:         App.SnapshotBefore,
-                After:          _snapshotAfter,
-                FreedMb:        _lastFreedMb,
-                Actions:        _lastReportActions,
-                TechnicianName: techName);
-
-            string? path = await App.Report.ExportAsync(data);
-            if (path != null)
-                App.Logger.Log($"Reporte HTML exportado: {path}", "ok");
-            else
-                App.Logger.Log("Error al exportar reporte HTML", "err");
-        }
-        catch (Exception ex)
-        {
-            App.Logger.Log($"Error al exportar reporte HTML: {ex.Message}", "err");
-        }
-        finally { btnExportHTML.IsEnabled = true; }
     }
 
     // ── Licencias + trial (5.1, modulos 12B/12C) ─────────────────────────────
@@ -2609,7 +2339,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
 
         _updating = true;
-        SetActiveNav(0); // mostrar footer con la progressBar
+        // Prompt 66: se saco el SetActiveNav(0) que habia aca ("mostrar footer con la
+        // progressBar") -- footerBar (del tab Optimizar clasico, ya retirado) no tenia ninguna
+        // progressBar real desde el fix 28.3 (App.Progress apunta solo a progressBarConsole, en
+        // el overlay de Consola); confirmado que este llamado ya no cumplia ninguna funcion antes
+        // de sacarlo.
         App.Progress.Set(0, $"Iniciando descarga de v{meta.Version}...");
 
         string? dlFile;
@@ -2696,126 +2430,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         catch { }
     }
 
-    // ── Tuning Avanzado (6.1, modulos F2.18/F2.19) ───────────────────────────
-    // 3 ui:ToggleSwitch (16B). Convencion comun a los 3 Update*Ui: setean SIEMPRE el
-    // texto de estado + el IsChecked del switch (bajo _tuningSyncing=true, asi el
-    // Checked/Unchecked que dispara nunca re-entra a Set*) — se llaman tanto en la
-    // carga inicial (LoadTuningTabAsync) como para revertir el switch si el Set* real
-    // tira excepcion o devuelve false, para que la UI nunca muestre un estado que no
-    // se pudo aplicar de verdad.
-
-    // Carga lazy del tab: los 3 estados reales del sistema (Politica termica es la
-    // unica que pega afuera del proceso -powercfg-, off-UI-thread).
-    private async Task LoadTuningTabAsync()
-    {
-        UpdatePrioUi(App.Tuning.GetWin32PrioritySep());
-        UpdateHagsUi(App.Tuning.GetHagsState());
-
-        int cool = await Task.Run(() => App.Tuning.GetCoolingPolicyState());
-        UpdateCoolingUi(cool);
-    }
-
-    // Scheduler de CPU (Win32PrioritySeparation). ON = 0x28 (decision del usuario,
-    // reemplaza el viejo preset "Responsividad" 0x24 - mejores 1% low en su hardware).
-    // OFF = default de Windows (2). Estado desconocido (valor tocado por fuera, ni 2 ni
-    // 0x28) se muestra OFF: no hay forma honesta de representarlo como "activo" y no
-    // debe crashear ni mentir sobre que tweak esta aplicado.
-    private void UpdatePrioUi(int value)
-    {
-        bool isResp = value == 0x28;
-        string label = value switch
-        {
-            0x28 => "Responsividad (0x28) - prioridad al proceso activo",
-            2    => "Default de Windows (2) - sin cambio",
-            _    => $"Personalizado ({value}, 0x{value:X}) - valor no reconocido, mostrado como inactivo",
-        };
-        lblPrioState.Text       = $"Estado: {label}";
-        lblPrioState.Foreground = isResp ? BrushGreen : BrushLicFree;
-        _tuningSyncing = true;
-        try { swPrio.IsChecked = isResp; } finally { _tuningSyncing = false; }
-    }
-
-    // Mirror del ex btnApplyPrio (ahora Checked/Unchecked de swPrio).
-    private void SetPrio(bool on)
-    {
-        int newVal = on ? 0x28 : 2;
-        try
-        {
-            App.Tuning.SetWin32PrioritySep(newVal);
-            UpdatePrioUi(newVal);
-            lblPrioStatus.Text       = $"Aplicado: {newVal} (0x{newVal:X}) - efectivo al reiniciar sesion.";
-            lblPrioStatus.Foreground = BrushGreen;
-            App.Logger.Log($"Win32PrioritySeparation -> {newVal} (0x{newVal:X})", "ok");
-        }
-        catch (Exception ex)
-        {
-            UpdatePrioUi(App.Tuning.GetWin32PrioritySep()); // revierte el switch al valor real
-            lblPrioStatus.Text       = $"Error al aplicar: {ex.Message}";
-            lblPrioStatus.Foreground = BrushRed;
-        }
-    }
-
-    private void UpdateHagsUi(bool state)
-    {
-        lblHagsState.Text       = state ? "Estado: Activo" : "Estado: Inactivo";
-        lblHagsState.Foreground = state ? BrushGreen : BrushLicFree;
-        _tuningSyncing = true;
-        try { swHags.IsChecked = state; } finally { _tuningSyncing = false; }
-    }
-
-    // Mirror del ex btnHagsOn/btnHagsOff (ahora Checked/Unchecked de swHags).
-    private void SetHags(bool enable)
-    {
-        try
-        {
-            App.Tuning.SetHagsState(enable);
-            UpdateHagsUi(enable);
-            lblHagsResult.Text       = "Reinicia el equipo para que tenga efecto.";
-            lblHagsResult.Foreground = BrushYellow;
-            App.Logger.Log(enable ? "HAGS activado - reinicio requerido"
-                                  : "HAGS desactivado - reinicio requerido", "ok");
-        }
-        catch (Exception ex)
-        {
-            UpdateHagsUi(!enable); // revierte el switch: la escritura de registro fallo
-            lblHagsResult.Text       = $"Error: {ex.Message}";
-            lblHagsResult.Foreground = BrushRed;
-        }
-    }
-
-    private void UpdateCoolingUi(int state)
-    {
-        (string label, SolidColorBrush brush, bool isOn) = state switch
-        {
-            1 => ("Activa (ventiladores priorizados)",      BrushGreen,   true),
-            0 => ("Pasiva (ahorro antes que temperatura)",  BrushYellow,  false),
-            _ => ("No disponible / plan personalizado",     BrushLicFree, false),
-        };
-        lblCoolState.Text       = $"Modo actual: {label}";
-        lblCoolState.Foreground = brush;
-        _tuningSyncing = true;
-        try { swCool.IsChecked = isOn; } finally { _tuningSyncing = false; }
-    }
-
-    // Mirror del ex btnCoolActive/btnCoolPassive (ahora Checked/Unchecked de swCool).
-    private async Task SetCoolingPolicyAsync(int value)
-    {
-        bool ok = await Task.Run(() => App.Tuning.SetCoolingPolicy(value));
-        if (ok)
-        {
-            UpdateCoolingUi(value);
-            lblCoolResult.Text       = value == 1 ? "Politica termica activa aplicada."
-                                                  : "Politica termica pasiva aplicada.";
-            lblCoolResult.Foreground = BrushGreen;
-            App.Logger.Log(value == 1 ? "Cooling policy -> Activa" : "Cooling policy -> Pasiva", "ok");
-        }
-        else
-        {
-            UpdateCoolingUi(1 - value); // revierte el switch: powercfg no lo acepto
-            lblCoolResult.Text       = "No se pudo aplicar. El plan de energia personalizado puede no soportarlo.";
-            lblCoolResult.Foreground = BrushRed;
-        }
-    }
+    // Prompt 56: la pestana Tuning Avanzado (Scheduler CPU / HAGS / Politica termica, 3
+    // ui:ToggleSwitch de 16B) se retiro completa. Los 3 controles + su logica Update*Ui/Set*
+    // migraron a la seccion Tweaks (TweakRegistry.cs: tweaks "Win32PrioritySep", "HAGS",
+    // "PoliticaTermica"), reusando BuildTweakCard/UpdateTweakCardUi genericos en vez de UI a
+    // mano por control.
 
     // ── Tweaks (piloto Fase A, 38_fase_a_registro_tweaks_piloto.txt) ─────────────────────────
     // Mismo patron que Tuning Avanzado (ToggleSwitch IsChecked bool?, Checked/Unchecked, flag
@@ -3073,7 +2692,37 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             OffContent        = "Inactivo",
         };
         var status = new TextBlock { FontSize = 11, Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
-        _tweakCardRefs[def.Id] = (toggle, status);
+
+        // Panel "Restablecer a default de Windows" (prompt 71): solo para los 20 tweaks "Seguro"
+        // (def.RestablecerDefaultAsync != null). Arranca oculto; UpdateTweakCardUi lo muestra
+        // cuando el tweak esta On y no hay Original capturado (el escenario que bloquea "Revertir").
+        StackPanel? resetPanel = null;
+        if (def.RestablecerDefaultAsync is not null)
+        {
+            var resetHint = new TextBlock
+            {
+                Text         = "WinBoost no guardo un valor original para este tweak, asi que \"Revertir\" no " +
+                               "puede volver a lo que tenias. Podes dejarlo en el valor de fabrica de Windows " +
+                               "(no necesariamente lo que tenias antes en este equipo):",
+                FontSize     = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground   = BrushYellow,
+            };
+            var resetBtn = new Button
+            {
+                Content             = "Restablecer a default de Windows",
+                Style               = (Style)FindResource("BtnSec"),
+                FontSize            = 11,
+                Margin              = new Thickness(0, 8, 0, 0),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
+            };
+            resetBtn.Click += async (_, _) => await ResetTweakToDefaultAsync(def);
+            resetPanel = new StackPanel { Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed };
+            resetPanel.Children.Add(resetHint);
+            resetPanel.Children.Add(resetBtn);
+        }
+
+        _tweakCardRefs[def.Id] = (toggle, status, resetPanel);
 
         toggle.Checked   += async (_, _) => { if (!_tweaksSyncing) await ApplyTweakAsync(def); };
         toggle.Unchecked += async (_, _) => { if (!_tweaksSyncing) await RevertTweakAsync(def); };
@@ -3118,6 +2767,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         body.Children.Add(title);
         body.Children.Add(grid);
         body.Children.Add(status);
+        if (resetPanel is not null) body.Children.Add(resetPanel);
 
         return new Border
         {
@@ -3136,6 +2786,14 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // si tiro excepcion), para que el switch nunca muestre algo que no se pudo confirmar de verdad.
     private void UpdateTweakCardUi(string id, TweakStatus status)
     {
+        // Bookkeeping para la card "Tweaks activos" del Home (prompt 62): todo render de una card
+        // pasa por aca (carga inicial de Tweaks/Network, y cada Aplicar/Revertir), asi que este es
+        // el unico lugar que necesita escribir el ultimo estado conocido -- gratis, sin barrido
+        // extra. Se guarda incluso si la card todavia no existe (id valido pero _tweakCardRefs sin
+        // entrada) para que el primer Aplicar/Revertir de una card recien creada ya tenga una base
+        // real, no default(TweakState).
+        _lastKnownTweakState[id] = status.State;
+
         if (!_tweakCardRefs.TryGetValue(id, out var refs)) return;
 
         _tweaksSyncing = true;
@@ -3166,6 +2824,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             TweakState.NoAplicable => BrushBlue,
             _                      => BrushLicFree,
         };
+
+        // "Restablecer a default de Windows" (prompt 71): visible SOLO si (1) el tweak lo soporta
+        // -- refs.ResetPanel != null encapsula "es uno de los 20 Seguro", se setea en
+        // BuildTweakCard --, (2) esta On, y (3) TweakStateStore no tiene un Original capturado
+        // (mismo HasEntry que hoy determina si "Revertir" es no-op). Con Original real, "Revertir"
+        // ya resuelve el caso: no se muestra este boton para no duplicar acciones.
+        if (refs.ResetPanel is not null)
+            refs.ResetPanel.Visibility =
+                status.State == TweakState.On && !App.TweakState.HasEntry(id)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
     }
 
     private async Task ApplyTweakAsync(TweakDefinition def)
@@ -3175,6 +2844,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             await def.AplicarAsync();
             var status = await def.LeerEstadoAsync();
+            AdjustActiveTweaksCache(def.Id, status.State); // antes de UpdateTweakCardUi: necesita el ultimo estado conocido
             UpdateTweakCardUi(def.Id, status);
             // Mismo Motivo honesto que UpdateTweakCardUi (prompt 51) -- sin el, este texto pisaba
             // el de arriba con un "Aplicado." generico apenas 2 lineas despues de haberlo seteado
@@ -3188,7 +2858,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (Exception ex)
         {
-            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync()); // revierte el switch al estado real
+            var real = await def.LeerEstadoAsync(); // revierte el switch al estado real
+            AdjustActiveTweaksCache(def.Id, real.State);
+            UpdateTweakCardUi(def.Id, real);
             refs.Status.Text       = $"Error al aplicar: {ex.Message}";
             refs.Status.Foreground = BrushRed;
         }
@@ -3201,6 +2873,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         {
             await def.RevertirAsync();
             var status = await def.LeerEstadoAsync();
+            AdjustActiveTweaksCache(def.Id, status.State); // antes de UpdateTweakCardUi: necesita el ultimo estado conocido
             UpdateTweakCardUi(def.Id, status);
 
             // RevertirAsync es no-op si WinBoost nunca aplico este tweak desde esta seccion (ej.
@@ -3222,15 +2895,77 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         catch (Exception ex)
         {
-            UpdateTweakCardUi(def.Id, await def.LeerEstadoAsync()); // revierte el switch al estado real
+            var real = await def.LeerEstadoAsync(); // revierte el switch al estado real
+            AdjustActiveTweaksCache(def.Id, real.State);
+            UpdateTweakCardUi(def.Id, real);
             refs.Status.Text       = $"Error al revertir: {ex.Message}";
             refs.Status.Foreground = BrushRed;
         }
     }
 
-    // Info de componentes (tab Info del sistema; movida desde Tuning).
+    // "Restablecer a default de Windows" (prompt 71): accion NUEVA, separada de "Revertir". Solo
+    // llega aca desde el boton de la card, que la UI muestra unicamente cuando def.Restablecer
+    // DefaultAsync != null (uno de los 20 "Seguro") + el tweak esta On + no hay Original capturado.
+    // NO escribe nada en TweakStateStore -- el ciclo normal de captura-en-el-primer-toggle sigue
+    // igual desde este punto.
+    private async Task ResetTweakToDefaultAsync(TweakDefinition def)
+    {
+        if (def.RestablecerDefaultAsync is null) return; // defensa: no deberia pasar
+        if (!_tweakCardRefs.TryGetValue(def.Id, out var refs)) return;
+
+        var confirm = System.Windows.MessageBox.Show(
+            $"Se va a escribir el valor de fabrica de Windows para \"{def.Nombre}\".\n\n" +
+            "Esto NO restaura la configuracion que tenias antes en este equipo (WinBoost no la " +
+            "guardo) -- es el valor predeterminado de Windows, que puede o no coincidir con lo " +
+            "que tenias.\n\nContinuar?",
+            "WinBoost - Restablecer a default de Windows",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        if (refs.ResetPanel is not null) refs.ResetPanel.IsEnabled = false;
+        try
+        {
+            await def.RestablecerDefaultAsync();
+            var status = await def.LeerEstadoAsync();
+            AdjustActiveTweaksCache(def.Id, status.State); // antes de UpdateTweakCardUi
+            UpdateTweakCardUi(def.Id, status);             // si quedo Off, oculta el panel de reset
+
+            if (status.State != TweakState.On) // Off, o NoAplicable -- en ambos casos ya no esta activo
+            {
+                refs.Status.Text = def.RequiereReinicio
+                    ? "Restablecido al valor de fabrica de Windows. Reinicia el equipo para que tenga efecto completo."
+                    : "Restablecido al valor de fabrica de Windows.";
+                refs.Status.Foreground = def.RequiereReinicio ? BrushYellow : BrushLicFree;
+                App.Logger.Log($"{def.Nombre}: restablecido a default de Windows", "ok");
+            }
+            else
+            {
+                // Se escribio el default pero el tweak sigue figurando activo (ej. una clave HKLM
+                // protegida que no se pudo tocar) -- decirlo, no afirmar un exito que no paso.
+                refs.Status.Text = "Se escribio el valor de fabrica de Windows, pero el tweak sigue figurando como activo. " +
+                                    "Revisa la consola.";
+                refs.Status.Foreground = BrushYellow;
+                App.Logger.Log($"{def.Nombre}: restablecer a default no dejo el tweak en Off", "err");
+            }
+        }
+        catch (Exception ex)
+        {
+            var real = await def.LeerEstadoAsync();
+            AdjustActiveTweaksCache(def.Id, real.State);
+            UpdateTweakCardUi(def.Id, real);
+            refs.Status.Text       = $"Error al restablecer: {ex.Message}";
+            refs.Status.Foreground = BrushRed;
+        }
+        finally
+        {
+            if (refs.ResetPanel is not null) refs.ResetPanel.IsEnabled = true;
+        }
+    }
+
+    // Info de componentes (overlay System Info, Home).
     // Mirror de New-InfoRow del PS1 (label 160px + valor). La fila de HAGS aca es
-    // SOLO informativa; el control de activar/desactivar HAGS vive en la tab Tuning.
+    // SOLO informativa; el toggle de activar/desactivar HAGS vive en la seccion Tweaks
+    // (prompt 56 -- antes vivia en la pestana Tuning Avanzado, ya retirada).
     private void RenderComponentsInfo(ExtendedSystemInfo i)
     {
         icComponentsInfo.Items.Clear();
@@ -4032,7 +3767,7 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnBloatSelNone.IsEnabled = true;
 
         // Re-escanear automaticamente para reflejar cambios
-        SetActiveNav(4); // Bloatware
+        SetActiveNav(3); // Bloatware (era 4, prompt 66)
         await ScanBloatwareAsync();
 
         string resultMsg = okCount > 0

@@ -1,18 +1,23 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 
 namespace WinBoost;
 
 // ============================================================
 // MODULO 15B - VENTANA DE BIENVENIDA (ONBOARDING)
-// Mirror de Show-OnboardingDialog del PS1. Wizard de 4 pasos
+// Mirror de Show-OnboardingDialog del PS1. Wizard de 3 pasos
 // mostrado solo en la primera ejecucion. Bloquea el cierre (X)
-// hasta completar el paso 4. Devuelve el preset elegido en
-// ChosenPreset ("Gaming"/"Prod"/"Safe") para que el caller lo
-// aplique y marque el primer uso como completado.
+// hasta completar el ultimo paso.
+// Prompt 66 (retiro del tab Optimizar clasico): se saco el paso
+// de seleccion de perfil -- aplicaba los checkboxes de esa
+// pantalla, que dejaron de existir. Pausado a proposito: no se
+// construyo ningun reemplazo (aplicar un preset real contra
+// TweakRegistry, u otra forma de "vender" el paso) -- eso queda
+// para un prompt aparte una vez que se decida de fondo. El wizard
+// ya no elige ni aplica ningun preset, solo muestra hardware +
+// score y cierra.
 // ============================================================
 public partial class OnboardingDialog : Window
 {
@@ -23,35 +28,33 @@ public partial class OnboardingDialog : Window
     {
         "Bienvenido a WinBoost",
         "Tu salud del sistema",
-        "Perfil de optimizacion",
         "Todo listo",
     };
     private static readonly string[] Subs =
     {
-        "Revisamos tu hardware en 4 pasos rapidos.",
+        "Revisamos tu hardware en unos pasos rapidos.",
         "Analizamos el estado actual de tu PC.",
-        "Elegimos la configuracion ideal para tu equipo.",
         "WinBoost configurado y listo para usar.",
     };
 
-    private int    _step;
-    private string _preset;      // "gaming" / "prod" / "safe"
-    private bool   _canClose;
+    private int  _step;
+    private bool _canClose;
 
     private Border[] _panels = null!;
     private Border[] _dots   = null!;
 
-    // "Gaming" / "Prod" / "Safe" — null si el usuario aun no completo el wizard.
-    public string? ChosenPreset { get; private set; }
+    // true si el usuario completo el wizard (llego al ultimo paso y cerro con "Empezar").
+    public bool Completed { get; private set; }
 
     public OnboardingDialog(string cpuName, string gpuName, int ramGb, string diskType,
-        bool isLaptop, int score, string recommendedPreset)
+        bool isLaptop, int score)
     {
         InitializeComponent();
 
-        _panels = new[] { step0, step1, step2, step3 };
-        _dots   = new[] { dot0, dot1, dot2, dot3 };
-        _preset = recommendedPreset;
+        // step2/dot2 (seleccion de preset) se eliminaron del XAML -- step3/dot3 (paso "listo")
+        // quedan con su x:Name original, sin renombrar, para minimizar el diff.
+        _panels = new[] { step0, step1, step3 };
+        _dots   = new[] { dot0, dot1, dot3 };
 
         // Paso 0 - hardware
         lblObdCPU.Text  = cpuName;
@@ -69,23 +72,13 @@ public partial class OnboardingDialog : Window
         lblObdScoreLabel.Text  = scoreLabel;
         lblObdScore.Foreground = Freeze(scoreColor);
 
-        // Paso 2 - badge del preset recomendado
-        Border recBadge = recommendedPreset switch
-        {
-            "gaming" => badgeRecGaming,
-            "prod"   => badgeRecProd,
-            _        => badgeRecSafe,
-        };
-        recBadge.Visibility = Visibility.Visible;
-
         UpdateStep();
-        UpdateCards();
     }
 
     // Mirror de obdUpdateStep: visibilidad de pasos, dots, titulos y botones.
     private void UpdateStep()
     {
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < _panels.Length; i++)
         {
             _panels[i].Visibility = i == _step ? Visibility.Visible : Visibility.Collapsed;
             _dots[i].Background   = i <= _step ? BrushOn : BrushOff;
@@ -93,26 +86,8 @@ public partial class OnboardingDialog : Window
         lblObdStepTitle.Text = Titles[_step];
         lblObdStepSub.Text   = Subs[_step];
         btnObdBack.IsEnabled = _step > 0;
-        btnObdNext.Content   = _step == 3 ? "Empezar" : "Siguiente";
+        btnObdNext.Content   = _step == _panels.Length - 1 ? "Empezar" : "Siguiente";
     }
-
-    // Mirror de obdUpdateCards: highlight de tarjetas + resumen del paso 3.
-    private void UpdateCards()
-    {
-        cardGaming.BorderBrush = _preset == "gaming" ? BrushOn : BrushOff;
-        cardProd.BorderBrush   = _preset == "prod"   ? BrushOn : BrushOff;
-        cardSafe.BorderBrush   = _preset == "safe"   ? BrushOn : BrushOff;
-        lblObdPresetChosen.Text = _preset switch
-        {
-            "gaming" => "Gaming",
-            "prod"   => "Productividad",
-            _        => "Conservador",
-        };
-    }
-
-    private void OnPickGaming(object sender, MouseButtonEventArgs e) { _preset = "gaming"; UpdateCards(); }
-    private void OnPickProd(object sender, MouseButtonEventArgs e)   { _preset = "prod";   UpdateCards(); }
-    private void OnPickSafe(object sender, MouseButtonEventArgs e)   { _preset = "safe";   UpdateCards(); }
 
     private void OnBack(object sender, RoutedEventArgs e)
     {
@@ -121,19 +96,14 @@ public partial class OnboardingDialog : Window
 
     private void OnNext(object sender, RoutedEventArgs e)
     {
-        if (_step < 3)
+        if (_step < _panels.Length - 1)
         {
             _step++;
             UpdateStep();
         }
         else
         {
-            ChosenPreset = _preset switch
-            {
-                "gaming" => "Gaming",
-                "prod"   => "Prod",
-                _        => "Safe",
-            };
+            Completed = true;
             _canClose = true;
             Close();
         }

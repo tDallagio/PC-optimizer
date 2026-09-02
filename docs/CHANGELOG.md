@@ -5,6 +5,494 @@
 
 ---
 
+## "Restablecer a default de Windows" para los 20 tweaks Seguro (71_restablecer_default_windows_20_seguros.txt)
+
+### El problema que resuelve
+
+Un tweak que ya está On **antes** de que el usuario toque su toggle nuevo (config externa, o remanente
+de una versión vieja de WinBoost) no tiene `Original` capturado en `TweakStateStore` → "Revertir" se
+bloquea honestamente (*"WinBoost no tiene un valor original guardado para este tweak"*). Es el
+comportamiento correcto — adivinar un default es el mismo placebo que ya se corrigió en HAGS — pero
+deja al usuario sin forma de apagar el tweak desde la UI salvo editando el registro a mano. El prompt
+57 (validado en el 58) mapeó los 27 `TweakDefinition` en **20 Seguro** (default de Windows documentado
+y confiable) y **7 Riesgoso**. Tomy decidió el alcance: construir la acción nueva **solo para los 20
+Seguro**.
+
+### La acción nueva
+
+Botón **"Restablecer a default de Windows"** en la card de cada uno de los 20, con una aclaración
+arriba (*"WinBoost no guardó un valor original… Podés dejarlo en el valor de fábrica de Windows, no
+necesariamente lo que tenías antes en este equipo"*) + confirmación antes de ejecutar. Es una acción
+**separada de "Revertir"** — nunca dice ni insinúa que restaura *tu* configuración; escribe el valor
+de fábrica de Windows, que puede o no coincidir.
+
+- **Aparece solo cuando se cumplen las 3 condiciones a la vez**: (1) el tweak es uno de los 20 Seguro,
+  (2) está On, (3) `TweakStateStore` no tiene `Original` capturado — exactamente el escenario que hoy
+  bloquea "Revertir". Con `Original` real, "Revertir" ya resuelve el caso y el botón no se muestra (no
+  duplica acciones).
+- **No escribe nada como `Original`** en `TweakStateStore` (no es un original real). El ciclo normal
+  de captura-en-el-primer-toggle sigue igual: la próxima vez que el usuario prenda el toggle desde ahí,
+  `AplicarAsync` captura un `Original` real (= el default de Windows que dejó el botón). Confirmado
+  end-to-end contra el código.
+- Sin mecanismo en lote — por tweak individual, igual que el resto de Tweaks/Network.
+- Los 7 Riesgoso (TCP, GPUPrio, GameDVR, SvcFax, Power, Win32PrioritySep, PoliticaTermica) **no se
+  tocaron** — siguen con el bloqueo honesto actual, sin ninguna acción nueva.
+
+### Arquitectura
+
+- **`TweakDefinition`** gana un delegado opcional `Func<Task>? RestablecerDefaultAsync` (9º parámetro,
+  default `null`). `!= null` solo para los 20 Seguro; `null` para los 7 Riesgoso y para cualquier
+  elemento que no sea `TweakDefinition` (DNS, quick actions).
+- **Detección en la UI** (`UpdateTweakCardUi`, `MainWindow.xaml.cs`): reusa el mismo
+  `App.TweakState.HasEntry(id)` que ya determina si "Revertir" es no-op, sin duplicar lógica. El panel
+  del botón (`_tweakCardRefs` pasó de tupla de 2 a 3: `Switch`/`Status`/`ResetPanel?`) se crea en
+  `BuildTweakCard` solo si `def.RestablecerDefaultAsync != null` — su mera existencia encapsula "es uno
+  de los 20". `UpdateTweakCardUi` (que ya corre tras cada lectura de estado) setea la visibilidad:
+  `state == On && !HasEntry(id)`.
+- **`ResetTweakToDefaultAsync`** (`MainWindow.xaml.cs`): mismo patrón que `RevertTweakAsync`
+  (`AdjustActiveTweaksCache` → `UpdateTweakCardUi` → mensaje honesto). Si tras restablecer el tweak
+  **no** queda en Off/NoAplicable (ej. clave HKLM protegida que no se pudo tocar), lo dice — no afirma
+  un éxito que no pasó.
+
+### Mecanismo por tweak (los 20, confirmado contra el código real)
+
+Helpers nuevos en `TweakRegistry.cs`, todos **sin tocar `TweakStateStore`**: `RegDefault` +
+`WriteRegDefaultsAsync` (`DefaultValue == null` = borrar el valor; `!= null` = escribirlo; para borrar
+solo abre la key si el valor existe, no la crea de la nada), `SetServiceStart` + `RestablecerSvcDefaultAsync`
+(escribe `Start` DWORD directo; con Automatic además intenta arrancar el servicio, best-effort, igual
+que `RevertSvcEntriesAsync`).
+
+| Tweak | Default de Windows escrito |
+|---|---|
+| Telemetry | borra `AllowTelemetry` en las 2 keys de política |
+| SvcDiag | `DiagTrack` → `Start`=2 (Automatic) + arrancar |
+| Tasks | `schtasks /enable` de las 5 tareas (incondicional, distinto de Revert) |
+| PageFile | `AutomaticManagedPagefile=true` (WMI) |
+| PowerThrot | borra `PowerThrottlingOff` |
+| MouseAccel | `MouseSpeed=1`/`MouseThreshold1=6`/`MouseThreshold2=10` (string) + `MouseDataQueueSize=100` (DWORD) + `SystemParametersInfo` para la sesión en curso |
+| GameMode | `AutoGameModeEnabled=1`; **borra `AllowAutoGameMode`** (no es un valor de fábrica de Windows — el tweak lo pone en 0 junto con el otro) |
+| Cortana | borra la política `AllowCortana` |
+| Notif | `ToastEnabled=1` |
+| Nagle | borra `TcpAckFrequency`/`TCPNoDelay` en cada adaptador elegible (misma iteración que Apply/Revert) |
+| Visual | `VisualFXSetting=0` + `FontSmoothing="2"`; `EnableTransparency=1` solo si RAM ≤ 8 GB (mismo criterio condicional que `VisualEntries`) |
+| SvcXbox | `XblAuthManager`/`XblGameSave`/`XboxNetApiSvc` → `Start`=3 (Manual) |
+| SvcWER | `WerSvc` → `Start`=3 (Manual) |
+| SvcMaps | `MapsBroker`/`lfsvc` → `Start`=3 (Manual). El "Trigger Start" es inherente a la definición del servicio, WinBoost nunca lo tocó |
+| HPET | `bcdedit /deletevalue` de los 3 elementos BCD (incondicional) |
+| FastStartup | `HiberbootEnabled=1` + `powercfg /hibernate on` |
+| SvcSysMain | `SysMain` → `Start`=2 (Automatic) + arrancar |
+| SvcWSearch | `WSearch` → `Start`=2 + `DelayedAutoStart=1` (Automatic Delayed) + arrancar |
+| DisableIPv6 | borra `DisabledComponents` |
+| HAGS | `HwSchMode=1` (off/opt-in, el default documentado) |
+
+El mapeo del prompt 57 coincidió con el código real en los 20 — la única precisión agregada es el
+`AllowAutoGameMode` de GameMode (el prompt pedía confirmar la clave/valor contra el código).
+
+### Estado resultante — confirmado tweak por tweak
+
+Tras restablecer, `LeerEstadoAsync` de **cada uno de los 20 devuelve Off limpiamente sin ningún caso
+especial**: el valor de fábrica nunca coincide con lo que ese `LeerEstadoAsync` exige para reportar On
+(ej. Visual exige `VisualFXSetting==2`, el default es 0; HAGS exige `HwSchMode==2`, el default es 1;
+los servicios exigen `StartType==Disabled`, el default es Manual/Automatic; etc.). No hizo falta forzar
+ningún estado.
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost cerrado antes de compilar. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`95F415B902AA6966B6124D64BD7A17DC8F0B04F913A839997D955E190DCF4F02`, publicado 2026-08-28 00:30:12**.
+Queda para Tomy sobre el .exe publicado: forzar el escenario (un tweak ya On sin captura, como hizo con
+Tuning Avanzado) en 2-3 de los 20, confirmar que "Restablecer" aparece solo ahí, que deja el tweak en
+el estado de default esperado (Off), y que a partir de ese punto el ciclo normal de Aplicar/Revertir
+vuelve a funcionar con una captura real.
+
+---
+
+## Fix: el "Revertir" de las sesiones de Bloatware en Historial reportaba éxito falso (69_fix_revert_falso_bloatware.txt)
+
+### El problema real
+
+El diagnóstico del prompt 68 confirmó que esto era más grave que un hueco de funcionalidad. Para una
+sesión de Bloatware, al apretar "Revertir" en Historial:
+
+1. El diálogo de confirmación prometía restaurar *"los valores de registro, servicios y red al estado
+   anterior a esa optimización"*.
+2. `BackupService.RestoreSession` no tiene ningún paso que reinstale apps — y como una sesión de
+   Bloatware no tiene `session.json` (solo `bloatware_removed.json`, que `RestoreSession` nunca lee),
+   recorría sus 6 pasos en 0/0/0 sin hacer nada.
+3. `totalFailed == 0` → devolvía `true` → la app mostraba el popup verde **"Sesión revertida
+   correctamente… Reinicia el equipo para que todos los cambios tomen efecto"**.
+
+Un mensaje activamente falso, no un fallo silencioso. `bloatware_removed.json` siempre fue solo un
+registro de referencia para Historial (heredado del PS1, `Save-BloatBackup`); nunca existió un camino
+de reinstalación, ni en el PS1 ni en C#.
+
+### Decisión de producto (Tomy)
+
+- Se saca el botón "Revertir" para las sesiones de Bloatware en Historial, **sin reemplazo**. La fila
+  queda como registro informativo.
+- **No se construye ningún mecanismo de reinstalación automática en este corte** — ni siquiera para el
+  subconjunto de apps de Store donde sería técnicamente más viable (ver prompt 68). Esa decisión más
+  grande queda evaluada para más adelante, sin comprometerse ahora.
+
+### Detección de "sesión de Bloatware"
+
+Campo nuevo `BackupSessionInfo.HasBloatwareRef`, poblado en `GetBackupSessions()` por
+`File.Exists(<carpeta>/bloatware_removed.json)` — **detección por presencia del archivo específico**,
+no reusando `!HasMeta`. Motivo: `HasMeta == false` solo significa "no hay `session.json` por el motivo
+que sea" (ej. un `-Silent` que muriera entre `NewBackupSession` y `SaveSessionMetadata`) y podría
+aplicar a otro tipo de sesión en el futuro. Propiedad calculada
+`IsBloatwareOnly => HasBloatwareRef && !HasMeta` (sesión puramente de Bloatware; si en el futuro una
+carpeta tuviera ambos archivos, `session.json` manda y sí hay cosas reales que revertir).
+
+### Cambios
+
+1. **`RenderHistoryItems` (`MainWindow.xaml.cs`)** — para las filas `IsBloatwareOnly`:
+   - No se pinta el botón "Revertir" (`BtnDanger`). En su lugar, un placeholder inerte "—" centrado
+     (gris `#555555`) para que la columna "Acción" no quede visualmente vacía.
+   - La columna "Estado" muestra **"Bloatware"** (badge neutro gris) en vez del genérico "Sin
+     metadata" — así la fila se lee como un registro coherente y el hueco de "Acción" tiene sentido.
+2. **`RestoreSession` (`BackupService.cs`) — endurecido como defensa adicional.** Si la carpeta no
+   tiene `session.json` pero sí `bloatware_removed.json`, ahora detecta el caso explícitamente,
+   loguea *"Es un registro de desinstalación de Bloatware: WinBoost no reinstala apps, no hay nada
+   que revertir"* y devuelve `false` **antes** de recorrer los 6 pasos. Ya no puede repetir el
+   "Restauración completada" con éxito genérico aunque algún caller futuro llegue acá.
+3. **`RevertLastSessionAsync` / `btnRevertLast` ("Revertir última sesión")** — segundo camino
+   encontrado (el prompt 68 solo había mapeado el botón por-fila). Ese botón revierte `sessions[0]`
+   (la más reciente); si esa es una sesión de Bloatware ahora avisa honestamente (*"…no se pueden
+   reinstalar automáticamente desde WinBoost, así que esa sesión no se puede revertir"*) en vez de
+   mandarla al flujo de confirmación engañoso.
+
+### Confirmado que no queda otro camino (paso 4 del prompt)
+
+`RestoreSession` tiene un único caller: `InvokeRevertSessionAsync`, alcanzado solo desde (a) el botón
+por-fila de `RenderHistoryItems` y (b) `RevertLastSessionAsync` (`btnRevertLast`) — ambos cubiertos
+arriba. `SnapshotService`, el punto de restauración de Windows
+(`QuickActionRegistry`/`btnHomeRestorePoint`) y el revert por-tweak (`TweakStateStore`) son mecanismos
+separados, ninguno toca sesiones de Bloatware. No hay atajo de teclado, acción en lote ni botón en
+otra pantalla que dispare un revert de sesión.
+
+### Reinstalación automática — pendiente
+
+Queda evaluada para más adelante, sin compromiso. El prompt 68 dejó el análisis de viabilidad (caso
+por caso, ninguno instantáneo ni offline; Store online para apps de consumo, `winget` para las ~15
+OEM, sin camino confiable para varias).
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost cerrado antes de compilar (no estaba
+corriendo). Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`5DCC941642E2BD454F73A60F6925EA47438B7CC0E975167D2DE69F704C652F9A`, publicado 2026-08-27 23:49:32**.
+Queda para Tomy sobre el .exe publicado: correr una limpieza de Bloatware real (o revisar una sesión
+vieja), confirmar que esa fila ya NO tiene botón "Revertir" (muestra "—" y badge "Bloatware"), y
+confirmar que las sesiones reales de `-Silent` siguen mostrando su "Revertir" con el comportamiento de
+siempre, sin que este cambio las haya afectado por error.
+
+---
+
+## Retiro del tab Optimizar clásico (66_retiro_tab_optimizar_clasico.txt)
+
+El corte más grande de toda la migración: se retiró la pestaña Optimizar clásica (índice 0
+original, la pantalla más vieja y con más superficie de la app). Diagnóstico previo en los
+prompts 54 y 65; este prompt fue la implementación completa.
+
+### Qué se retiró
+
+- **XAML**: `<TabItem Header="Optimizar">` completo (~260 líneas: presets, 36 checkboxes en 5
+  categorías, selector de DNS) y el `footerBar` anidado adentro (barra de acción fija con
+  `btnRun`/`btnSelAll`/`btnSelNone`/`btnCancelOpt`/`lblSpaceFreed`/`lblPlanSummary`/`lblPlanWarning`).
+  `navOptimizar` (botón del sidebar) también.
+- **Code-behind exclusivo, sin otro caller** (`MainWindow.xaml.cs`): `OnRunOptimizationAsync`,
+  `FinishOptimizationAsync`, `ShowCompareDialog`, `ApplyPreset`, `AllOptCheckboxes`,
+  `GetCurrentSel`, `SelectAll`, `UpdateDnsHint`, `UpdatePlanSummary`, `SaveProfile`/`LoadProfile`
+  (persistencia propia en `opt_profile.json`, un tercer mecanismo de persistencia separado de
+  `BackupService`/`TweakStateStore`) + los campos `_scoreBefore`/`_lastFreedMb`/`_snapshotAfter`/
+  `_lastReportActions`/`_optProfilePath`.
+- **`OptimizationService.BuildActionPlan`** (`Services/OptimizationService.cs`): confirmado que
+  sus únicos 2 callers eran `UpdatePlanSummary` y `OnRunOptimizationAsync`, ambos del tab clásico.
+  El helper compartido `G(sel, key)` que usa internamente **no** se tocó — lo sigue usando
+  `OptimizationService.RunAsync` extensivamente (servicios, limpieza, etc.), motor de `-Silent`.
+- **`FinishOptimizationDialog` y `CompareDialog`** (clases/archivos .xaml + .xaml.cs completos):
+  verificado con el mismo rigor que `ConfirmOptimizationDialog` (que sí resultó compartido, no se
+  tocó) que estos dos NO tenían ningún otro caller fuera del flujo que se retira — se eliminaron
+  los 4 archivos.
+
+### Qué se preservó explícitamente, y por qué
+
+- **`OptimizationService.RunAsync`/`GetPreset` — intactos, cero cambios.** Son el motor exclusivo
+  de `App.RunSilentAsync` (modo `-Silent` de CLI, `App.xaml.cs`) desde este corte en adelante.
+  Confirmado antes de tocar nada (prompt 65): `App.RunSilentAsync` nunca instancia `MainWindow` ni
+  llama ninguno de sus métodos — llama directo a estos dos, un camino 100% independiente de la
+  pantalla. Romperlos rompía la CLI en producción.
+- **`ConfirmOptimizationDialog`**: Limpieza lo reusa (`MainWindow.xaml.cs`, `RunLimpiezaAsync`) —
+  solo se retiró el llamado que hacía el tab clásico.
+- **El banner de trial** (`bannerTrial`/`lblTrialText`/`btnTrialUpgrade`, `UpdateTrialBanner`):
+  vivía anidado dentro de `footerBar` — no exclusivo del tab clásico (es una feature de
+  licencias/trial de toda la app), simplemente estaba ubicado ahí. Se reubicó en **Home** (la
+  entrada de la app hoy, mismo criterio de "pantalla más visitada" que justificaba su ubicación
+  original) en vez de perderse. Se detectó recién al fallar la compilación tras borrar
+  `footerBar` — quedó como hallazgo real de este corte, no anticipado en el diagnóstico previo.
+- **`btnExportHTML`** (overlay de Consola): no tiene otro caller, pero el botón vive en el overlay
+  (visible desde cualquier pantalla), no en el tab clásico — no desaparecía solo. Se ocultó
+  explícito (`Visibility="Collapsed"`, x:Name preservado por si se reconstruye el reporte contra
+  la arquitectura nueva más adelante) y `ExportHtmlReportAsync` se eliminó (sin caller tras
+  ocultarlo).
+
+### Renumeración completa del sidebar
+
+Único caso hasta ahora donde se retira el índice **0** — corrió los 10 tabs restantes un lugar
+hacia abajo (a diferencia del retiro de Tuning Avanzado, que solo movió 3): `_navButtons`, todos
+los `SetActiveNav(N)` (sidebar, `btnHomeOptimize`, `btnHomeViewTweaks`, `btnTrialUpgrade`, el
+`SetActiveNav(2)` de arranque de la app → `SetActiveNav(1)`, Bloatware post-desinstalación), y los
+guards de carga lazy (`mainTabs.SelectedIndex == N`) de Herramientas/Home/Arranque/Bloatware/
+Historial/Ajustes/Tweaks/Network/Limpieza. Orden final: 0=Herramientas, 1=Home (entrada de la
+app), 2=Arranque, 3=Bloatware, 4=Historial, 5=Ajustes, 6=Licencia, 7=Tweaks, 8=Network,
+9=Limpieza. Se prestó atención especial a colecciones compartidas entre pestañas que asumieran un
+orden fijo (precedente real del corte de Tuning Avanzado, `_tweakCardRefs`) — no se encontró
+ninguna otra aparte de `_navButtons` mismo.
+
+Efecto colateral encontrado y corregido: `DownloadAndApplyAsync` (auto-updater) tenía un
+`SetActiveNav(0)` con el comentario "mostrar footer con la progressBar" — confirmado que ya no
+cumplía ninguna función real desde el fix 28.3 (la progress bar de `footerBar` se había sacado
+hace varios cortes; `App.Progress` apunta solo a `progressBarConsole`, en el overlay de Consola).
+Se eliminó el llamado en vez de renumerarlo.
+
+### `btnHomeOptimize`
+
+Pasó de `SetActiveNav(0)` (el tab clásico) a navegar directo a **Tweaks** (índice 7).
+
+### Onboarding: paso de perfil pausado
+
+`ApplyPreset` (el método que aplicaba el perfil elegido en el wizard) se eliminó junto con el tab
+clásico — manipulaba sus checkboxes. El paso "Selecciona tu perfil de uso" del `OnboardingDialog`
+se sacó del flujo (wizard de 4 pasos → 3: hardware, score, listo) sin construir ningún reemplazo
+ni cambiar el mensaje para "venderlo" de otra forma — eso queda para un prompt aparte. El paso
+final ("Todo listo") se ajustó para no seguir mencionando un perfil elegido que ya no existe.
+`OnboardingDialog.ChosenPreset` (string) se reemplazó por `Completed` (bool) — el wizard ya no
+elige ni aplica ningún preset, solo confirma que el usuario lo completó.
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost cerrado antes de compilar (no estaba
+corriendo). Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`1FE76BA041AB881E0F58696EE42D52608469345F8EEE07F84CE843E2C07DC676`, publicado 2026-08-26
+22:39:08**. Confirmado por lectura de código (no se corrió `-Silent` real, tiene efectos sobre el
+sistema): `OptimizationService.RunAsync`/`GetPreset` sin diff (`git diff` sobre
+`OptimizationService.cs` solo muestra las 72 líneas eliminadas de `BuildActionPlan`) y
+`App.xaml.cs`/`App.RunSilentAsync` sin ningún cambio. Queda para Tomy: navegar los 10 tabs
+restantes en más de un orden de clicks, confirmar `btnHomeOptimize` → Tweaks, confirmar
+`btnExportHTML` oculto sin crashear, correr el onboarding sin el paso de perfil (borrar o editar
+`FirstRunCompleted` a `false` en `%USERPROFILE%\.OptimizarPC\settings.json` para simular primer
+uso), y confirmar que Historial sigue mostrando/revirtiendo sesiones existentes.
+
+---
+
+## Fix: race condition en el barrido inicial del contador de tweaks activos (63_diagnostico_race_contador_tweaks_activos.txt)
+
+Diagnóstico del prompt 63 sobre el mecanismo del corte anterior (`UpdateActiveTweaksCardAsync`/
+`AdjustActiveTweaksCache`, prompt 62) — **confirmado real contra el código**, no una falsa alarma.
+
+### El bug
+
+Si el usuario aplicaba/revertía un tweak desde Tweaks o Network **mientras el barrido inicial** de
+los 27 `LeerEstadoAsync` todavía estaba en vuelo, el ajuste incremental corría contra un cache
+todavía `null` — no-op, correcto en sí mismo. Pero el barrido, al terminar, sobreescribía el cache
+con su propio conteo, que podía no reflejar ese cambio si la lectura de ESE tweak específico ya
+había corrido (capturando el estado viejo) antes de que el toggle del usuario aplicara el cambio
+real. Confirmado además que el mecanismo **nunca vuelve a barrer los 27** después del primer cálculo
+exitoso — `UpdateActiveTweaksCardAsync` corta directo a `RenderActiveTweaksCard` en cuanto
+`_activeTweaksCount` tiene un valor, para el resto de esa sesión de la app — así que un desfasaje
+causado por esta carrera quedaba fijo hasta reiniciar la app, sin ninguna forma de autocorregirse.
+
+### Fix
+
+`AdjustActiveTweaksCache` ahora marca un flag nuevo, `_activeTweaksDirtyDuringSweep`, de forma
+incondicional (tenga o no el cache un valor todavía) cada vez que corre mientras
+`_activeTweaksLoading` es true. `UpdateActiveTweaksCardAsync` envuelve el barrido en un `do/while`:
+si terminó con esa bandera en true, descarta ese resultado y repite el barrido completo desde cero,
+hasta que uno corra de punta a punta sin que ningún Aplicar/Revertir lo interrumpa (tope de 5
+reintentos, solo como resguardo ante un caso patológico de toggles constantes — en el uso real no
+debería hacer falta más de uno, si acaso). El fix solo necesita proteger ese primer barrido (el único
+que existe): una vez que ese resultado queda garantizado limpio, los ajustes incrementales
+posteriores parten de una base correcta y se mantienen correctos por sí solos (ya eran robustos a
+no-ops/fallos por diseño del prompt 62).
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. El build quedó bloqueado una vez porque el .exe
+publicado del corte anterior seguía corriendo **elevado** (UAC) — el shell de la sesión no tiene
+permisos para cerrar un proceso elevado (`taskkill` devolvió "Acceso denegado"); Tomy lo cerró a
+mano y se compiló sin problema después. Publicado con `Publish-CSharp.ps1 -SkipInstaller`
+(single-file, 71 MB): **SHA256 `0FF25BF7F3A5BE1F75AA5BC8CFD0004CF5E3BEBD4A4C9DE6EB0F105C914D2FFE`,
+publicado 2026-08-26 20:00:23**.
+
+---
+
+## Card "Tweaks activos" reemplaza a "Última optimización" en el Home (62_redesign_card_home_tweaks_activos.txt)
+
+Cierra el diagnóstico del prompt 61: la card "Última optimización" dependía 100% de
+`BackupSessionInfo`/`SessionMetadata` (4 campos — fecha, MB liberados, score, acciones — todos vía
+`App.Backup.GetBackupSessions().FirstOrDefault()`), el mecanismo del tab Optimizar clásico que el
+proyecto viene jubilando. Se reemplazó por completo, no se parcheó el filtro `HasMeta` — el prompt 60
+queda descartado, este prompt lo reemplaza.
+
+### Contenido nuevo: "Tweaks activos ahora"
+
+`X / 27` — cuántos de `TweakRegistry.All` tienen `LeerEstadoAsync() == TweakState.On` en este momento,
+sobre `App.Tweaks.All.Count` como denominador (nunca un `27` hardcodeado). A propósito **no** reusa
+`AuditResult`/`RunAuditAsync` (la malla de salud): son 17 checks con criterios más laxos que los 27
+toggles reales (confirmado en el prompt 61 — ej. `CheckSvcXbox` tolera 2 de 3, el `TweakDefinition`
+exige los 3; varios tweaks del registro ni están cubiertos por esos 17 checks) — mostrar ese número
+como "tweaks activos" habría sido inconsistente con lo que el usuario ve en Tweaks/Network.
+
+### Mecanismo: cache en memoria + barrido paralelo + ajuste incremental
+
+- **Primer cómputo** (`UpdateActiveTweaksCardAsync`, `MainWindow.xaml.cs`): `Task.WhenAll` sobre
+  `App.Tweaks.All.Select(t => t.LeerEstadoAsync())` — cada `LeerEstadoAsync` ya es su propio
+  `Task.Run`, así que las 27 lecturas corren en paralelo sin bloquear el hilo UI, y el tiempo total
+  queda dominado por la más lenta (no la suma de las 27, que incluye casos caros como Power con
+  varios `powercfg.exe` por lectura). Mientras corre, la card muestra "Calculando..."
+  (`panelHomeTweaksLoading`) en vez de un número momentáneamente incorrecto (0/27).
+- **Cache**: `_activeTweaksCount` (`int?`, solo en memoria — no tiene sentido persistirlo en disco,
+  es un dato "ahora mismo", no algo para conservar entre sesiones). Las visitas siguientes al Home lo
+  reusan tal cual, sin re-barrer los 27.
+- **Ajuste incremental sin re-barrido completo**: al aplicar/revertir un tweak individual desde
+  cualquier card (Tweaks o Network comparten `ApplyTweakAsync`/`RevertTweakAsync`),
+  `AdjustActiveTweaksCache` compara el nuevo `TweakState` contra el último conocido para ese Id
+  (`_lastKnownTweakState`, poblado gratis desde `UpdateTweakCardUi` — todo render de cualquier card
+  pasa por ahí) y mueve el cache ±1 solo si hubo un cambio real. Robusto a los no-op del registro
+  (revert sin original capturado, apply fallido): compara contra el estado *real* re-leído después de
+  la operación, no contra la intención del click, así que un revert que no hizo nada o un apply que
+  falló no mueven el contador de forma incorrecta.
+- **Desviación deliberada de la sugerencia del prompt** (alimentar el cache desde
+  `LoadTweaksTabAsync`/`LoadNetworkTabAsync` en vez de un barrido propio): evaluada y descartada. Esas
+  dos cargas son lazy y cubren subconjuntos parciales (24 y 3 de los 27) — el camino más común
+  (usuario entra a Home antes de haber visitado nunca Tweaks o Network) igual necesita el barrido
+  completo propio como fallback, así que un mecanismo único (en vez de piggy-backear en dos métodos ya
+  lazy y parciales, con el trackeo de "cuál de los dos ya corrió" que eso exigiría) es más simple y sin
+  más costo real.
+
+### Qué se sacó
+
+`UpdateLastOptCardAsync`, `RelativeTime`, los 4 campos
+(`lblHomeLastWhen`/`lblHomeLastFreed`/`lblHomeLastScore`/`lblHomeLastActions`) y sus 2 paneles
+(`panelHomeLastData`/`panelHomeLastEmpty`) se eliminaron por completo — confirmado que no se usaban en
+ningún otro lugar de la app antes de tocarlos. El botón "Ver historial" de la card se renombró a
+`btnHomeViewTweaks` ("Ver tweaks", navega a la sección Tweaks) para quedar coherente con el contenido
+nuevo — Historial sigue existiendo igual, solo dejó de ser el CTA de esta card puntual.
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias** (primera compilación). WinBoost cerrado antes de
+compilar (no estaba corriendo). Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file,
+71 MB): **SHA256 `57BFBA48409CCC9B2CFA72B3B51443F3236CBD6EFFC5863F6B6FFD3502E32F6B`, publicado
+2026-08-26 19:38:16**. Queda para Tomy: confirmar sobre el .exe publicado que el número coincide con
+los toggles reales en On en Tweaks + Network, que cambiar un toggle actualiza el conteo sin reiniciar
+la app, y que la primera carga no tarda de forma perceptible ni muestra un número incorrecto visible.
+
+---
+
+## Migración de Tuning Avanzado a TweakRegistry — 3/3, tab retirado (56_migracion_tuning_avanzado.txt)
+
+Cierra el hallazgo #2 del diagnóstico del prompt 54 (ARQUITECTURA_TWEAKS.md 7.6): los 3 controles de
+la pestaña "Tuning Avanzado" (corte 16B, previos a toda la arquitectura de tweaks) migran al mismo
+patrón que los otros 26 tweaks individuales (`TweakDefinition`/`TweakStateStore`, sección **Tweaks**,
+categoría "Sistema y Rendimiento") y la pestaña se retira completa del sidebar.
+
+### Paso 1 — Confirmado: la pestaña no tenía nada más
+
+Se leyó el XAML completo de `<TabItem Header="Tuning Avanzado">` antes de tocar nada: exactamente 3
+cards (Scheduler de CPU, HAGS, Política térmica), cada una con su `TextBlock` de estado + descripción
++ `ui:ToggleSwitch`. Nada de texto informativo suelto, links u otro control que necesitara
+reubicarse aparte de los 3 tweaks.
+
+### Paso 2 — Los 3 tweaks
+
+- **Scheduler de CPU (`Win32PrioritySep`)** — `HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl`,
+  valor `Win32PrioritySeparation` (DWORD). On = `0x28` (decisión de Tomy, reemplaza el viejo preset
+  "Responsividad" 0x24 — mejores 1% low en su hardware), Off = lo que haya capturado como original la
+  primera vez (no un valor fijo). Encaja tal cual en el patrón genérico `RegEntry`/
+  `ApplyRegEntriesAsync`/`RevertRegEntriesAsync`/`ReadRegEntriesAsync` ya usado por GPUPrio/PowerThrot/
+  DisableIPv6 — no hizo falta ningún `LeerEstadoAsync` a mano. **`RequiereReinicio: false`**: el
+  propio Panel de Control de Windows (Opciones de rendimiento > "Ajustar para obtener el mejor
+  rendimiento de") escribe este mismo valor sin pedir reinicio ni sesión nueva — coincide con que el
+  texto original de la UI ya decía "efectivo al reiniciar sesión" (no "reinicia el equipo", frase que
+  sí usaba HAGS) — nunca "reiniciar sesión" a secas se pudo confirmar en vivo con un logoff real
+  dentro de esta sesión de build, así que queda como juicio informado, no verificado end-to-end;
+  Tomy puede corregir si su prueba real muestra lo contrario.
+- **HAGS (`HAGS`)** — `HKLM\SYSTEM\CurrentControlSet\Control\GraphicsDrivers`, valor `HwSchMode`
+  (DWORD). On = `2`, Off = original capturado (a diferencia de la vieja `TuningService.SetHagsState`,
+  que forzaba `HwSchMode=1` al apagar en vez de restaurar el valor real anterior). Mismo patrón
+  genérico `RegEntry` que Win32PrioritySep. **`RequiereReinicio: true`** — documentado públicamente
+  por Microsoft (GPU hardware scheduling pide reinicio), coincide con el texto que ya traía la UI
+  vieja ("Reinicia el equipo para que tenga efecto").
+- **Política térmica (`PoliticaTermica`)** — no encaja en el patrón `RegEntry` (Apply necesita
+  `powercfg /setacvalueindex` + `/setdcvalueindex` + `/setactive` para que el cambio quede vivo, no
+  alcanza con escribir `ACSettingIndex` directo). Se reusó `TuningService.GetCoolingPolicyState()`
+  tal cual para `LeerEstadoAsync` (ya lee el registro directo, libre del bug de idioma de parsear
+  `powercfg /query` de un corte anterior) y `TuningService.SetCoolingPolicy(int)` tal cual para
+  aplicar (nunca tocó `BackupService`, a diferencia de los otros dos) — lo único que faltaba era
+  envolver ambos con captura/restauración real del original en `TweakStateStore`, que la UI vieja
+  nunca hacía (toggle inmediato sin memoria de ningún original). **`RequiereReinicio: false`** —
+  mismo criterio que Power (prompt 51): `powercfg` con `/setactive` aplica en vivo, sin reinicio.
+  Original capturado como `-1/0/1` tal cual devuelve `GetCoolingPolicyState`; si es `-1` ("no
+  disponible", plan personalizado sin este ajuste) el revert no escribe nada — no hay nada coherente
+  que restaurar, mismo criterio que los adaptadores huérfanos de DNS.
+
+Los 3 quedan en categoría **"Sistema y Rendimiento"**, junto a HPET/Power — no "Rendimiento" a secas
+(la de GPUPrio/PowerThrot/MouseAccel de la Tanda 1), para agrupar con los tweaks de máquina/sistema
+más recientes.
+
+### Paso 3 — Sidebar
+
+`navTuning` (botón + `_navButtons`) y el `<TabItem Header="Tuning Avanzado">` completo (XAML) se
+eliminaron. Tweaks/Network/Limpieza corrieron un índice hacia abajo: 9/10/11 → 8/9/10 — actualizado
+en `_navButtons`, los `SetActiveNav(...)` del sidebar, los 3 checks de carga lazy
+(`mainTabs.SelectedIndex == ...`) y los comentarios de índice en `MainWindow.xaml`/`.xaml.cs` y
+`CLAUDE.md` ("Orden de tabs"). `TuningService.cs` perdió `SetWin32PrioritySep`/`SetHagsState`/
+`EnsureBackupSession` (sin caller tras la migración) y las constantes `PriorityKeyPs`/`GraphicsKeyPs`
+que solo esos dos usaban; quedan los 3 `Get*` (reusados por `TweakRegistry` y por el overlay System
+Info, que sigue leyendo `GetHagsState()` para la fila informativa de HAGS) y `SetCoolingPolicy`.
+
+### Paso 4 — Mapa de `BackupService` actualizado
+
+Con Tuning Avanzado migrado, `TuningService.cs` queda **sin ninguna dependencia de `BackupService`**
+(confirmado: cero matches de `App.Backup`/`BackupService` fuera de comentarios). `BackupService`
+sigue dependiendo hoy de: el tab Optimizar clásico (`OnRunOptimizationAsync`/`FinishOptimizationAsync`,
+`MainWindow.xaml.cs`), el modo `-Silent` de CLI (`App.RunSilentAsync`, mismo motor
+`OptimizationService.RunAsync`) y Bloatware (`SaveBloatBackup` sobre la sesión activa o una nueva).
+Ningún otro lugar del árbol llama métodos de `BackupService` directo — mapa vigente para cuando se
+decida la migración/retiro del tab clásico (ARQUITECTURA_TWEAKS.md 7.5/7.6).
+
+### Nota vieja de "Win32PrioritySeparation removido" — corregida donde apareció
+
+Búsqueda en todo el repo: la afirmación de que Win32PrioritySeparation fue removido por placebo no
+aparecía en `docs/CLAUDE.md`. Sí aparecía en dos lugares:
+- `README.md`, sección "Tuning avanzado" — texto ambiguo (mezclaba "los únicos valores cuyo efecto
+  es real" con "los ajustes sin efecto medible fueron removidos" en el mismo párrafo, fácil de leer
+  como que el tweak en sí se removió). Reescrito: la sección "Tuning avanzado" se eliminó (ya no es
+  una pestaña propia) y sus 3 ítems se sumaron a "Optimización" (tweaks) y "Herramientas"
+  (información de componentes), sin la frase ambigua.
+- `docs/PENDIENTES.md`, ítem "Página de metodología pública" (Módulo 3) — decía literalmente "por qué
+  se removió `Win32PrioritySeparation`". Corregido para hablar de "cómo se eligió cada valor" en vez
+  de una remoción que nunca pasó.
+
+`legacy/OptimizarPC_App.ps1` también matcheaba la búsqueda inicial (`Get-Win32PrioritySep`/
+`Set-Win32PrioritySep`), pero es la implementación PS1 real del mismo tweak (mirror 1:1 de lo que
+después se portó a C#), no una afirmación de que se haya removido — no había nada que corregir ahí.
+No se tocó el archivo (código congelado, regla de `CLAUDE.md`).
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost cerrado antes de compilar (no estaba corriendo).
+Publicado con `Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`9941F35E6F40477E28C8E1B47EAC18F0B014C49457A43931FBE55AFB47F10B5F`, publicado 2026-08-25 21:56:29**.
+Queda para Tomy: ciclo completo aplicar/revertir de los 3 toggles sobre el .exe publicado (estado
+forzado a mano + evidencia real de registro/powercfg), y confirmar que "Tuning Avanzado" ya no
+aparece en el sidebar.
+
+---
+
 ## Diagnóstico: Power y el fallback a Alto Rendimiento en desktop — sin bug, sin cambios (52_fix_power_fallback_altorendimiento.txt)
 
 Diagnóstico puntual disparado por un dato que salió en el reporte del prompt 51: en desktop,

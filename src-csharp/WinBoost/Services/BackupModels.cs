@@ -78,6 +78,18 @@ public sealed class BackupSessionInfo
     public string           Preset     { get; set; } = "Desconocido";
     public bool             HasMeta    { get; set; }
     public SessionMetadata? Meta       { get; set; }
+
+    // Prompt 69: la carpeta contiene bloatware_removed.json (registro de desinstalacion
+    // de Bloatware). Se detecta por la presencia del archivo, NO por !HasMeta -- este
+    // ultimo solo significa "sin session.json por el motivo que sea" (ej. un -Silent que
+    // murio entre NewBackupSession y SaveSessionMetadata) y podria aplicar a otro tipo de
+    // sesion en el futuro.
+    public bool HasBloatwareRef { get; set; }
+
+    // Sesion puramente de Bloatware: solo la referencia de desinstalacion, sin session.json.
+    // RestoreSession no reinstala apps -> no hay nada que revertir. Historial no ofrece el
+    // boton "Revertir" para estas filas.
+    public bool IsBloatwareOnly => HasBloatwareRef && !HasMeta;
 }
 
 public sealed class SessionMetadata

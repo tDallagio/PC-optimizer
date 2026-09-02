@@ -336,14 +336,15 @@ public sealed class BackupService
 
                 sessions.Add(new BackupSessionInfo
                 {
-                    Path       = dir,
-                    FolderName = folderName,
-                    Timestamp  = meta?.Timestamp ?? folderName.Replace('_', ' '),
-                    FreedMb    = meta?.FreedMb    ?? 0,
-                    Actions    = meta?.ActionCount ?? 0,
-                    Preset     = meta?.Preset      ?? "Desconocido",
-                    HasMeta    = meta is not null,
-                    Meta       = meta
+                    Path            = dir,
+                    FolderName      = folderName,
+                    Timestamp       = meta?.Timestamp ?? folderName.Replace('_', ' '),
+                    FreedMb         = meta?.FreedMb    ?? 0,
+                    Actions         = meta?.ActionCount ?? 0,
+                    Preset          = meta?.Preset      ?? "Desconocido",
+                    HasMeta         = meta is not null,
+                    Meta            = meta,
+                    HasBloatwareRef = File.Exists(Path.Combine(dir, "bloatware_removed.json"))
                 });
             }
         }
@@ -395,6 +396,20 @@ public sealed class BackupService
         if (File.Exists(jsonFile))
             try { meta = JsonSerializer.Deserialize<SessionMetadata>(File.ReadAllText(jsonFile)); }
             catch { }
+
+        // Prompt 69 — defensa contra el "exito falso": una carpeta con bloatware_removed.json
+        // y sin session.json es un registro de desinstalacion de Bloatware. RestoreSession no
+        // reinstala apps. Antes de este guard recorria los 6 pasos en 0/0/0 y terminaba con
+        // "Restauracion completada" + return true. El boton por-fila de Historial ya no ofrece
+        // "Revertir" para estas sesiones y btnRevertLast las saltea; esto cubre cualquier otro
+        // caller que llegue aca en el futuro.
+        if (meta is null && File.Exists(Path.Combine(sessionPath, "bloatware_removed.json")))
+        {
+            log("RESTAURANDO SESION", "head");
+            log($"Carpeta: {Path.GetFileName(sessionPath)}", "info");
+            log("Es un registro de desinstalacion de Bloatware: WinBoost no reinstala apps, no hay nada que revertir.", "err");
+            return false;
+        }
 
         log("RESTAURANDO SESION", "head");
         log($"Carpeta: {Path.GetFileName(sessionPath)}", "info");

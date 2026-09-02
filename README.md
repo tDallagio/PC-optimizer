@@ -28,7 +28,9 @@ WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
 
 ### Optimizacion
 - Limpieza de archivos temporales, cache de exploradores, logs de eventos y WER
-- Tweaks de registro: GPU priority, telemetria, Cortana, GameDVR, aceleracion del mouse
+- Tweaks de registro: GPU priority, telemetria, Cortana, GameDVR, aceleracion del mouse,
+  scheduler de CPU (Win32PrioritySeparation), HAGS (Hardware-Accelerated GPU Scheduling),
+  politica termica via powercfg
 - Red: desactivar algoritmo de Nagle, TCP autotuning, flush DNS, preferir IPv4
 - Servicios: deshabilitar Xbox, diagnosticos, WER, Maps, Fax, Windows Search (solo en SSD)
 - Plan de energia de alto rendimiento, HPET, FastStartup, PageFile optimizado, TRIM async
@@ -61,19 +63,13 @@ WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
 - Limpieza profunda: Explorer cache, WER, logs CBS/DISM, shader cache (NVIDIA/AMD)
 - Limpieza del Driver Store: detecta duplicados obsoletos, exporta backup antes de eliminar
 - Liberador de RAM con purga de Standby List via `NtSetSystemInformation`
+- Informacion detallada de componentes: CPU (nucleos/hilos/cache), RAM (velocidad/slots),
+  GPU (VRAM real, driver) y estado de HAGS
 
 ### Mantenimiento automatico
 - Tarea programada configurable (diario/semanal/al inicio)
 - Ciclo standalone: temp, recycle, DNS flush, TRIM
 - Log JSON con historial de los ultimos 30 runs
-
-### Tuning avanzado
-- Win32PrioritySeparation expuesto solo en esta seccion, con los unicos valores cuyo
-  efecto es real y cada trade-off explicado honestamente. WinBoost no ofrece valores
-  placebo: los ajustes sin efecto medible fueron removidos tras una auditoria interna.
-- HAGS (Hardware-Accelerated GPU Scheduling): activar/desactivar con alerta de reinicio
-- Politica termica: activa/pasiva via powercfg
-- Informacion detallada de CPU, RAM, GPU y HAGS
 
 ### Reporte HTML
 - Reporte standalone con CSS inline: score antes/despues, metricas medibles, acciones aplicadas

@@ -895,13 +895,6 @@
               </Button>
               <TextBlock Text="PRINCIPAL" FontSize="9.5" FontWeight="SemiBold"
                          Foreground="{DynamicResource BrushFgDim}" Margin="8,2,0,4"/>
-              <Button x:Name="navOptimizar" Style="{StaticResource BtnNav}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#x26A1;" FontFamily="Segoe UI Symbol"
-                             FontSize="15" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Optimizar" VerticalAlignment="Center"/>
-                </StackPanel>
-              </Button>
               <Button x:Name="navHerramientas" Style="{StaticResource BtnNav}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                   <TextBlock Text="&#x2699;" FontFamily="Segoe UI Symbol"
@@ -911,13 +904,6 @@
                           CornerRadius="5" Width="8" Height="8"
                           VerticalAlignment="Center" Margin="5,0,0,0"
                           Visibility="Collapsed"/>
-                </StackPanel>
-              </Button>
-              <Button x:Name="navTuning" Style="{StaticResource BtnNav}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#x26A1;" FontFamily="Segoe UI Symbol"
-                             FontSize="15" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Tuning Avanzado" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
               <Button x:Name="navBloatware" Style="{StaticResource BtnNav}">
@@ -1049,265 +1035,6 @@
             </Border>
           </ControlTemplate>
         </TabControl.Template>
-
-      <!-- TAB OPTIMIZAR -->
-      <TabItem Header="Optimizar">
-        <!-- Reestructuracion 25: la pestaña Optimizar aloja la BARRA DE ACCION FIJA (ex footer
-             global) al fondo. Row 0 = contenido scrolleable; Row 1 = barra de accion. -->
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-          </Grid.RowDefinitions>
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"><StackPanel Margin="20,14">
-
-          <!-- PRESETS -->
-          <Border Background="#0F1A1F" CornerRadius="8" BorderBrush="#1A3A4A" BorderThickness="1" Padding="14,10" Margin="0,0,0,14">
-            <Grid>
-              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                <TextBlock Text="PRESETS" FontSize="10" FontWeight="SemiBold" Foreground="#006880"/>
-                <TextBlock Text="Seleccion rapida" FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <Button x:Name="btnPresetGaming" Style="{StaticResource BtnPreset}" Content="Gaming"        Margin="0,0,8,0">
-                  <Button.ToolTip><ToolTip Background="{DynamicResource BrushElev}" BorderBrush="{DynamicResource BrushBorder}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Optimizacion maxima para gaming. Activa todos los tweaks de rendimiento, red y deshabilita servicios innecesarios.</ToolTip></Button.ToolTip>
-                </Button>
-                <Button x:Name="btnPresetProd"   Style="{StaticResource BtnPreset}" Content="Productividad" Margin="0,0,8,0">
-                  <Button.ToolTip><ToolTip Background="{DynamicResource BrushElev}" BorderBrush="{DynamicResource BrushBorder}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Limpieza y optimizacion basica. Conserva servicios utiles para trabajo diario.</ToolTip></Button.ToolTip>
-                </Button>
-                <Button x:Name="btnPresetSafe"   Style="{StaticResource BtnPreset}" Content="Conservador"   Margin="0,0,16,0">
-                  <Button.ToolTip><ToolTip Background="{DynamicResource BrushElev}" BorderBrush="{DynamicResource BrushBorder}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Solo limpieza de archivos y DNS. No modifica registro ni servicios. Ideal para equipos compartidos.</ToolTip></Button.ToolTip>
-                </Button>
-                <Button x:Name="btnSaveProfile"  Style="{StaticResource BtnPreset}" Content="Guardar perfil">
-                  <Button.ToolTip><ToolTip Background="{DynamicResource BrushElev}" BorderBrush="{DynamicResource BrushBorder}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Guarda tu seleccion actual como perfil. Se carga automaticamente la proxima vez que abras la app.</ToolTip></Button.ToolTip>
-                </Button>
-              </StackPanel>
-            </Grid>
-          </Border>
-
-          <!-- LIMPIEZA DE ARCHIVOS -->
-          <TextBlock Text="LIMPIEZA DE ARCHIVOS" FontSize="11" FontWeight="SemiBold" Foreground="#22C55E" Margin="0,0,0,8"/>
-          <Border Style="{StaticResource CardOptimizar}" Margin="0,0,0,14">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <Rectangle Grid.Column="0" Fill="#22C55E"/>
-              <WrapPanel Grid.Column="1" Margin="14,12,14,12">
-                <CheckBox x:Name="chkTempUser"  Content="Temp usuario"       IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Elimina archivos temporales del usuario (%TEMP%)</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkTempSys"   Content="Temp sistema"       IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Elimina temporales de Windows (C:\Windows\Temp)</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkPrefetch"  Content="Prefetch (SSD)"     IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Limpia Prefetch. Solo recomendado en SSD. En HDD puede afectar tiempos de arranque.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkWinUpdate" Content="Cache Win Update"   IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Elimina archivos de actualizaciones ya instaladas de Windows Update.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkBrowsers"  Content="Cache navegadores"  IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Limpia cache de Chrome, Edge, Firefox, Brave y Opera. No borra contrasenas ni historial.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkThumb"     Content="Thumbnails"         IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Elimina cache de miniaturas del Explorador. Se regenera automaticamente.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkRecycle"   Content="Papelera"           IsChecked="True"  Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Vacia la papelera de reciclaje permanentemente.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkEventLogs" Content="Logs de eventos" IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="#EF4444" FontSize="11" MaxWidth="300">IMPACTO ALTO: borra logs de Aplicacion, Sistema y otros canales. El log de Seguridad NO se toca. Elimina registros forenses del sistema. No se activa con Seleccionar todo.</ToolTip></CheckBox.ToolTip></CheckBox>
-              </WrapPanel>
-            </Grid>
-          </Border>
-
-          <!-- SISTEMA Y RENDIMIENTO -->
-          <TextBlock Text="SISTEMA Y RENDIMIENTO" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource BrushAccent}" Margin="0,0,0,8"/>
-          <Border Style="{StaticResource CardOptimizar}" Margin="0,0,0,14">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <Rectangle Grid.Column="0" Fill="{StaticResource BrushAccent}"/>
-              <WrapPanel Grid.Column="1" Margin="14,12,14,12">
-                <CheckBox x:Name="chkPower"      Content="Ultimate Performance"  IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Activa el plan Ultimate Performance. Elimina todos los ahorros de energia. No recomendado en laptop.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkHPET"       Content="Deshabilitar HPET"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva el High Precision Event Timer. Reduce jitter en frametimes y mejora consistencia.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkGPUPrio"    Content="GPU Priority"         IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">GPU Priority=8 en registro DXGI. Mejora scheduling de frames en juegos DirectX.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkPowerThrot" Content="Power Throttling OFF" IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva throttling de CPU por consumo energetico. Evita bajadas de frecuencia involuntarias.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkVisual"     Content="Efectos visuales min." IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva animaciones y efectos visuales de Windows para liberar CPU y GPU.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkMouseAccel" Content="Mouse accel OFF"      IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva aceleracion del mouse (MouseSpeed=0). Mejora precision en juegos.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkStartup"      Content="Punto restauracion"   IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Crea punto de restauracion antes de aplicar cambios. Permite revertir si algo falla.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkFastStartup"  Content="Fast Startup OFF"     IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita el inicio rapido de Windows (HiberbootEnabled=0 + powercfg). Evita problemas con dual-boot, drivers y actualizaciones. Recomendado si usas Linux o tienes drivers inestables.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkPageFile"     Content="Optimizar PageFile"   IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Ajusta el PageFile a min/max fijo segun tu RAM para evitar fragmentacion. Si hay un disco secundario disponible, ofrece moverlo alli para liberar el disco del sistema.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkTrimDesfrag"  Content="TRIM / Desfrag"       IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">SSD: verifica y fuerza el schedule de TRIM semanal (Optimize-Volume). HDD: programa desfragmentacion semanal automatica. Se adapta al tipo de disco detectado.</ToolTip></CheckBox.ToolTip></CheckBox>
-              </WrapPanel>
-            </Grid>
-          </Border>
-
-          <!-- PRIVACIDAD Y TELEMETRIA -->
-          <TextBlock Text="PRIVACIDAD Y TELEMETRIA" FontSize="11" FontWeight="SemiBold" Foreground="#EF4444" Margin="0,0,0,8"/>
-          <Border Style="{StaticResource CardOptimizar}" Margin="0,0,0,14">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <Rectangle Grid.Column="0" Fill="#EF4444"/>
-              <WrapPanel Grid.Column="1" Margin="14,12,14,12">
-                <CheckBox x:Name="chkGameDVR"   Content="Game DVR / Xbox OFF" IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva Xbox Game DVR y Game Bar. Elimina overlay de grabacion que consume recursos en juegos.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkGameMode"  Content="Game Mode OFF"       IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva Game Mode de Windows. En AMD+Ryzen puede causar stutters. Recomendado OFF.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkTelemetry" Content="Telemetria Windows"  IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva envio de datos de diagnostico a Microsoft (AllowTelemetry=0).</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkCortana"   Content="Cortana OFF"         IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita Cortana via politica de grupo. Reduce procesos en background.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkNotif"     Content="Notificaciones OFF"  IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva notificaciones toast. Evita interrupciones mientras se juega.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkTasks"     Content="Tareas telemetria"   IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita tareas programadas de recopilacion de datos de Microsoft.</ToolTip></CheckBox.ToolTip></CheckBox>
-              </WrapPanel>
-            </Grid>
-          </Border>
-
-          <!-- RED Y CONECTIVIDAD -->
-          <TextBlock Text="RED Y CONECTIVIDAD" FontSize="11" FontWeight="SemiBold" Foreground="#A855F7" Margin="0,0,0,8"/>
-          <Border Style="{StaticResource CardOptimizar}" Margin="0,0,0,14">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <Rectangle Grid.Column="0" Fill="#A855F7"/>
-              <StackPanel Grid.Column="1" Margin="14,12,14,12">
-                <WrapPanel>
-                  <CheckBox x:Name="chkNagle"    Content="Nagle OFF"        IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Desactiva Algoritmo de Nagle (TcpAckFrequency=1, TCPNoDelay=1). Reduce latencia en juegos online.</ToolTip></CheckBox.ToolTip></CheckBox>
-                  <CheckBox x:Name="chkTCP"      Content="TCP/IP gaming"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Optimiza parametros TCP/IP via netsh: autotuning, RSS, FastOpen. Mejora latencia y throughput.</ToolTip></CheckBox.ToolTip></CheckBox>
-                  <CheckBox x:Name="chkDNSFlush" Content="Flush DNS"        IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Limpia la cache DNS local. Fuerza resolver nombres desde cero con los nuevos servidores.</ToolTip></CheckBox.ToolTip></CheckBox>
-                  <CheckBox x:Name="chkDisableIPv6" Content="Preferir IPv4" IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Configura Windows para preferir IPv4 sobre IPv6 (DisabledComponents=0x20). IPv6 sigue funcionando. Seguro en redes IPv6-nativas. Omitir si usas Teredo o servicios IPv6-only.</ToolTip></CheckBox.ToolTip></CheckBox>
-                </WrapPanel>
-                <!-- Selector de DNS -->
-                <Border Background="{DynamicResource BrushSidebar}" CornerRadius="6" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="12,9" Margin="0,6,0,0">
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="Auto"/>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <CheckBox x:Name="chkDNS" Grid.Column="0" Content="Servidor DNS:" IsChecked="True" Margin="0,0,12,0" VerticalAlignment="Center">
-                      <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Cambia el DNS de todos los adaptadores activos al proveedor seleccionado. Mas rapido y privado que el DNS del ISP.</ToolTip></CheckBox.ToolTip>
-                    </CheckBox>
-                    <ComboBox x:Name="cboDNSProvider" Grid.Column="1"
-                              Style="{StaticResource ComboDark}"
-                              HorizontalAlignment="Left" Width="220"
-                              SelectedIndex="0">
-                      <ComboBoxItem Content="Cloudflare  --  1.1.1.1 / 1.0.0.1"/>
-                      <ComboBoxItem Content="Google      --  8.8.8.8 / 8.8.4.4"/>
-                      <ComboBoxItem Content="Quad9       --  9.9.9.9 / 149.112.112.112"/>
-                      <ComboBoxItem Content="AdGuard     --  94.140.14.14 / 94.140.15.15"/>
-                    </ComboBox>
-                    <TextBlock Grid.Column="2" x:Name="lblDNSHint" Text="Cloudflare  1.1.1.1 / 1.0.0.1"
-                               FontSize="10" Foreground="{DynamicResource BrushFgDim}" VerticalAlignment="Center" Margin="12,0,0,0"/>
-                  </Grid>
-                </Border>
-              </StackPanel>
-            </Grid>
-          </Border>
-
-          <!-- SERVICIOS INNECESARIOS -->
-          <TextBlock Text="SERVICIOS INNECESARIOS" FontSize="11" FontWeight="SemiBold" Foreground="#F59E0B" Margin="0,0,0,8"/>
-          <Border Style="{StaticResource CardOptimizar}" Margin="0,0,0,4">
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3"/>
-                <ColumnDefinition Width="*"/>
-              </Grid.ColumnDefinitions>
-              <Rectangle Grid.Column="0" Fill="#F59E0B"/>
-              <WrapPanel Grid.Column="1" Margin="14,12,14,12">
-                <CheckBox x:Name="chkSvcXbox"    Content="Xbox Live"           IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita XblAuthManager, XblGameSave y XboxNetApiSvc. No afecta juegos de Steam o Epic.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkSvcDiag"    Content="DiagTrack"           IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita Connected User Experiences and Telemetry. Elimina envio de datos a Microsoft.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkSvcWER"     Content="Error Reporting"     IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita Windows Error Reporting. Evita envio de reportes de crashes a Microsoft.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkSvcSysMain" Content="SysMain/Superfetch"  IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita SysMain. Se aplica automaticamente solo si se detecto SSD. En HDD puede reducir rendimiento.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkSvcMaps"    Content="Maps / Geo"          IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita MapsBroker y Geolocation. Innecesarios en PCs de escritorio y gaming.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkSvcFax"     Content="Fax / Remote Reg"    IsChecked="True" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita Fax y Remote Registry. Innecesarios y pueden ser vectores de ataque.</ToolTip></CheckBox.ToolTip></CheckBox>
-                <CheckBox x:Name="chkSvcWSearch" Content="Windows Search (SSD)" IsChecked="False" Margin="0,4,24,4"><CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Deshabilita el servicio WSearch (indexado de archivos). Reduce escrituras innecesarias en SSD y consumo de CPU/RAM en segundo plano. No afecta la busqueda manual, solo la indexacion automatica.</ToolTip></CheckBox.ToolTip></CheckBox>
-              </WrapPanel>
-            </Grid>
-          </Border>
-
-        </StackPanel></ScrollViewer>
-
-        <!-- ===== BARRA DE ACCION FIJA (ex Row 2 PROGRESO + Row 3 FOOTER, reubicada aca) =====
-             Solo la pestaña Optimizar la tiene; las demas pestañas NO llevan footer. x:Name
-             preservados: footerBar, bannerTrial, btnTrialUpgrade, lblPlanSummary, lblPlanWarning,
-             lblSpaceFreed, btnSelAll, btnSelNone, btnCancelOpt, btnRun. La barra de progreso y su
-             estado ("Listo para optimizar" + %) se removieron (fix 28.3): el progreso vive en el
-             overlay. Layout Opcion A: secundarias a la izquierda, "Ejecutar optimizacion" a la derecha. -->
-        <Border Grid.Row="1" x:Name="footerBar" BorderThickness="0,1,0,0" Padding="20,10" MinHeight="0">
-          <Border.Background>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-              <GradientStop Color="#111111" Offset="0"/>
-              <GradientStop Color="#161616" Offset="1"/>
-            </LinearGradientBrush>
-          </Border.Background>
-          <Border.BorderBrush>
-            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-              <GradientStop Color="#3300C8FF" Offset="0"/>
-              <GradientStop Color="#00000000" Offset="0.5"/>
-              <GradientStop Color="#3300C8FF" Offset="1"/>
-            </LinearGradientBrush>
-          </Border.BorderBrush>
-          <StackPanel>
-            <!-- Banner trial (F0.2): visible durante y post-trial -->
-            <Border x:Name="bannerTrial" Background="#1A1200" BorderBrush="#3A2800" BorderThickness="1"
-                    CornerRadius="5" Padding="10,7" Margin="0,0,0,8" Visibility="Collapsed">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="lblTrialText" Grid.Column="0" Text="" FontSize="11"
-                           Foreground="#F59E0B" TextWrapping="Wrap"
-                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <Button x:Name="btnTrialUpgrade" Grid.Column="1"
-                        Content="Activar Pro" Padding="12,5"
-                        Background="#2A1800" BorderBrush="#F59E0B" BorderThickness="1"
-                        Foreground="#F59E0B" FontSize="11" Cursor="Hand" FontWeight="SemiBold">
-                  <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                      <Border Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="4" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                      </Border>
-                      <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                          <Setter Property="Background" Value="#3A2200"/>
-                        </Trigger>
-                      </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                  </Button.Template>
-                </Button>
-              </Grid>
-            </Border>
-            <!-- fix 28.3: la barra de progreso y su estado ("Listo para optimizar" + %) se
-                 quitaron de Optimizar — el progreso ahora vive SOLO en el overlay de consola
-                 (ProgressService apunta a progressBarConsole). Queda el contador (plan summary) y
-                 los botones. -->
-            <!-- Plan summary (3.2): N acciones · categorias, actualizado en tiempo real -->
-            <Grid Margin="0,0,0,7">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock x:Name="lblPlanSummary" FontSize="11" Foreground="#555555" VerticalAlignment="Center"
-                         Text="Nada seleccionado"/>
-              <TextBlock x:Name="lblPlanWarning" Grid.Column="1" FontSize="10" Foreground="#F59E0B"
-                         VerticalAlignment="Center" Visibility="Collapsed"/>
-            </Grid>
-            <!-- Fila principal (Opcion A): acciones secundarias a la izquierda, Ejecutar a la derecha -->
-            <Grid>
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                <Button x:Name="btnSelAll"     Content="Seleccionar todo"      Style="{StaticResource BtnSec}"    Margin="0,0,8,0"/>
-                <Button x:Name="btnSelNone"    Content="Deseleccionar"         Style="{StaticResource BtnSec}"    Margin="0,0,12,0"/>
-                <TextBlock x:Name="lblSpaceFreed" Text="" FontSize="11" Foreground="#22C55E" VerticalAlignment="Center"/>
-              </StackPanel>
-              <StackPanel Grid.Column="1" Orientation="Horizontal">
-                <Button x:Name="btnCancelOpt"  Content="Detener"               Style="{StaticResource BtnDanger}" Margin="0,0,8,0" Visibility="Collapsed"/>
-                <Button x:Name="btnRun"        Content="Ejecutar optimizacion" Style="{StaticResource BtnMain}"/>
-              </StackPanel>
-            </Grid>
-          </StackPanel>
-        </Border>
-        </Grid>
-      </TabItem>
 
       <!-- TAB HERRAMIENTAS -->
       <TabItem Header="Herramientas">
@@ -1771,26 +1498,65 @@
           </Grid.RowDefinitions>
 
           <!-- a) BIENVENIDA -->
-          <Grid Grid.Row="0" Margin="0,0,0,18">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-              <TextBlock FontSize="25" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}">
-                <Run Text="Bienvenido a "/><Run Text="Win" FontWeight="Regular" Foreground="{StaticResource BrushAccent}"/><Run Text="Boost" FontWeight="Bold" Foreground="{StaticResource BrushAccent}"/>
-              </TextBlock>
-              <TextBlock Text="Optimizacion, rendimiento y control total de tu PC" FontSize="13"
-                         Foreground="{DynamicResource BrushFgMuted}" Margin="0,5,0,0"/>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-              <!-- Fase C, Paso 5 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt): primer
-                   QuickActionDefinition renderizado fuera de Network. Sin card dedicada (el Grid
-                   estirable de abajo, malla de salud + ultima optimizacion, no tiene aire para una
-                   card mas sin reestructurar layout ajeno a este paso), resultado via ShowToast, el
-                   mismo mecanismo que ya usa esta pestaña para el resumen post-optimizacion. -->
-              <Button x:Name="btnHomeRestorePoint" Content="Punto de restauracion" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
-              <Button x:Name="btnHomeSysInfo" Content="System Info" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
-              <Button x:Name="btnHomeOptimize" Content="Optimizar ahora" Style="{StaticResource BtnGlossyCyan}"/>
-            </StackPanel>
-          </Grid>
+          <StackPanel Grid.Row="0" Margin="0,0,0,18">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock FontSize="25" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}">
+                  <Run Text="Bienvenido a "/><Run Text="Win" FontWeight="Regular" Foreground="{StaticResource BrushAccent}"/><Run Text="Boost" FontWeight="Bold" Foreground="{StaticResource BrushAccent}"/>
+                </TextBlock>
+                <TextBlock Text="Optimizacion, rendimiento y control total de tu PC" FontSize="13"
+                           Foreground="{DynamicResource BrushFgMuted}" Margin="0,5,0,0"/>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Fase C, Paso 5 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt): primer
+                     QuickActionDefinition renderizado fuera de Network. Sin card dedicada (el Grid
+                     estirable de abajo, malla de salud + tweaks activos, no tiene aire para una
+                     card mas sin reestructurar layout ajeno a este paso), resultado via ShowToast, el
+                     mismo mecanismo que ya usa esta pestaña para el resumen post-optimizacion. -->
+                <Button x:Name="btnHomeRestorePoint" Content="Punto de restauracion" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
+                <Button x:Name="btnHomeSysInfo" Content="System Info" Style="{StaticResource BtnGlossyDark}" Margin="0,0,10,0"/>
+                <Button x:Name="btnHomeOptimize" Content="Optimizar ahora" Style="{StaticResource BtnGlossyCyan}"/>
+              </StackPanel>
+            </Grid>
+            <!-- Banner trial (F0.2): visible durante y post-trial. Reubicado aca en el prompt 66
+                 (retiro del tab Optimizar clasico): vivia en footerBar, dentro de esa pestana;
+                 Home es la entrada de la app ahora, mismo criterio de pantalla mas visitada que
+                 justificaba la ubicacion original. x:Name intactos (bannerTrial/lblTrialText/
+                 btnTrialUpgrade), UpdateTrialBanner no necesito ningun cambio. -->
+            <Border x:Name="bannerTrial" Background="#1A1200" BorderBrush="#3A2800" BorderThickness="1"
+                    CornerRadius="5" Padding="10,7" Margin="0,14,0,0" Visibility="Collapsed">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="lblTrialText" Grid.Column="0" Text="" FontSize="11"
+                           Foreground="#F59E0B" TextWrapping="Wrap"
+                           VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <Button x:Name="btnTrialUpgrade" Grid.Column="1"
+                        Content="Activar Pro" Padding="12,5"
+                        Background="#2A1800" BorderBrush="#F59E0B" BorderThickness="1"
+                        Foreground="#F59E0B" FontSize="11" Cursor="Hand" FontWeight="SemiBold">
+                  <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                      <Border Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}"
+                              CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                      </Border>
+                      <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter Property="Background" Value="#3A2200"/>
+                        </Trigger>
+                      </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                  </Button.Template>
+                </Button>
+              </Grid>
+            </Border>
+          </StackPanel>
 
           <!-- b) MEDIDORES CPU / RAM / GPU (gauge custom: track + arco + % al centro; sin modelo) -->
           <Grid Grid.Row="1" Margin="0,0,0,16">
@@ -1864,7 +1630,7 @@
             </Border>
           </Grid>
 
-          <!-- c) CUADRANTE INFERIOR: malla de salud (2fr) | ultima optimizacion (1fr). Estira (Row *). -->
+          <!-- c) CUADRANTE INFERIOR: malla de salud (2fr) | tweaks activos (1fr, prompt 62). Estira (Row *). -->
           <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="2*"/><ColumnDefinition Width="14"/><ColumnDefinition Width="1*"/>
@@ -1985,36 +1751,28 @@
               </Grid>
             </Border>
 
-            <!-- DERECHA: ULTIMA OPTIMIZACION -->
+            <!-- DERECHA: TWEAKS ACTIVOS (prompt 62, reemplaza a la vieja ULTIMA OPTIMIZACION) -->
             <Border Grid.Column="2" CornerRadius="10" BorderThickness="1" BorderBrush="#4000C8FF">
               <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#15242C" Offset="0"/><GradientStop Color="#121616" Offset="1"/></LinearGradientBrush></Border.Background>
               <Grid>
                 <Border CornerRadius="10" IsHitTestVisible="False"><Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#18FFFFFF" Offset="0"/><GradientStop Color="#0AFFFFFF" Offset="0.12"/><GradientStop Color="#00FFFFFF" Offset="0.4"/></LinearGradientBrush></Border.Background></Border>
                 <Grid Margin="16,14">
                   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                  <TextBlock Grid.Row="0" Text="ULTIMA OPTIMIZACION" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" Margin="0,0,0,10"/>
-                  <!-- estado con datos -->
-                  <StackPanel Grid.Row="1" x:Name="panelHomeLastData" Visibility="Collapsed" VerticalAlignment="Center">
-                    <TextBlock x:Name="lblHomeLastWhen" Text="" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg1}" Margin="0,0,0,14"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                      <TextBlock x:Name="lblHomeLastFreed" Text="0 MB" FontSize="19" FontWeight="Bold" Foreground="#22C55E" VerticalAlignment="Bottom"/>
-                      <TextBlock Text=" liberados" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                      <TextBlock x:Name="lblHomeLastScore" Text="+0" FontSize="19" FontWeight="Bold" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Bottom"/>
-                      <TextBlock Text=" puntos de salud" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
-                    </StackPanel>
+                  <TextBlock Grid.Row="0" Text="TWEAKS ACTIVOS AHORA" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" Margin="0,0,0,10"/>
+                  <!-- contador ya calculado (cache en memoria o barrido recien terminado) -->
+                  <StackPanel Grid.Row="1" x:Name="panelHomeTweaksData" Visibility="Collapsed" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal">
-                      <TextBlock x:Name="lblHomeLastActions" Text="0" FontSize="19" FontWeight="Bold" Foreground="{DynamicResource BrushFg1}" VerticalAlignment="Bottom"/>
-                      <TextBlock Text=" acciones" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="4,0,0,2"/>
+                      <TextBlock x:Name="lblHomeTweaksOn" Text="0" FontSize="34" FontWeight="Bold" Foreground="{StaticResource BrushAccent}" VerticalAlignment="Bottom"/>
+                      <TextBlock x:Name="lblHomeTweaksTotal" Text=" / 0" FontSize="17" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgMuted}" VerticalAlignment="Bottom" Margin="0,0,0,3"/>
                     </StackPanel>
+                    <TextBlock Text="tweaks aplicados en este momento" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                   </StackPanel>
-                  <!-- estado vacio -->
-                  <StackPanel Grid.Row="1" x:Name="panelHomeLastEmpty" Visibility="Collapsed" VerticalAlignment="Center">
-                    <TextBlock Text="Todavia no optimizaste" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg2}" TextWrapping="Wrap"/>
-                    <TextBlock Text="Optimiza ahora para ver tus resultados aca." FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                  <!-- primer barrido en curso (Task.WhenAll sobre los 27 TweakDefinition) -->
+                  <StackPanel Grid.Row="1" x:Name="panelHomeTweaksLoading" Visibility="Visible" VerticalAlignment="Center">
+                    <TextBlock Text="Calculando..." FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFg2}"/>
+                    <TextBlock Text="Revisando el estado real de cada tweak." FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                   </StackPanel>
-                  <Button Grid.Row="2" x:Name="btnHomeViewHistory" Content="Ver historial" Style="{StaticResource BtnSec}" Padding="12,5" FontSize="11" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                  <Button Grid.Row="2" x:Name="btnHomeViewTweaks" Content="Ver tweaks" Style="{StaticResource BtnSec}" Padding="12,5" FontSize="11" HorizontalAlignment="Left" Margin="0,12,0,0"/>
                 </Grid>
               </Grid>
             </Border>
@@ -2231,8 +1989,9 @@
            modal (consoleOverlay, definido al final del grid raiz). Sus controles (rtbLog,
            logScroll, btnClearLog, btnExportLog, btnExportHTML, lblLogStatus, progressBarConsole,
            lblProgressConsole, lblPctConsole) se movieron TAL CUAL al overlay conservando sus
-           x:Name, asi el AppLogger, ExportConsoleLog, ExportHtmlReportAsync y el ProgressService
-           siguen funcionando sin cambios. Al quitar esta TabItem los indices posteriores bajaron
+           x:Name, asi el AppLogger, ExportConsoleLog y el ProgressService siguen funcionando sin
+           cambios (btnExportHTML se oculto en el prompt 66, ver su comentario propio mas abajo;
+           ExportHtmlReportAsync ya no existe). Al quitar esta TabItem los indices posteriores bajaron
            1: Historial 6->5, Ajustes 7->6, Licencia 8->7, Tuning 9->8 (recableado en el .cs). -->
 
       <!-- TAB HISTORIAL -->
@@ -2809,86 +2568,9 @@
         </StackPanel></ScrollViewer>
       </TabItem>
 
-      <!-- TAB TUNING AVANZADO (F2.18/F2.19, indice 9) -->
-      <TabItem Header="Tuning Avanzado" Visibility="Collapsed">
-        <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="20,14,20,20">
-
-          <!-- CARD 1 — Scheduler de CPU -->
-          <Border Background="{DynamicResource BrushCard}" BorderBrush="{StaticResource BrushAccent}"
-                  BorderThickness="0,0,0,2" CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,14">
-            <StackPanel>
-              <TextBlock Text="SCHEDULER DE CPU" FontSize="10" FontWeight="SemiBold"
-                         Foreground="{StaticResource BrushAccent}" Margin="0,0,0,12"/>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                  <TextBlock x:Name="lblPrioState" FontSize="13" FontWeight="SemiBold"
-                             Margin="0,0,0,4" Text="Estado: --"/>
-                  <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
-                    Text="Da mas prioridad de CPU al proceso en primer plano frente a los de fondo. El efecto varia segun el sistema y el juego: puede notarse en la fluidez percibida y en los 1% low, o no notarse en hardware moderno. ON aplica 0x28 (prioridad alta al proceso activo); OFF vuelve al valor por defecto de Windows (2)."/>
-                </StackPanel>
-                <ui:ToggleSwitch x:Name="swPrio" Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
-                                  OnContent="Responsividad" OffContent="Default"/>
-              </Grid>
-              <TextBlock x:Name="lblPrioStatus" FontSize="11" Margin="0,8,0,0"/>
-            </StackPanel>
-          </Border>
-
-          <!-- CARD 2 — HAGS -->
-          <Border Background="{DynamicResource BrushCard}" BorderBrush="#A855F7"
-                  BorderThickness="0,0,0,2" CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,14">
-            <StackPanel>
-              <TextBlock Text="ACELERACION GPU HARDWARE (HAGS)" FontSize="10" FontWeight="SemiBold"
-                         Foreground="#A855F7" Margin="0,0,0,12"/>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                  <TextBlock x:Name="lblHagsState" FontSize="13" FontWeight="SemiBold"
-                             Margin="0,0,0,4" Text="Estado: --"/>
-                  <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
-                    Text="Delega el scheduling de frames de GPU al hardware en lugar del driver de pantalla. Reduce latencia de GPU en juegos y aplicaciones graficas intensivas. Requiere Windows 10 v2004+, GPU compatible y reinicio."/>
-                </StackPanel>
-                <ui:ToggleSwitch x:Name="swHags" Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
-                                  OnContent="Activo" OffContent="Inactivo"/>
-              </Grid>
-              <TextBlock x:Name="lblHagsResult" FontSize="10" Margin="0,8,0,0" TextWrapping="Wrap"/>
-            </StackPanel>
-          </Border>
-
-          <!-- CARD 3 — Politica termica -->
-          <Border Background="{DynamicResource BrushCard}" BorderBrush="#F59E0B"
-                  BorderThickness="0,0,0,2" CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,14">
-            <StackPanel>
-              <TextBlock Text="POLITICA TERMICA" FontSize="10" FontWeight="SemiBold"
-                         Foreground="#F59E0B" Margin="0,0,0,12"/>
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0">
-                  <TextBlock x:Name="lblCoolState" FontSize="13" FontWeight="SemiBold"
-                             Margin="0,0,0,4" Text="Modo actual: --"/>
-                  <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
-                    Text="Activa: el plan de energia permite maxima frecuencia de CPU y ventiladores para mantener temperatura. Pasiva: el sistema reduce frecuencia de CPU antes de acelerar ventiladores (mas silencioso, algo menos de rendimiento)."/>
-                </StackPanel>
-                <ui:ToggleSwitch x:Name="swCool" Grid.Column="1" Margin="16,0,0,0" VerticalAlignment="Center"
-                                  OnContent="Activa" OffContent="Pasiva"/>
-              </Grid>
-              <TextBlock x:Name="lblCoolResult" FontSize="11" Margin="0,8,0,0"/>
-            </StackPanel>
-          </Border>
-
-        </StackPanel></ScrollViewer>
-      </TabItem>
-
-      <!-- TAB TWEAKS (9) — Piloto Fase A (38_fase_a_registro_tweaks_piloto.txt). Cards generadas
+      <!-- TAB TWEAKS (8, era 9: prompt 56 saco la pestana Tuning Avanzado del medio; Scheduler
+           CPU/HAGS/Politica termica migraron aca como tweaks mas, TweakRegistry.cs) — Piloto
+           Fase A (38_fase_a_registro_tweaks_piloto.txt). Cards generadas
            en codigo (BuildTweakCard, MainWindow.xaml.cs) a partir de App.Tweaks.All: es un
            registro extensible, no 5 bloques XAML a mano que haya que duplicar en la Fase B.
            No toca el tab Optimizar existente (checkboxes + Ejecutar siguen igual, en paralelo). -->
@@ -2903,7 +2585,7 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- TAB NETWORK (10) — Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt). Misma mecanica
+      <!-- TAB NETWORK (9, era 10) — Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt). Misma mecanica
            que Tweaks (cards generadas en codigo via BuildTweakCard a partir de App.Tweaks.All),
            filtrado a Categoria=="Red": Nagle y TCP se MUDAN aca desde Tweaks (misma definicion,
            mismo Id, solo cambia el panel donde se renderiza la card) + DisableIPv6 nuevo. -->
@@ -2953,7 +2635,7 @@
         </ScrollViewer>
       </TabItem>
 
-      <!-- TAB LIMPIEZA (11) — Fase C, Paso 3 (49_fase_c_paso3_seccion_limpieza.txt). UNA sola card
+      <!-- TAB LIMPIEZA (10, era 11) — Fase C, Paso 3 (49_fase_c_paso3_seccion_limpieza.txt). UNA sola card
            con los 8 items de limpieza ya implementados y validados en
            OptimizationService.CleanupTweaks (mismos Ids que el tab Optimizar clasico), seleccion
            multiple + un boton. No es TweakDefinition ni QuickAction puro (no hay revert, y hay
@@ -3110,7 +2792,11 @@
                 <Button x:Name="btnExportLog" Content="Exportar .txt" Style="{StaticResource BtnSec}" Padding="12,4" FontSize="11" Margin="0,0,8,0">
                   <Button.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Guarda el log en un archivo .txt con timestamp en tu carpeta Documentos.</ToolTip></Button.ToolTip>
                 </Button>
-                <Button x:Name="btnExportHTML" Content="Exportar HTML" Style="{StaticResource BtnSec}" Padding="12,4" FontSize="11">
+                <!-- Prompt 66: oculto tras retirar el tab Optimizar clasico. Su unica fuente de
+                     datos (_lastReportActions/_lastFreedMb/_scoreBefore/snapshots) desaparecio con
+                     ese flujo; ExportHtmlReportAsync se elimino del code-behind. x:Name preservado
+                     por si se reconstruye este reporte contra la arquitectura nueva mas adelante. -->
+                <Button x:Name="btnExportHTML" Content="Exportar HTML" Style="{StaticResource BtnSec}" Padding="12,4" FontSize="11" Visibility="Collapsed">
                   <Button.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Genera un reporte HTML standalone con info del sistema, score y acciones. Se abre en el navegador.</ToolTip></Button.ToolTip>
                 </Button>
               </StackPanel>
