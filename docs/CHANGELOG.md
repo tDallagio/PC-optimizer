@@ -5,6 +5,234 @@
 
 ---
 
+## Eliminación del trial gratuito de 14 días (82_eliminar_trial_gratuito.txt)
+
+Se quitó por completo el trial de 14 días. **Motivo**: era client-side y burlable — el estado vivía
+solo en `%USERPROFILE%\.OptimizarPC\settings.json` (`TrialStartDate` / `TrialExpired`), sin ancla de
+máquina ni server, así que fecha futura → cientos de días, borrar `settings.json` (o meterle basura a
+`TrialStartDate`, que caía en un `catch` que regalaba 14 días nuevos) → trial repetible, resetear la
+fecha a hoy → trial eterno, atrasar el reloj → no avanzaba. Debilidad ya documentada en
+`docs/PENDIENTES.md` ("Modelo de licencias — rediseño"). Diagnóstico previo del mecanismo completo en
+el prompt 81.
+
+**Sin lógica de migración**: Tomy confirmó que no hay usuarios con una instalación en curso, así que
+el corte es inmediato a Free para cualquiera sin licencia Pro/Tech válida. Confirmado que
+`SettingsService.Load()` no rompe si alguien tuviera un `settings.json` viejo con los campos de trial
+— `System.Text.Json` ignora campos desconocidos al deserializar y todo el `Load()` va dentro de un
+`try/catch`.
+
+### Qué cambió
+
+- **`LicenseService.cs`**: se eliminó `EvaluateTrial()` entero (incluida la rama `catch` que regalaba
+  14 días ante una fecha corrupta). El único evaluador ahora es `RefreshFromStored()`: `IsPro`/`IsTech`
+  solo se activan si `GetStatus()` confirma una licencia real en `license.key` / `tech_license.key`.
+  Se removieron las propiedades `IsTrial` y `TrialDaysLeft` (sin ningún consumidor tras el cambio).
+- **`AppSettings.cs` / `SettingsService.cs`**: se eliminaron los campos `TrialStartDate` y
+  `TrialExpired` y sus dos líneas de carga.
+- **`MainWindow.xaml.cs`**:
+  - `InitLicenseAsync()` ya solo llama `RefreshFromStored()` (antes también `EvaluateTrial()`).
+  - `LockProFeature()`: el mensaje ya no varía según `TrialExpired` ni menciona "periodo de prueba" —
+    un único texto honesto: *"<Función> es exclusiva de las licencias Pro y Tecnico. Activa tu
+    licencia en la pestaña Licencia para usarla."* **Qué features gatea NO cambió**: siguen siendo
+    Desinstalar bloatware, Mantenimiento automático (toggle + "Ejecutar ahora") y Revertir sesión de
+    Historial (por fila y "Revertir última sesión").
+  - `UpdateLicenseBadge()`: sacada la rama de trial; quedan 3 estados — Técnico / Pro / Free.
+  - `UpdateTrialBanner()` **eliminado** (su único propósito era la cuenta regresiva de días).
+  - Sacado el wiring de `btnTrialUpgrade.Click` y los 4 brushes del banner (`BrushTrialBg`/`Bd`,
+    `BrushExpBg`/`Bd`).
+- **`MainWindow.xaml`**:
+  - Eliminado el badge de trial del sidebar (`badgeLicenseTrial` + `lblLicenseTrialDays`, "PRUEBA · Xd").
+  - Eliminado el banner de trial de Home (`bannerTrial` + `lblTrialText` + `btnTrialUpgrade`, con su
+    cuenta regresiva y el botón "Activar Pro"). No se reemplazó por ningún indicador ni CTA nuevo — el
+    estado del plan se ve en la pestaña Licencia (accesible desde el icono `navLicencia`) y en el badge
+    Free/Pro/Técnico del sidebar. No se rediseñó ninguna estrategia de upsell (tema aparte).
+  - Texto stale de la pestaña Licencia corregido (además del trial, tenía 2 puntos viejos): decía
+    *"desbloquear tweaks avanzados, mantenimiento automatico y exportacion de reportes"* — los tweaks
+    avanzados no están gateados hoy y la exportación de reportes se eliminó en el corte 66. Ahora:
+    *"Las licencias Pro y Tecnico desbloquean la desinstalacion de bloatware, el mantenimiento
+    automatico programado y la reversion de sesiones desde el Historial."* La card "Obtener licencia
+    Pro" pasó de *"Desbloquea todas las funciones"* a *"Desbloquea las funciones Pro"*.
+
+### Fuera de alcance (queda pendiente)
+
+Qué **más** gatear para usuarios Free — el gate de Pro se perdió para casi toda la app como efecto
+colateral del retiro del tab Optimizar clásico (corte 66) y no se restaura acá. Es una decisión a
+tomar junto con el rediseño de tiers (Free/Pro/Ultra), ya documentada en `docs/PENDIENTES.md`.
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost no estaba corriendo. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`01162CC1554BCEA298A33FB134D6ED40B5D5C9B8CE2A1C3B266BE1595E8C9B5E`, publicado 2026-09-02 19:57:40**.
+Queda para Tomy sobre el .exe publicado: una instalación nueva (o borrando `settings.json`) arranca
+directo en Free, sin trial ni cuenta de días, sin banner en Home; Desinstalar bloatware /
+Mantenimiento automático / Revertir sesión sin licencia muestran el mensaje honesto de Pro (sin
+mencionar trial); activar una licencia Pro o Tech real sigue funcionando igual que siempre.
+
+---
+
+## Sidebar: Principal/Sistema únicos — Tweaks/Network/Limpieza a Principal, Herramientas a Sistema (78_reordenar_sidebar_retirar_optimizar_clasico.txt)
+
+Reordenamiento del sidebar para que quede con **solo 2 divisiones con label**: PRINCIPAL y SISTEMA.
+
+### Qué cambió
+
+- Tweaks, Network y Limpieza dejaron de ser **segmentos propios** (cada uno tenía su `<TextBlock>` de
+  sub-header suelto fuera de PRINCIPAL/SISTEMA, agregados por separado en las Fases A/C). Ahora viven
+  **dentro de PRINCIPAL**, junto a Bloatware.
+- **Herramientas** se movió de PRINCIPAL a **SISTEMA**.
+- Orden final:
+  - **PRINCIPAL**: Tweaks · Network · Limpieza · Bloatware
+  - **SISTEMA**: Herramientas · Arranque · Historial
+- Home sigue como item propio arriba de ambos grupos; la fila de iconos del fondo
+  (Consola/Ajustes/Licencia) sin cambios.
+
+### Mecanismo — solo reorden visual, cero reindexado
+
+El "segmento propio" de cada uno de los 3 era literalmente un `<TextBlock Text="TWEAKS/NETWORK/
+LIMPIEZA">` seguido de su `<Button>`, todo en el mismo `StackPanel` del sidebar. Se quitaron los 3
+sub-headers y se reordenaron los `<Button>` dentro del `StackPanel`. **No se tocó nada de C#**: el
+array `_navButtons` está indexado por **tab index** (no por posición en el sidebar), `SetActiveNav(N)`
+usa el tab index, y el orden de las `<TabItem>` en el `TabControl` no cambió. Todos los
+`SetActiveNav(N)` / `mainTabs.SelectedIndex == N` (click handlers, `btnHomeOptimize` → Tweaks,
+`btnTrialUpgrade` → Licencia, arranque → Home, Bloatware post-desinstalación, guards de carga lazy)
+siguen apuntando al índice correcto sin tocar. De paso se limpiaron 3 comentarios stale del sidebar
+(uno decía "no la pestaña Optimizar existente (que sigue intacta en paralelo)", del piloto Fase A —
+esa pestaña se retiró en el corte 66).
+
+### Optimizar clásico — confirmado sin rastros
+
+Verificado contra el código real: no queda nada del tab Optimizar clásico en la navegación
+(`navOptimizar` eliminado en el corte 66; no hay `<TabItem Header="Optimizar">` huérfano; 10
+`<TabItem>` = 10 entradas de `_navButtons`, alineados). `btnHomeOptimize` sigue existiendo pero navega
+a Tweaks (índice 7), no es un rastro muerto. `btnExportHTML` sigue `Visibility="Collapsed"` en el
+overlay de Consola (x:Name preservado a propósito desde el corte 66).
+
+### Historial — Comparativa/Reporte HTML: ya resuelto en el corte 66, no se tocó
+
+El Paso 1b confirmó que las 2 consecuencias diagnosticadas en el prompt 54 antes de retirar Optimizar
+clásico ya se habían resuelto en el corte 66:
+
+1. **Stats agregadas + gráfico de score de Historial**: NO quedaron congeladas. `SaveSessionMetadata`
+   lo sigue llamando el modo `-Silent` de CLI (`App.xaml.cs`; `OptimizationService.RunAsync`/
+   `GetPreset` nunca se tocaron) cada vez que corre; Historial sigue recibiendo sesiones con metadata
+   completa (+ sesiones sin metadata de Bloatware).
+2. **Comparativa + Reporte HTML**: no muestran datos vacíos porque **se removieron por completo** en
+   el corte 66 — `ShowCompareDialog`/`FinishOptimizationDialog`/`CompareDialog` eliminados,
+   `ExportHtmlReportAsync` eliminado, `btnExportHTML` (que vive en el overlay de Consola, no en
+   Historial) oculto explícito. No hay ningún botón "Comparativa" en la app.
+
+**Paso 5 no aplicó** — no se tocó Historial (ni la lista de sesiones, ni el revert por fila).
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost cerrado antes de compilar. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`C00FD8338C78DBD84212270F674753236FF28F97861DEC66C49945CD6D50A7D5`, publicado 2026-09-02 17:49:22**.
+Queda para Tomy sobre el .exe publicado: el sidebar muestra Home arriba, PRINCIPAL con
+Tweaks/Network/Limpieza/Bloatware, SISTEMA con Herramientas/Arranque/Historial; cada item abre la
+sección correcta (ningún índice roto); Historial sin cambios.
+
+---
+
+## Documentación: corregido el conteo de la card de Limpieza en la entrada del corte 75 (77_fix_changelog_conteo_limpieza_corte75.txt)
+
+Detectado durante el sync de documentación del corte 76. La entrada del corte 75 (abajo) decía en 3
+lugares que la card **LIMPIEZA DE ARCHIVOS** quedaba en **9** checkboxes/ítems; el conteo real
+verificado contra el código es **8**: se quitó "Thumbnails" (subsumido en "Caché profunda") y se
+agregó "Caché profunda" → **cambio neto cero**, sigue en 8. Las 3 menciones de la entrada del corte
+75 se corrigieron a "8" en su lugar (líneas de la sección *Caché profunda*, *Limpieza — pantalla
+organizada* y *Verificación*), sin reescribir la entrada al completo — este registro deja constancia
+de que hubo una corrección. El error venía del write-up del corte 75, no del código: la
+implementación siempre dejó 8 checkboxes. Sin cambio de código.
+
+---
+
+## Herramientas → Limpieza: se movieron Caché profunda, Mantenimiento automático y Driver Store (75_mover_herramientas_a_limpieza.txt)
+
+Diagnóstico previo en el prompt 74. Los 3 ítems no encajaban igual en el destino, así que se movieron
+de tres formas distintas.
+
+### Caché profunda → checkbox de la card de "tildar y ejecutar"
+
+- **Checkbox nuevo `chkCleanDeep` "Cache profunda"** en la card LIMPIEZA DE ARCHIVOS (reemplaza al
+  checkbox "Thumbnails" — la card queda en 8 ítems, cambio neto cero), `IsChecked="False"`, impacto
+  `"high"` (el mismo nivel que EventLogs) → `ConfirmOptimizationDialog` lo muestra en el banner de
+  impacto alto y en fila ámbar. El tooltip y el detalle del diálogo dicen explícitamente que
+  **reinicia el Explorador** (parpadeo 2-3 s, se cierran ventanas de Explorador).
+- **Ejecución**: rama nueva `if (G(sel, "DeepClean"))` en `OptimizationService.CleanupTweaks` que
+  reusa `MaintenanceService.DeepCleanAsync` tal cual (los 4 pasos: icon/thumb cache con Explorer
+  detenido, WER, logs CBS/DISM, shaders D3D). `DeepCleanAsync` dejó de ser `async` de verdad — su
+  único `await` era `Task.Delay(1500)`, ahora `Thread.Sleep(1500)` — y `CleanupTweaks` la espera
+  bloqueante con `.GetAwaiter().GetResult()`: no hay deadlock porque `CleanupTweaks` ya corre dentro
+  de un `Task.Run` (tanto en `RunLimpiezaAsync` como en el `-Silent` de CLI), sin
+  `SynchronizationContext`. Sin duplicar la lógica de borrado.
+- **Fusión con "Thumbnails"**: confirmado que el paso 1 de DeepClean toca la misma carpeta
+  (`%LocalAppData%\Microsoft\Windows\Explorer`) que el viejo checkbox "Thumbnails", pero mejor (con el
+  Explorador detenido, los archivos no están bloqueados). Se **sacó el checkbox "Thumbnails"** de la
+  UI de Limpieza para no procesar lo mismo dos veces. La clave `"Thumb"` de `CleanupTweaks` **se
+  conservó** — los presets del `-Silent` de CLI la usan; solo desapareció de la pantalla.
+- **Card vieja de Herramientas retirada**: `btnDeepClean`, `lblDeepCleanStatus`, el recuadro de aviso
+  y el handler `MainWindow.DeepCleanAsync()` (sin otro caller) se eliminaron. No queda un segundo
+  camino para disparar el flujo.
+
+### Mantenimiento automático → sección propia en Limpieza
+
+Es una tarea programada de Task Scheduler (toggle + frecuencia + hora + "Ejecutar ahora"), NO una
+acción de "limpiar ahora" — se movió como **su propia card** ("BLOQUE 2"), no plegada en la lista de
+checkboxes. El XAML (`tglMaintenance`, `cboMaintFreq`/`cboMaintHour`, `chkMaint*`, `lblLastMaint`/
+`lblNextMaint`/`lblMaintStatus`, `btnRunMaintNow`) se movió sin cambios. El code-behind
+(`UpdateMaintUIAsync`, `ToggleMaintenanceAsync`, `RunMaintenanceNowAsync`) no se tocó — opera sobre
+los mismos controles por `x:Name`, ahora en otra parte del árbol visual. `UpdateMaintUIAsync` se
+sigue llamando al arrancar la app (constructor), no atado a visitar ningún tab. El solapamiento entre
+`RunCycleAsync` ("Ejecutar ahora": temp+recycle+DNS+TRIM) y lo que Limpieza/Network/Herramientas ya
+cubren por separado **quedó igual** — decisión aparte a futuro.
+
+### Driver Store → sección propia en Limpieza
+
+Es un flujo guiado de 3 pasos (escanear → backup obligatorio → borrar) con riesgo real — se movió como
+**su propia card** ("BLOQUE 3"), con su UI multi-paso intacta. El XAML (`btnScanDrvStore`/
+`btnDriverBackup`/`btnDriverDelete`/`lblDriverStatus`/`drvListScroll`/`icDrvStore`) se movió sin
+cambios. El code-behind (`ScanObsoleteDriversAsync`, `ExportDriverBackupAsync`,
+`DeleteSelectedDriversAsync`, `BuildDriverRow`, campos `_driverPackages`/`_driverChecks`/
+`_driverBackupDone`) no se tocó. `TuningService` no se movió — sigue siendo el servicio.
+
+### Nota sobre la ubicación del code-behind
+
+Los métodos de Mantenimiento y Driver Store quedaron **en su lugar en `MainWindow.xaml.cs`** (solo se
+actualizaron los comentarios de sección). Moverlos físicamente ~270 líneas era riesgo de un error de
+copiado sin ningún beneficio testeable: los controles `x:Name` se movieron en el árbol XAML y los
+métodos siguen resolviéndolos sin cambios. El cableado (`.Click +=`) del constructor tampoco cambió.
+
+### Herramientas — layout ajustado
+
+Tras sacar los 3, la grilla de 2 columnas / 6 filas quedó con huecos. Se convirtió a un `StackPanel`
+de cards full-width apiladas: **Liberador de RAM, Procesos pesados, Dispositivos con problemas,
+TRIM/Desfrag**. La card de Benchmark (ya `Visibility="Collapsed"` y sin código C# desde hace cortes)
+se eliminó del XAML de paso.
+
+### Limpieza — pantalla organizada
+
+`TabItem > ScrollViewer > StackPanel` con 3 bloques etiquetados, cada uno una card con su franja de
+acento y título en mayúsculas: **LIMPIEZA DE ARCHIVOS** (8 checkboxes + Ejecutar) · **MANTENIMIENTO
+AUTOMATICO** · **LIMPIEZA DEL DRIVER STORE**. El `ScrollViewer` que ya tenía la pantalla alcanza para
+el contenido extra.
+
+### Verificación
+
+`dotnet build` **0 errores, 0 advertencias**. WinBoost cerrado antes de compilar. Publicado con
+`Publish-CSharp.ps1 -SkipInstaller` (single-file, 71 MB): **SHA256
+`371B121527A257783707CA5C4EAAF7FBCF3BD82D782236227DF600E1F7B42361`, publicado 2026-09-02 16:39:07**.
+Confirmado que no queda ninguna referencia en la app (comentario, índice, atajo) a la ubicación vieja
+de estos 3 ítems — `_procLoaded`/`InitProcessesAsync` (Procesos pesados) sigue siendo lo único que
+dispara la carga lazy de Herramientas. Queda para Tomy sobre el .exe publicado: Herramientas sin
+huecos; Limpieza con los 8 checkboxes (Caché profunda con su aviso de impacto alto en el diálogo) +
+las 2 secciones nuevas; correr Caché profunda desde el checkbox reproduce el comportamiento de siempre
+(incluido el reinicio del Explorador); "Ejecutar ahora" de mantenimiento y el flujo de driver store
+funcionan igual.
+
+---
+
 ## "Restablecer a default de Windows" para los 20 tweaks Seguro (71_restablecer_default_windows_20_seguros.txt)
 
 ### El problema que resuelve

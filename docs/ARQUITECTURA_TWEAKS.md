@@ -13,7 +13,9 @@
 > implementaron y validaron por completo. Las secciones 1-6 quedan como registro histórico del
 > análisis previo a implementar (varias de sus predicciones/decisiones NO coinciden con lo que
 > terminó pasando en la práctica). **Ver Sección 7 al final para el estado real post-implementación**
-> — es la fuente de verdad actual, no las secciones 4-5.
+> — es la fuente de verdad actual, no las secciones 4-5. La **pestaña Optimizar** que las secciones
+> 1-6 analizan en presente ya **no existe**: se retiró completa en el corte 66 (7.9), una vez que
+> los 26 tweaks + Limpieza tuvieron hogar en la arquitectura nueva.
 
 ---
 
@@ -251,7 +253,12 @@ destino ahí, para cuando llegue su turno.
   cancelación/progreso propios que este patrón simple no cubre.
 - **Secciones de sidebar nuevas**: **Tweaks** (piloto, Fase A) y, agregadas después en la Fase C:
   **Network** y **Limpieza**. Además se sumaron acciones puntuales en **Herramientas** (TRIM/Desfrag)
-  y **Home** (punto de restauración).
+  y **Home** (punto de restauración). Al principio cada una colgaba de su propio sub-header suelto en
+  el sidebar (segmento propio, separado de PRINCIPAL/SISTEMA); en el **corte 78** esos 3 sub-headers
+  se eliminaron y Tweaks/Network/Limpieza pasaron a vivir **dentro del grupo PRINCIPAL** junto a
+  Bloatware (orden: Tweaks, Network, Limpieza, Bloatware), mientras que **Herramientas** bajó a
+  **SISTEMA** (con Arranque e Historial). Reordenamiento puramente visual — los índices de `TabItem`
+  y `_navButtons` no cambiaron (ver 7.9).
 - El tab **Optimizar clásico** no se tocó en esta etapa (Fases A/B/C) — siguió aplicando los mismos
   tweaks + Limpieza por su cuenta, en paralelo. **Retirado completo en el corte 66** (ver 7.9), una
   vez migrado el universo completo de tweaks individuales.
@@ -270,6 +277,14 @@ destino ahí, para cuando llegue su turno.
 | Red y Conectividad | DNSFlush | Sección **Network** (QuickAction) |
 | Servicios | SvcXbox, SvcDiag, SvcWER, SvcSysMain, SvcMaps, SvcFax, SvcWSearch | Sección **Tweaks** (7/7 completo) |
 | Limpieza de archivos | TempUser, TempSys, Prefetch, WinUpdate, Browsers, Thumb, Recycle, EventLogs | Sección **Limpieza** (1 sola card, selección múltiple + ejecutar, sin revert — no aplica) |
+
+> **Corte 75** (rediseño de Herramientas — fuera del alcance de este documento, ver Sección 5): en la
+> card de Limpieza de archivos el checkbox `Thumb` se reemplazó por uno nuevo, **"Caché profunda"**
+> (subsume esa limpieza y además reinicia el Explorador, vía `MaintenanceService.DeepCleanAsync`); la
+> clave `Thumb` de `CleanupTweaks` se conserva porque los presets `-Silent` la usan. Con eso la card
+> quedó en 8 checkboxes (no cambió la cantidad neta). La sección **Limpieza** dejó de ser solo esta
+> card: recibió dos bloques propios movidos desde Herramientas (**Mantenimiento automático**, **Driver
+> Store**). Detalle en `docs/CHANGELOG.md`.
 
 ### 7.3 Divergencias reales respecto a la Sección 5 (decisión original)
 
@@ -348,10 +363,12 @@ Detalle completo en `docs/CHANGELOG.md` por corte; resumen:
 
 ### 7.5 Pendiente real (no resuelto, no es "decisión futura teórica" — son huecos concretos)
 
-- **Decisión de retiro del tab Optimizar clásico.** Con los 26 tweaks individuales + Limpieza ya
-  migrados a su propio hogar (universo completo, ver 7.2), el tab clásico quedó redundante en todo
-  su contenido, pero sigue activo en paralelo — nadie decidió todavía si/cuándo retirarlo. Es una
-  decisión de producto de Tomy, no técnica.
+- **Decisión de retiro del tab Optimizar clásico — RESUELTA (corte 66).** Con los 26 tweaks
+  individuales + Limpieza migrados a su propio hogar (universo completo, ver 7.2), el tab clásico
+  quedó redundante en todo su contenido. Tomy decidió retirarlo: pantalla + code-behind exclusivo
+  eliminados; `OptimizationService.RunAsync`/`GetPreset` preservados como motor exclusivo del modo
+  `-Silent` de CLI. Detalle completo en 7.9. *(Se deja el ítem acá como registro del hueco que
+  existía; ya no es un pendiente.)*
 - **SvcSysMain/SvcWSearch — rama `NoAplicable` (sin SSD) implementada pero no validada en máquina
   real.** La máquina de Tomy tiene SSD; falta probarlo en una VM o equipo con disco mecánico real
   (ver CHANGELOG, Tanda 4).
@@ -391,10 +408,10 @@ Detalle completo en `docs/CHANGELOG.md` por corte; resumen:
 
 ### 7.6 Diagnóstico de dependencias antes de retirar el tab clásico (prompt 54)
 
-Diagnóstico de solo lectura (prompt 54, sin cambios de código) sobre qué depende hoy realmente del
-tab Optimizar clásico y de `BackupService`, para no romper nada a ciegas si se decide su retiro (ver
-7.5). Cinco hallazgos reales, documentados acá sin resolver — el orden de ataque de cada uno queda
-para otro prompt.
+Diagnóstico de solo lectura (prompt 54, sin cambios de código) sobre qué dependía realmente del
+tab Optimizar clásico y de `BackupService`, para no romper nada a ciegas al retirarlo (retiro
+efectivo en el corte 66, ver 7.5 y 7.9). Cinco hallazgos reales — **todos resueltos desde entonces**
+(en los cortes 56, 62/63, 66 y 68/69); cada uno lleva abajo su estado real y la referencia concreta.
 
 1. **Historial se degrada solo parcialmente — confirmado que NO se degrada en la práctica (corte
    66).** `RefreshHistoryAsync`/`RenderHistoryItems` (`MainWindow.xaml.cs`) leen
@@ -422,8 +439,9 @@ para otro prompt.
    prompt 56 migró los 3 controles (Scheduler CPU, HAGS y Política térmica) a
    `TweakRegistry`/`TweakStateStore` y retiró la pestaña del sidebar —
    `SetWin32PrioritySep`/`SetHagsState`/`EnsureBackupSession` se eliminaron de `TuningService.cs` (sin
-   caller). El mapa de dependencias de `BackupService` queda: (a) el tab Optimizar clásico, (b) el
-   modo `-Silent` de CLI, (c) Bloatware.
+   caller). El mapa de dependencias de `BackupService`, **tras el retiro del tab Optimizar clásico en
+   el corte 66**, queda: (a) el modo `-Silent` de CLI, (b) Bloatware (ver también el "Mapa final de
+   `BackupService`" en 7.9).
 3. **Bloatware: "Revertir" no reinstala nada de verdad — y además reportaba éxito falso. Resuelto en
    los cortes 68 (diagnóstico) y 69 (fix).** `SaveBloatBackup` (`BloatwareService.cs`) solo escribe
    `bloatware_removed.json` como referencia; `RestoreSession` (`BackupService.cs`) no tiene ningún
@@ -449,8 +467,8 @@ para otro prompt.
    sesión sin metadata como si fuera la última optimización, con 0 MB / 0 acciones / score +0 — un
    resultado engañoso, no el estado vacío real. (Antes del corte 56, Tuning Avanzado era otra fuente
    real de este mismo problema.) Antes de aplicar el fix puntual del filtro, Tomy notó el problema de
-   fondo: los 4 datos de la card pertenecían por completo al mecanismo de sesión del tab clásico que
-   se viene retirando — parchear el filtro no resolvía eso. El prompt 61 diagnosticó qué hacía falta
+   fondo: los 4 datos de la card pertenecían por completo al mecanismo de sesión del tab clásico (que
+   el proyecto terminó retirando en el corte 66) — parchear el filtro no resolvía eso. El prompt 61 diagnosticó qué hacía falta
    para un rediseño real y el prompt 62 reemplazó la card completa por un contador en vivo de "Tweaks
    activos", desacoplado por completo de `BackupService`/`BackupSessionInfo` — sin `HasMeta` que
    filtrar porque ya no lee sesiones en absoluto. Detalle completo del mecanismo nuevo en 7.8.
@@ -472,8 +490,13 @@ para otro prompt.
 Nota menor, sin relación directa con el tab clásico: `CleanupOldBackups(keepDays)`
 (`BackupService.cs`) no tiene ningún caller en todo el árbol — candidato a limpieza de repo.
 
-Ninguno de los 5 hallazgos se corrigió en este prompt — es diagnóstico y documentación, no cambio de
-comportamiento. El orden de ataque queda para decidir en otro prompt aparte.
+En el prompt 54 ninguno de los 5 hallazgos se corrigió — era diagnóstico puro. **Desde entonces se
+resolvieron los 5**: hallazgo 2 en el corte 56 (Tuning Avanzado migrado, ya no toca `BackupService`);
+hallazgo 4 en los cortes 62/63 (card "Última optimización" reemplazada por "Tweaks activos", ver
+7.8); hallazgos 1 y 5 en el corte 66, al retirar el tab (Historial confirmado sin degradarse porque
+`-Silent` sigue llamando `SaveSessionMetadata`; Comparativa/Reporte HTML eliminados en vez de quedar
+mostrando datos vacíos, ver 7.9); hallazgo 3 en los cortes 68/69 (revert falso de Bloatware — botón
+sacado, `RestoreSession` endurecido, ver 7.10).
 
 ### 7.7 Mapeo de "defaults seguros de Windows" para un futuro "Restablecer" (prompt 57)
 
@@ -543,20 +566,27 @@ detalle tweak-por-tweak de arriba antes de escribirla acá — coincide sin ajus
   inventarlo): **Power** (puntualmente `standby-timeout-ac`; el GUID de plan sí tiene un default
   razonable en Equilibrado), **Win32PrioritySep**, **PoliticaTermica**.
 
-**Decisión de alcance — todavía NO tomada.** Cuatro opciones evaluadas, ninguna elegida:
-- **A.** Construir "Restablecer" solo para los 20 Seguro.
+**Decisión de alcance — RESUELTA en el corte 71: opción A.** Cuatro opciones estaban evaluadas:
+- **A.** Construir "Restablecer" solo para los 20 Seguro.  ← **elegida por Tomy**
 - **B.** Sumar también el Grupo A (Riesgoso aproximable) con texto de incertidumbre explícito.
 - **C.** Construir para los 27 completos, incluido el Grupo B.
 - **D.** No construir la feature por ahora.
 
-No se implementó nada en este prompt — es mapeo para decidir alcance después.
+El corte 71 implementó la opción A: "Restablecer a default de Windows" solo para los 20 Seguro; los 7
+Riesgoso quedan sin la acción, con el bloqueo honesto de "Revertir" sin cambios. La única divergencia
+respecto de la tabla de arriba se encontró durante la implementación: **GameMode** — `AllowAutoGameMode`
+no es un default de fábrica documentado de Windows (el mapeo original asumía un valor puntual), se
+corrigió a *borrar* ese valor. Implementación completa en 7.11.
+
+El mapeo de arriba (tabla de los 27, Grupos A/B) se conserva como registro histórico: es la base para
+una eventual decisión futura sobre B o C.
 
 ### 7.8 Card "Tweaks activos" del Home reemplaza a "Última optimización" (cortes 61-63)
 
 Cierra el hallazgo #4 de 7.6 (bug de `HasMeta`, ver ahí): antes de aplicar ese fix puntual, Tomy notó
 que el problema de fondo no era el filtro — los 4 datos de la vieja card (MB liberados, acciones,
 score, fecha) pertenecían por completo al mecanismo de sesión (`BackupSessionInfo`/`SessionMetadata`)
-del tab Optimizar clásico que el proyecto viene retirando. El prompt 61 diagnosticó qué hacía falta
+del tab Optimizar clásico (que el proyecto retiró después, corte 66). El prompt 61 diagnosticó qué hacía falta
 para un rediseño real; el prompt 62 reemplazó la card completa; el prompt 63 confirmó y corrigió una
 race condition real en el mecanismo nuevo.
 
@@ -675,7 +705,11 @@ de la app, Bloatware post-desinstalación) y los guards de carga lazy
 2=Arranque, 3=Bloatware, 4=Historial, 5=Ajustes, 6=Licencia, 7=Tweaks, 8=Network, 9=Limpieza. Se
 prestó atención especial a colecciones compartidas entre pestañas que asumieran un orden fijo
 (precedente real del corte de Tuning Avanzado, `_tweakCardRefs`) — no se encontró ninguna otra
-aparte de `_navButtons` mismo.
+aparte de `_navButtons` mismo. **Corte 78**: el sidebar se reordenó *visualmente* (Tweaks/Network/
+Limpieza dentro de PRINCIPAL, Herramientas a SISTEMA, sub-headers sueltos eliminados; ver 7.1) —
+estos índices de `TabItem` y `_navButtons` NO cambiaron, solo el orden de los `<Button>` en el
+`StackPanel` del sidebar. `SetActiveNav(N)` y sus callers siguen resolviéndose por índice de
+`TabItem`.
 
 **`btnHomeOptimize`**: pasó de `SetActiveNav(0)` (el tab clásico) a navegar directo a **Tweaks**
 (índice 7).
@@ -775,3 +809,72 @@ comentario en `BackupService.cs` dicen "los 6 pasos" de `RestoreSession`; el có
 hallazgo 3) tiene **7** pasos numerados (registro, servicios, red, HPET, plan de energía, PageFile,
 TCP global). Inexactitud cosmética del corte 69, no afecta el comportamiento; esta sección usa el
 número real.
+
+### 7.11 "Restablecer a default de Windows" — implementación (corte 71)
+
+Cierra la decisión de alcance de 7.7 (opción A: los 20 Seguro). Mapeo en el prompt 57 (validado en el
+58), datos de testeo manual en el prompt 72, implementación y prueba en el prompt 71 (Tomy forzó el
+escenario "On sin captura" en varios de los 20 sobre el .exe publicado y confirmó el comportamiento).
+El mecanismo por tweak está detallado en `docs/CHANGELOG.md` (entrada del corte 71) — acá va la
+arquitectura y las decisiones.
+
+**Qué resuelve.** Un tweak que ya está On antes de que el usuario toque su toggle nuevo (config
+externa, o remanente de una versión vieja de WinBoost) no tiene `Original` en `TweakStateStore`, así
+que "Revertir" se bloquea honestamente (no-op + *"WinBoost no tiene un valor original guardado"*). Es
+correcto — adivinar un default sería el mismo placebo que ya se corrigió en HAGS (7.2) — pero deja al
+usuario sin forma de apagar el tweak desde la UI. La acción nueva es la vía de escape, rotulada
+honestamente: escribe el valor de **fábrica de Windows** (best-effort documentado), **no** "tu
+original de esta máquina". Confirmación explícita antes de ejecutar.
+
+**Arquitectura.**
+- `TweakDefinition` gana un 9º parámetro opcional `Func<Task>? RestablecerDefaultAsync = null`. Los
+  call-sites usan args nombrados, así que agregar el parámetro no tocó ninguno. `!= null` solo en los
+  20 Seguro; `null` en los 7 Riesgoso y en cualquier cosa que no sea `TweakDefinition` (DNS del
+  `DnsPresetService`, quick actions).
+- Helpers nuevos en `TweakRegistry.cs`, todos **sin tocar `TweakStateStore`** (no es un original
+  real): `RegDefault` + `WriteRegDefaultsAsync` (`DefaultValue == null` = borrar el valor, y solo abre
+  la key si el valor existe — no la crea de la nada; `!= null` = escribirlo),
+  `SetServiceStart`/`RestablecerSvcDefaultAsync` (escribe `Start` DWORD directo; con Automatic además
+  intenta arrancar el servicio, best-effort, igual que `RevertSvcEntriesAsync`). Los tweaks con
+  Apply/Revert propios (MouseAccel, Visual, Nagle, Tasks, HPET, PageFile, FastStartup) tienen su
+  `Restablecer*DefaultAsync` dedicado.
+
+**Cuándo se muestra el botón — reusa la detección existente, sin duplicar lógica.** La UI
+(`BuildTweakCard`/`UpdateTweakCardUi`, `MainWindow.xaml.cs`) muestra "Restablecer a default de
+Windows" solo cuando se cumplen las 3 condiciones a la vez:
+1. El tweak lo soporta — `def.RestablecerDefaultAsync != null`. El panel del botón se crea en
+   `BuildTweakCard` solo en ese caso; su mera existencia (`_tweakCardRefs` pasó de tupla de 2 a 3:
+   `Switch`/`Status`/`ResetPanel?`) encapsula "es uno de los 20".
+2. El tweak está On.
+3. `!App.TweakState.HasEntry(id)` — **el mismo check** que ya usa cada `Revertir*Async` para decidir
+   que es no-op. Si hay `Original` real, "Revertir" ya resuelve el caso y el botón no se muestra (no
+   duplica acciones).
+
+`UpdateTweakCardUi` ya corría tras cada lectura de estado; solo se le agregó la línea de visibilidad
+(`state == On && !HasEntry(id)`).
+
+**Al ejecutar (`ResetTweakToDefaultAsync`).** Confirmación honesta → `def.RestablecerDefaultAsync()`
+→ `LeerEstadoAsync` → `AdjustActiveTweaksCache` → `UpdateTweakCardUi` (mismo patrón que
+`RevertTweakAsync`). **No escribe ningún `Original`**: el ciclo normal de captura-en-el-primer-toggle
+sigue igual — la próxima vez que el usuario prenda el toggle desde ese punto, `AplicarAsync` captura
+un `Original` real (= el default que dejó el botón). Si tras restablecer el tweak **no** queda en
+Off/NoAplicable (ej. clave HKLM protegida que no se pudo tocar), lo dice — no afirma un éxito que no
+pasó.
+
+**Corrección encontrada durante la implementación — GameMode.** El mapeo del prompt 57 (7.7) asumía
+un valor puntual para `AllowAutoGameMode`. Confirmado contra el código real que ese valor **no es un
+default de fábrica documentado de Windows** (el tweak lo pone en 0 junto con `AutoGameModeEnabled`,
+pero Windows no lo escribe de fábrica). Se corrigió: el default de GameMode escribe
+`AutoGameModeEnabled=1` (documentado desde Win10 1903+) y **borra** `AllowAutoGameMode`. Es la única
+divergencia respecto del mapeo de 7.7 — los otros 19 coincidieron sin ajustes.
+
+**Estado resultante — confirmado en los 20, sin excepciones.** Tras restablecer, el `LeerEstadoAsync`
+de cada uno devuelve Off limpiamente sin ningún caso especial: el valor de fábrica nunca coincide con
+lo que ese `LeerEstadoAsync` exige para reportar On (Visual exige `VisualFXSetting==2`, default 0;
+HAGS exige `HwSchMode==2`, default 1; los servicios exigen `StartType==Disabled`, default
+Manual/Automatic; Tasks exige las 5 deshabilitadas, default habilitadas; etc.). No hizo falta forzar
+ningún estado ni agregar ninguna rama.
+
+**Nota (no un hallazgo de este corte).** FastStartup mantiene la incompatibilidad con Power ya
+documentada en 7.5 — restablecer FastStartup pasa por habilitar hibernación (`HiberbootEnabled=1` +
+`powercfg /hibernate on`), el mismo mecanismo que su `Aplicar`/`Revertir` normal, no un riesgo nuevo.

@@ -120,9 +120,13 @@ public sealed class MaintenanceService
     // Detiene Explorer, limpia cache del Explorador (icon/thumb), reportes WER,
     // logs no esenciales (CBS/DISM) y cache de shaders D3D, y reinicia Explorer.
     // Error por paso = se loguea y se continua (nunca frena todo). El reinicio de
-    // Explorer va en finally para garantizarlo incluso ante excepcion. Corre async.
+    // Explorer va en finally para garantizarlo incluso ante excepcion.
+    // Prompt 75: dejo de ser una card propia en Herramientas -- ahora la dispara el checkbox
+    // "Cache profunda" de la seccion Limpieza (OptimizationService.CleanupTweaks). El unico
+    // await era Task.Delay(1500); pasa a Thread.Sleep para poder esperarla de forma bloqueante
+    // desde CleanupTweaks (que ya corre dentro de un Task.Run, sin SynchronizationContext).
     public Task<DeepCleanResult> DeepCleanAsync(Action<string>? progress = null) =>
-        Task.Run(async () =>
+        Task.Run(() =>
         {
             var errors = new List<string>();
             double iconMb = 0, werMb = 0, logMb = 0, shaderMb = 0;
@@ -139,7 +143,7 @@ public sealed class MaintenanceService
                 {
                     try { p.Kill(); } catch { }
                 }
-                await Task.Delay(1500);
+                Thread.Sleep(1500);
 
                 string oldIcon = Path.Combine(local, "IconCache.db");
                 if (File.Exists(oldIcon))

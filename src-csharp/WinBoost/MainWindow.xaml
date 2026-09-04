@@ -838,16 +838,7 @@
                     <TextBlock Text="TECH" FontSize="10" Foreground="#33D6FF" FontWeight="SemiBold"/>
                   </StackPanel>
                 </Border>
-                <Border x:Name="badgeLicenseTrial" Background="#1A1200" CornerRadius="6"
-                        BorderBrush="#7A5A12" BorderThickness="1"
-                        Padding="9,2" Margin="0,0,6,6" Visibility="Collapsed" VerticalAlignment="Center">
-                  <StackPanel Orientation="Horizontal">
-                    <ui:SymbolIcon Symbol="Clock16" FontSize="12" Width="12" Height="12" Foreground="#F5B944"
-                                   VerticalAlignment="Center" Margin="0,0,4,0"/>
-                    <TextBlock Text="PRUEBA" FontSize="10" Foreground="#F5B944" FontWeight="SemiBold" Margin="0,0,3,0"/>
-                    <TextBlock x:Name="lblLicenseTrialDays" Text="" FontSize="10" Foreground="#F5B944" Opacity="0.75"/>
-                  </StackPanel>
-                </Border>
+                <!-- Prompt 82: badge de trial ("PRUEBA · Xd") eliminado junto con el trial de 14 dias. -->
               </WrapPanel>
               <!-- Badges de estado laptop/update (movidos; visibles solo segun deteccion/updater).
                    badgeUpdate conserva su tooltip y su MouseLeftButtonUp (cableado en code-behind). -->
@@ -893,17 +884,33 @@
                   <TextBlock Text="Home" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
+              <!-- Prompt 78: sidebar con SOLO 2 divisiones con label (PRINCIPAL / SISTEMA). Tweaks,
+                   Network y Limpieza dejaron de ser segmentos propios (headers sueltos, agregados
+                   por separado en las Fases A/C) y pasaron a vivir dentro de PRINCIPAL junto a
+                   Bloatware; Herramientas se movio de PRINCIPAL a SISTEMA. Es SOLO reorden visual:
+                   los x:Name y el array _navButtons (indexado por tab) NO cambian, cada nav.Click
+                   sigue mapeando a su SetActiveNav(indiceFijo). -->
               <TextBlock Text="PRINCIPAL" FontSize="9.5" FontWeight="SemiBold"
                          Foreground="{DynamicResource BrushFgDim}" Margin="8,2,0,4"/>
-              <Button x:Name="navHerramientas" Style="{StaticResource BtnNav}">
+              <Button x:Name="navTweaks" Style="{StaticResource BtnNav}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#x2699;" FontFamily="Segoe UI Symbol"
-                             FontSize="16" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Herramientas" VerticalAlignment="Center"/>
-                  <Border x:Name="badgeDeviceProblems" Background="#F59E0B"
-                          CornerRadius="5" Width="8" Height="8"
-                          VerticalAlignment="Center" Margin="5,0,0,0"
-                          Visibility="Collapsed"/>
+                  <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Tweaks" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button x:Name="navNetwork" Style="{StaticResource BtnNav}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#x21C4;" FontFamily="Segoe UI Symbol"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Network" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button x:Name="navLimpieza" Style="{StaticResource BtnNav}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#x267B;" FontFamily="Segoe UI Symbol"
+                             FontSize="15" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Limpieza" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
               <Button x:Name="navBloatware" Style="{StaticResource BtnNav}">
@@ -918,6 +925,17 @@
                          Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
               <!-- navInfo eliminado (fix 30): Info del sistema dejo de ser tab; su data vive en el
                    Home + el overlay System Info. -->
+              <Button x:Name="navHerramientas" Style="{StaticResource BtnNav}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="&#x2699;" FontFamily="Segoe UI Symbol"
+                             FontSize="16" Width="22" VerticalAlignment="Center"/>
+                  <TextBlock Text="Herramientas" VerticalAlignment="Center"/>
+                  <Border x:Name="badgeDeviceProblems" Background="#F59E0B"
+                          CornerRadius="5" Width="8" Height="8"
+                          VerticalAlignment="Center" Margin="5,0,0,0"
+                          Visibility="Collapsed"/>
+                </StackPanel>
+              </Button>
               <Button x:Name="navArranque" Style="{StaticResource BtnNav}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                   <TextBlock Text="&#x25B3;" FontFamily="Segoe UI Symbol"
@@ -930,45 +948,6 @@
                   <TextBlock Text="&#x23F1;" FontFamily="Segoe UI Symbol"
                              FontSize="14" Width="22" VerticalAlignment="Center"/>
                   <TextBlock Text="Historial" VerticalAlignment="Center"/>
-                </StackPanel>
-              </Button>
-
-              <!-- Piloto Fase A (38_fase_a_registro_tweaks_piloto.txt): grupo propio, separado
-                   de PRINCIPAL/SISTEMA a proposito, son 5 tweaks piloto con toggle inmediato,
-                   no la pestaña Optimizar existente (que sigue intacta en paralelo). -->
-              <TextBlock Text="TWEAKS" FontSize="9.5" FontWeight="SemiBold"
-                         Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
-              <Button x:Name="navTweaks" Style="{StaticResource BtnNav}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets"
-                             FontSize="15" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Tweaks" VerticalAlignment="Center"/>
-                </StackPanel>
-              </Button>
-
-              <!-- Fase C, Paso 1 (47_fase_c_paso1_seccion_network.txt): seccion hermana de Tweaks,
-                   grupo propio (no anidada bajo TWEAKS). Arranca la reorganizacion que saca la
-                   categoria Red (y, en un corte posterior, Limpieza) del item unico "Tweaks". -->
-              <TextBlock Text="NETWORK" FontSize="9.5" FontWeight="SemiBold"
-                         Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
-              <Button x:Name="navNetwork" Style="{StaticResource BtnNav}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#x21C4;" FontFamily="Segoe UI Symbol"
-                             FontSize="15" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Network" VerticalAlignment="Center"/>
-                </StackPanel>
-              </Button>
-
-              <!-- Fase C, Paso 3 (49_fase_c_paso3_seccion_limpieza.txt): tercera seccion hermana de
-                   Tweaks/Network, misma mecanica de navegacion. Cierra la reorganizacion que saca
-                   categorias del item unico "Tweaks" (Red en el Paso 1, Limpieza aca). -->
-              <TextBlock Text="LIMPIEZA" FontSize="9.5" FontWeight="SemiBold"
-                         Foreground="{DynamicResource BrushFgDim}" Margin="8,12,0,4"/>
-              <Button x:Name="navLimpieza" Style="{StaticResource BtnNav}">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock Text="&#x267B;" FontFamily="Segoe UI Symbol"
-                             FontSize="15" Width="22" VerticalAlignment="Center"/>
-                  <TextBlock Text="Limpieza" VerticalAlignment="Center"/>
                 </StackPanel>
               </Button>
             </StackPanel>
@@ -1039,24 +1018,17 @@
       <!-- TAB HERRAMIENTAS -->
       <TabItem Header="Herramientas">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <Grid Margin="20,14">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*"/>
-              <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-              <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+          <StackPanel Margin="20,14">
 
-            <!-- CUADRANTE 1: Liberador de RAM (Row 0, Col 0) -->
-            <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource BrushCard}"
+            <!-- Prompt 75: "Limpieza de cache profunda", "Mantenimiento automatico" y "Limpieza
+                 del Driver Store" se movieron a la seccion Limpieza. Quedan aca liberador de RAM,
+                 procesos pesados, dispositivos con problemas y TRIM/Desfrag. Ya no hace falta la
+                 grilla de 2 columnas: cada card va full-width apilada. -->
+
+            <!-- LIBERADOR DE RAM -->
+            <Border Background="{DynamicResource BrushCard}"
                     CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
-                    Margin="0,0,5,10" Padding="0">
+                    Margin="0,0,0,10" Padding="0">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="3"/>
@@ -1101,175 +1073,9 @@
               </Grid>
             </Border>
 
-            <!-- CUADRANTE 2: Limpieza de cache (Row 0, Col 1) -->
-            <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource BrushCard}"
-                    CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
-                    Margin="5,0,0,10" Padding="0">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="3"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="#22C55E" CornerRadius="8,0,0,8"/>
-                <StackPanel Grid.Column="1" Margin="14,12">
-                  <TextBlock Text="LIMPIEZA PROFUNDA DE CACHE" FontSize="11"
-                             FontWeight="SemiBold" Foreground="#22C55E" Margin="0,0,0,8"/>
-                  <TextBlock Text="Elimina caches del Explorador (IconCache, thumbcache), reportes de errores WER, logs de CBS/DISM y cache de shaders Direct3D." FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,0,0,6"/>
-                  <Border Background="#1A1000" CornerRadius="5" BorderBrush="#3A2500" BorderThickness="1" Padding="10,8" Margin="0,0,0,12">
-                    <TextBlock Text="&#x26A0;  El Explorador se detendra y reiniciara automaticamente. La pantalla puede parpadear 2-3 segundos." FontSize="11" Foreground="#F59E0B" TextWrapping="Wrap"/>
-                  </Border>
-                  <StackPanel Orientation="Horizontal">
-                    <Button x:Name="btnDeepClean" Content="Limpiar Cache Profunda" Style="{StaticResource BtnMain}" Padding="18,8"/>
-                    <Border Background="{DynamicResource BrushElev}" CornerRadius="4" Padding="10,5" Margin="12,0,0,0" VerticalAlignment="Center">
-                      <TextBlock x:Name="lblDeepCleanStatus" Text="Listo" FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
-                    </Border>
-                  </StackPanel>
-                </StackPanel>
-              </Grid>
-            </Border>
-
-            <!-- CUADRANTE 3: Benchmark de disco - DESCARTADO (CrystalDiskMark cubre esto). Oculto, sin codigo C#. -->
-            <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource BrushCard}"
-                    CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
-                    Margin="0,0,5,10" Padding="0" Visibility="Collapsed">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="3"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="#A855F7" CornerRadius="8,0,0,8"/>
-                <StackPanel Grid.Column="1" Margin="14,12">
-                  <TextBlock Text="BENCHMARK RAPIDO DE DISCO" FontSize="11"
-                             FontWeight="SemiBold" Foreground="#A855F7" Margin="0,0,0,8"/>
-                  <TextBlock Text="Mide velocidad de escritura y lectura secuencial con un archivo de 100 MB. Ejecuta antes y despues de optimizar para ver la mejora." FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                    <Button x:Name="btnBenchmark" Content="Ejecutar Benchmark" Style="{StaticResource BtnMain}" Padding="18,8"/>
-                    <Border Background="{DynamicResource BrushElev}" CornerRadius="4" Padding="10,5" Margin="12,0,0,0" VerticalAlignment="Center">
-                      <TextBlock x:Name="lblBenchStatus" Text="Listo" FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
-                    </Border>
-                  </StackPanel>
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" Background="{DynamicResource BrushSidebar}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="16,14">
-                      <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="ESCRITURA" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                          <TextBlock x:Name="lblWriteSpeed" Text="--" FontSize="30" FontWeight="Bold" Foreground="{StaticResource BrushAccent}"/>
-                          <TextBlock Text=" MB/s" FontSize="13" Foreground="{DynamicResource BrushFgDim}" VerticalAlignment="Bottom" Margin="2,0,0,5"/>
-                        </StackPanel>
-                        <TextBlock x:Name="lblWriteCompare" Text="" FontSize="11" Foreground="#22C55E" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                      </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Background="{DynamicResource BrushSidebar}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1" Padding="16,14">
-                      <StackPanel HorizontalAlignment="Center">
-                        <TextBlock Text="LECTURA" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgDim}" HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                          <TextBlock x:Name="lblReadSpeed" Text="--" FontSize="30" FontWeight="Bold" Foreground="{StaticResource BrushAccent}"/>
-                          <TextBlock Text=" MB/s" FontSize="13" Foreground="{DynamicResource BrushFgDim}" VerticalAlignment="Bottom" Margin="2,0,0,5"/>
-                        </StackPanel>
-                        <TextBlock x:Name="lblReadCompare" Text="" FontSize="11" Foreground="#22C55E" HorizontalAlignment="Center" Margin="0,6,0,0"/>
-                      </StackPanel>
-                    </Border>
-                  </Grid>
-                </StackPanel>
-              </Grid>
-            </Border>
-
-            <!-- CUADRANTE 4: Mantenimiento automatico (Row 1, ocupa toda la fila tras quitar el benchmark) -->
-            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Background="{DynamicResource BrushCard}"
-                    CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
-                    Margin="0,0,0,10" Padding="0">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="3"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="#F59E0B" CornerRadius="8,0,0,8"/>
-                <StackPanel Grid.Column="1" Margin="14,12">
-                  <TextBlock Text="MANTENIMIENTO AUTOMATICO" FontSize="11"
-                             FontWeight="SemiBold" Foreground="#F59E0B" Margin="0,0,0,8"/>
-                  <Grid Margin="0,0,0,12">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0"
-                               Text="Programa la limpieza automatica del sistema. Se ejecuta sin abrir la app."
-                               FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
-                               VerticalAlignment="Center" Margin="0,0,16,0"/>
-                    <Button x:Name="tglMaintenance" Grid.Column="1"
-                            Content="Activar" Style="{StaticResource BtnSec}"
-                            Padding="16,7" MinWidth="100"/>
-                  </Grid>
-                  <Border Background="{DynamicResource BrushSidebar}" CornerRadius="6" BorderBrush="{DynamicResource BrushBorder}"
-                          BorderThickness="1" Padding="12,10" Margin="0,0,0,10">
-                    <Grid>
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="90"/>
-                      </Grid.ColumnDefinitions>
-                      <TextBlock Grid.Column="0" Text="Frecuencia:"
-                                 FontSize="12" Foreground="{DynamicResource BrushFgMuted}"
-                                 VerticalAlignment="Center" Margin="0,0,10,0"/>
-                      <ComboBox x:Name="cboMaintFreq" Grid.Column="1"
-                                Style="{StaticResource ComboDark}"
-                                SelectedIndex="1">
-                        <ComboBoxItem Content="Diario"/>
-                        <ComboBoxItem Content="Semanal"/>
-                        <ComboBoxItem Content="Al iniciar Windows"/>
-                      </ComboBox>
-                      <TextBlock Grid.Column="2" Text="Hora:"
-                                 FontSize="12" Foreground="{DynamicResource BrushFgMuted}"
-                                 VerticalAlignment="Center" Margin="14,0,10,0"/>
-                      <ComboBox x:Name="cboMaintHour" Grid.Column="3"
-                                Style="{StaticResource ComboDark}"/>
-                    </Grid>
-                  </Border>
-                  <Border Background="{DynamicResource BrushSidebar}" CornerRadius="6" BorderBrush="{DynamicResource BrushBorder}"
-                          BorderThickness="1" Padding="12,8" Margin="0,0,0,10">
-                    <StackPanel>
-                      <TextBlock Text="Limpiar:" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,6"/>
-                      <WrapPanel>
-                        <CheckBox x:Name="chkMaintTemp"    Content="Temp usuario" IsChecked="True"  Margin="0,2,20,2"/>
-                        <CheckBox x:Name="chkMaintRecycle" Content="Papelera"     IsChecked="True"  Margin="0,2,20,2"/>
-                        <CheckBox x:Name="chkMaintDNS"     Content="DNS flush"    IsChecked="True"  Margin="0,2,20,2"/>
-                        <CheckBox x:Name="chkMaintTRIM"    Content="TRIM (SSD)"   IsChecked="True"  Margin="0,2,0,2"/>
-                      </WrapPanel>
-                    </StackPanel>
-                  </Border>
-                  <Grid>
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="*"/>
-                      <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel VerticalAlignment="Center">
-                      <TextBlock x:Name="lblLastMaint" Text="Ultimo mantenimiento: Nunca"
-                                 FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
-                      <TextBlock x:Name="lblNextMaint" Text="Proximo: --"
-                                 FontSize="11" Foreground="{DynamicResource BrushFgDim}" Margin="0,3,0,0"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                      <Border Background="{DynamicResource BrushElev}" CornerRadius="4" Padding="10,5"
-                              Margin="0,0,10,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="lblMaintStatus" Text="No configurado"
-                                   FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
-                      </Border>
-                      <Button x:Name="btnRunMaintNow" Content="Ejecutar ahora"
-                              Style="{StaticResource BtnSec}" Padding="14,7" IsEnabled="False"/>
-                    </StackPanel>
-                  </Grid>
-                </StackPanel>
-              </Grid>
-            </Border>
-
-            <!-- FILA COMPLETA: Procesos pesados (Row 2, ColSpan 2) -->
-            <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
-                    Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}"
-                    BorderThickness="1" Padding="0">
+            <!-- PROCESOS PESADOS -->
+            <Border Background="{DynamicResource BrushCard}" CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}"
+                    BorderThickness="1" Padding="0" Margin="0,0,0,10">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="3"/>
@@ -1352,9 +1158,8 @@
               </Grid>
             </Border>
 
-            <!-- DISPOSITIVOS CON PROBLEMAS (F1.7) -->
-            <Border Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
-                    Background="{DynamicResource BrushCard}" CornerRadius="8"
+            <!-- DISPOSITIVOS CON PROBLEMAS -->
+            <Border Background="{DynamicResource BrushCard}" CornerRadius="8"
                     BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
                     Margin="0,0,0,10" Padding="0">
               <Grid>
@@ -1413,48 +1218,13 @@
               </Grid>
             </Border>
 
-            <!-- FILA COMPLETA: Limpieza del Driver Store (Row 4, ColSpan 2) - movida desde Tuning -->
-            <Border Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
-                    Background="{DynamicResource BrushCard}" CornerRadius="8"
-                    BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
-                    Margin="0,0,0,10" Padding="0">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="3"/>
-                  <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Border Grid.Column="0" Background="#06B6D4" CornerRadius="8,0,0,8"/>
-                <StackPanel Grid.Column="1" Margin="14,12">
-                  <TextBlock Text="LIMPIEZA DEL DRIVER STORE" FontSize="11" FontWeight="SemiBold"
-                             Foreground="#06B6D4" Margin="0,0,0,8"/>
-                  <TextBlock FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,0,0,10"
-                    Text="Detecta versiones antiguas del Driver Store de Windows (paquetes oem*.inf duplicados por el mismo driver con multiples versiones). Solo muestra duplicados - los drivers sin copia mas nueva no aparecen. Requiere hacer backup antes de eliminar."/>
-                  <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <Button x:Name="btnScanDrvStore" Content="Escanear drivers" Style="{StaticResource BtnSec}"
-                            Padding="14,7" Margin="0,0,8,0"/>
-                    <Button x:Name="btnDriverBackup" Content="Exportar backup de drivers"
-                            Style="{StaticResource BtnSec}" Padding="14,7" Margin="0,0,8,0" IsEnabled="False"/>
-                    <Button x:Name="btnDriverDelete" Content="Eliminar seleccionados"
-                            Style="{StaticResource BtnDanger}" Padding="14,7" IsEnabled="False"/>
-                  </StackPanel>
-                  <TextBlock x:Name="lblDriverStatus" FontSize="11" Margin="0,0,0,8"/>
-                  <ScrollViewer x:Name="drvListScroll" MaxHeight="240" VerticalScrollBarVisibility="Auto"
-                                Visibility="Collapsed">
-                    <ItemsControl x:Name="icDrvStore"/>
-                  </ScrollViewer>
-                </StackPanel>
-              </Grid>
-            </Border>
-
-            <!-- FILA COMPLETA: TRIM / Desfrag (Row 5, ColSpan 2) - Fase C, Paso 4
-                 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt). Mudado desde el tab
-                 Optimizar clasico (que lo sigue aplicando por su lado igual). Reusa
-                 OptimizationService.TrimTweaksAsync tal cual (subido a internal) via el mismo
-                 mecanismo ya usado por la optimizacion completa y por Desinstalar bloatware:
-                 App.Worker.RunAsync (lock + cancelacion) + OpenConsoleOverlay (progreso/log en
-                 vivo + boton Detener, ya cableado a App.Worker.Cancel() de forma generica). -->
-            <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2"
-                    Background="{DynamicResource BrushCard}" CornerRadius="8"
+            <!-- TRIM / DESFRAG. Fase C, Paso 4 (50_fase_c_paso4_5_trim_herramientas_restore_home.txt).
+                 Mudado desde el tab Optimizar clasico (que lo sigue aplicando por su lado igual). Reusa
+                 OptimizationService.TrimTweaksAsync tal cual (subido a internal) via el mismo mecanismo
+                 ya usado por la optimizacion completa y por Desinstalar bloatware: App.Worker.RunAsync
+                 (lock + cancelacion) + OpenConsoleOverlay (progreso/log en vivo + boton Detener, ya
+                 cableado a App.Worker.Cancel() de forma generica). -->
+            <Border Background="{DynamicResource BrushCard}" CornerRadius="8"
                     BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
                     Margin="0,0,0,10" Padding="0">
               <Grid>
@@ -1478,7 +1248,7 @@
               </Grid>
             </Border>
 
-          </Grid>
+          </StackPanel>
         </ScrollViewer>
       </TabItem>
 
@@ -1519,43 +1289,9 @@
                 <Button x:Name="btnHomeOptimize" Content="Optimizar ahora" Style="{StaticResource BtnGlossyCyan}"/>
               </StackPanel>
             </Grid>
-            <!-- Banner trial (F0.2): visible durante y post-trial. Reubicado aca en el prompt 66
-                 (retiro del tab Optimizar clasico): vivia en footerBar, dentro de esa pestana;
-                 Home es la entrada de la app ahora, mismo criterio de pantalla mas visitada que
-                 justificaba la ubicacion original. x:Name intactos (bannerTrial/lblTrialText/
-                 btnTrialUpgrade), UpdateTrialBanner no necesito ningun cambio. -->
-            <Border x:Name="bannerTrial" Background="#1A1200" BorderBrush="#3A2800" BorderThickness="1"
-                    CornerRadius="5" Padding="10,7" Margin="0,14,0,0" Visibility="Collapsed">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="lblTrialText" Grid.Column="0" Text="" FontSize="11"
-                           Foreground="#F59E0B" TextWrapping="Wrap"
-                           VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <Button x:Name="btnTrialUpgrade" Grid.Column="1"
-                        Content="Activar Pro" Padding="12,5"
-                        Background="#2A1800" BorderBrush="#F59E0B" BorderThickness="1"
-                        Foreground="#F59E0B" FontSize="11" Cursor="Hand" FontWeight="SemiBold">
-                  <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                      <Border Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}"
-                              CornerRadius="4" Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                      </Border>
-                      <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                          <Setter Property="Background" Value="#3A2200"/>
-                        </Trigger>
-                      </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                  </Button.Template>
-                </Button>
-              </Grid>
-            </Border>
+            <!-- Prompt 82: el banner de trial (cuenta regresiva de dias + boton "Activar Pro")
+                 se elimino junto con el trial de 14 dias. El estado del plan (Free / Pro /
+                 Tecnico) se ve en la pestaña Licencia y en el badge del sidebar. -->
           </StackPanel>
 
           <!-- b) MEDIDORES CPU / RAM / GPU (gauge custom: track + arco + % al centro; sin modelo) -->
@@ -2484,7 +2220,7 @@
               <TextBlock x:Name="lblLicenseStatus" Text="Version gratuita activa"
                          FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource BrushFgMuted}"
                          Margin="0,0,0,6"/>
-              <TextBlock Text="Activa tu licencia para desbloquear tweaks avanzados, mantenimiento automatico y exportacion de reportes."
+              <TextBlock Text="Las licencias Pro y Tecnico desbloquean la desinstalacion de bloatware, el mantenimiento automatico programado y la reversion de sesiones desde el Historial."
                          FontSize="12" Foreground="{DynamicResource BrushFgDim}" TextWrapping="Wrap"/>
             </StackPanel>
           </Border>
@@ -2556,7 +2292,7 @@
               <StackPanel VerticalAlignment="Center" Margin="0,0,16,0">
                 <TextBlock Text="Obtener licencia Pro" FontSize="13" FontWeight="SemiBold"
                            Foreground="{StaticResource BrushAccent}" Margin="0,0,0,4"/>
-                <TextBlock Text="Desbloquea todas las funciones. Licencia de por vida para este equipo."
+                <TextBlock Text="Desbloquea las funciones Pro. Licencia de por vida para este equipo."
                            FontSize="11" Foreground="{DynamicResource BrushFgDim}" TextWrapping="Wrap"/>
               </StackPanel>
               <Button x:Name="btnGetLicense" Grid.Column="1"
@@ -2644,10 +2380,11 @@
       <TabItem Header="Limpieza">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel Margin="20,14,20,20">
-            <TextBlock Text="Selecciona que limpiar y ejecuta: mismas acciones que el tab Optimizar, acotadas a estos 8 items. No tiene revert (borrar temporales/cache/logs no es reversible)."
-                       FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
-                       TextWrapping="Wrap"/>
+            <TextBlock FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,14"
+                       TextWrapping="Wrap"
+                       Text="Esta seccion tiene tres bloques: limpieza de archivos (tilda y ejecuta), mantenimiento automatico programado, y limpieza del Driver Store. La limpieza de archivos no tiene revert (borrar temporales/cache/logs no es reversible)."/>
 
+            <!-- ============ BLOQUE 1: Limpieza de archivos (tildar y ejecutar) ============ -->
             <Border Background="{DynamicResource BrushCard}" BorderBrush="{DynamicResource BrushAccent}"
                     BorderThickness="0,0,0,2" CornerRadius="8" Padding="18,14,18,16" Margin="0,0,0,14">
               <StackPanel>
@@ -2669,14 +2406,18 @@
                   <CheckBox x:Name="chkCleanBrowsers" Content="Cache navegadores" IsChecked="True" Margin="0,4,24,4">
                     <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Chrome, Edge, Firefox, Brave, Opera - no borra contrasenas.</ToolTip></CheckBox.ToolTip>
                   </CheckBox>
-                  <CheckBox x:Name="chkCleanThumb" Content="Thumbnails" IsChecked="True" Margin="0,4,24,4">
-                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Cache de miniaturas del Explorador - se regenera solo.</ToolTip></CheckBox.ToolTip>
-                  </CheckBox>
                   <CheckBox x:Name="chkCleanRecycle" Content="Papelera" IsChecked="True" Margin="0,4,24,4">
                     <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Vacia la papelera permanentemente.</ToolTip></CheckBox.ToolTip>
                   </CheckBox>
                   <CheckBox x:Name="chkCleanEventLogs" Content="Logs de eventos" IsChecked="False" Margin="0,4,24,4">
                     <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11">Impacto alto: borra logs Aplicacion/Sistema/etc. Log de Seguridad NO se toca. Elimina registros forenses.</ToolTip></CheckBox.ToolTip>
+                  </CheckBox>
+                  <!-- Prompt 75: reemplaza al viejo checkbox "Thumbnails". El paso 1 de "Cache
+                       profunda" (MaintenanceService.DeepCleanAsync) cubre la misma carpeta del
+                       Explorador, mejor, con el Explorador detenido. Impacto alto por el reinicio
+                       forzado del shell. -->
+                  <CheckBox x:Name="chkCleanDeep" Content="Cache profunda" IsChecked="False" Margin="0,4,24,4">
+                    <CheckBox.ToolTip><ToolTip Background="{DynamicResource BrushElev}" Foreground="{DynamicResource BrushFg2}" FontSize="11" MaxWidth="380">Impacto alto: detiene y reinicia el Explorador de Windows (la pantalla parpadea 2-3 s y se cierran las ventanas de Explorador abiertas). Limpia cache de iconos/miniaturas, reportes de error WER, logs CBS/DISM y cache de shaders Direct3D.</ToolTip></CheckBox.ToolTip>
                   </CheckBox>
                 </WrapPanel>
                 <Grid Margin="0,12,0,0">
@@ -2691,6 +2432,127 @@
                           Style="{StaticResource BtnSec}" Margin="10,0,0,0"/>
                 </Grid>
               </StackPanel>
+            </Border>
+
+            <!-- ============ BLOQUE 2: Mantenimiento automatico (movido de Herramientas, prompt 75) ============ -->
+            <Border Background="{DynamicResource BrushCard}"
+                    CornerRadius="8" BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                    Margin="0,0,0,14" Padding="0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="3"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="#F59E0B" CornerRadius="8,0,0,8"/>
+                <StackPanel Grid.Column="1" Margin="14,12">
+                  <TextBlock Text="MANTENIMIENTO AUTOMATICO" FontSize="11"
+                             FontWeight="SemiBold" Foreground="#F59E0B" Margin="0,0,0,8"/>
+                  <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Programa la limpieza automatica del sistema. Se ejecuta sin abrir la app."
+                               FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap"
+                               VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button x:Name="tglMaintenance" Grid.Column="1"
+                            Content="Activar" Style="{StaticResource BtnSec}"
+                            Padding="16,7" MinWidth="100"/>
+                  </Grid>
+                  <Border Background="{DynamicResource BrushSidebar}" CornerRadius="6" BorderBrush="{DynamicResource BrushBorder}"
+                          BorderThickness="1" Padding="12,10" Margin="0,0,0,10">
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="90"/>
+                      </Grid.ColumnDefinitions>
+                      <TextBlock Grid.Column="0" Text="Frecuencia:"
+                                 FontSize="12" Foreground="{DynamicResource BrushFgMuted}"
+                                 VerticalAlignment="Center" Margin="0,0,10,0"/>
+                      <ComboBox x:Name="cboMaintFreq" Grid.Column="1"
+                                Style="{StaticResource ComboDark}"
+                                SelectedIndex="1">
+                        <ComboBoxItem Content="Diario"/>
+                        <ComboBoxItem Content="Semanal"/>
+                        <ComboBoxItem Content="Al iniciar Windows"/>
+                      </ComboBox>
+                      <TextBlock Grid.Column="2" Text="Hora:"
+                                 FontSize="12" Foreground="{DynamicResource BrushFgMuted}"
+                                 VerticalAlignment="Center" Margin="14,0,10,0"/>
+                      <ComboBox x:Name="cboMaintHour" Grid.Column="3"
+                                Style="{StaticResource ComboDark}"/>
+                    </Grid>
+                  </Border>
+                  <Border Background="{DynamicResource BrushSidebar}" CornerRadius="6" BorderBrush="{DynamicResource BrushBorder}"
+                          BorderThickness="1" Padding="12,8" Margin="0,0,0,10">
+                    <StackPanel>
+                      <TextBlock Text="Limpiar:" FontSize="11" Foreground="{DynamicResource BrushFgMuted}" Margin="0,0,0,6"/>
+                      <WrapPanel>
+                        <CheckBox x:Name="chkMaintTemp"    Content="Temp usuario" IsChecked="True"  Margin="0,2,20,2"/>
+                        <CheckBox x:Name="chkMaintRecycle" Content="Papelera"     IsChecked="True"  Margin="0,2,20,2"/>
+                        <CheckBox x:Name="chkMaintDNS"     Content="DNS flush"    IsChecked="True"  Margin="0,2,20,2"/>
+                        <CheckBox x:Name="chkMaintTRIM"    Content="TRIM (SSD)"   IsChecked="True"  Margin="0,2,0,2"/>
+                      </WrapPanel>
+                    </StackPanel>
+                  </Border>
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*"/>
+                      <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                      <TextBlock x:Name="lblLastMaint" Text="Ultimo mantenimiento: Nunca"
+                                 FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
+                      <TextBlock x:Name="lblNextMaint" Text="Proximo: --"
+                                 FontSize="11" Foreground="{DynamicResource BrushFgDim}" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                      <Border Background="{DynamicResource BrushElev}" CornerRadius="4" Padding="10,5"
+                              Margin="0,0,10,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="lblMaintStatus" Text="No configurado"
+                                   FontSize="11" Foreground="{DynamicResource BrushFgDim}"/>
+                      </Border>
+                      <Button x:Name="btnRunMaintNow" Content="Ejecutar ahora"
+                              Style="{StaticResource BtnSec}" Padding="14,7" IsEnabled="False"/>
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <!-- ============ BLOQUE 3: Limpieza del Driver Store (movido de Herramientas, prompt 75) ============ -->
+            <Border Background="{DynamicResource BrushCard}" CornerRadius="8"
+                    BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                    Margin="0,0,0,14" Padding="0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="3"/>
+                  <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Background="#06B6D4" CornerRadius="8,0,0,8"/>
+                <StackPanel Grid.Column="1" Margin="14,12">
+                  <TextBlock Text="LIMPIEZA DEL DRIVER STORE" FontSize="11" FontWeight="SemiBold"
+                             Foreground="#06B6D4" Margin="0,0,0,8"/>
+                  <TextBlock FontSize="12" Foreground="{DynamicResource BrushFgMuted}" TextWrapping="Wrap" Margin="0,0,0,10"
+                    Text="Detecta versiones antiguas del Driver Store de Windows (paquetes oem*.inf duplicados por el mismo driver con multiples versiones). Solo muestra duplicados - los drivers sin copia mas nueva no aparecen. Requiere hacer backup antes de eliminar."/>
+                  <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <Button x:Name="btnScanDrvStore" Content="Escanear drivers" Style="{StaticResource BtnSec}"
+                            Padding="14,7" Margin="0,0,8,0"/>
+                    <Button x:Name="btnDriverBackup" Content="Exportar backup de drivers"
+                            Style="{StaticResource BtnSec}" Padding="14,7" Margin="0,0,8,0" IsEnabled="False"/>
+                    <Button x:Name="btnDriverDelete" Content="Eliminar seleccionados"
+                            Style="{StaticResource BtnDanger}" Padding="14,7" IsEnabled="False"/>
+                  </StackPanel>
+                  <TextBlock x:Name="lblDriverStatus" FontSize="11" Margin="0,0,0,8"/>
+                  <ScrollViewer x:Name="drvListScroll" MaxHeight="240" VerticalScrollBarVisibility="Auto"
+                                Visibility="Collapsed">
+                    <ItemsControl x:Name="icDrvStore"/>
+                  </ScrollViewer>
+                </StackPanel>
+              </Grid>
             </Border>
           </StackPanel>
         </ScrollViewer>

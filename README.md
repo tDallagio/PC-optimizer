@@ -1,8 +1,8 @@
 # WinBoost
 
-Optimizador de rendimiento para Windows 10/11 con interfaz WPF: limpieza, tweaks con
-backup y restauracion por sesion, score de salud verificable, sistema de licencias y
-modo CLI.
+Optimizador de rendimiento para Windows 10/11 con interfaz WPF: tweaks reversibles uno
+por uno, limpieza de archivos, score de salud verificable, quita de bloatware, sistema
+de licencias y modo CLI.
 
 **[Descargar la ultima version](https://github.com/tDallagio/PC-optimizer/releases/latest)** · Windows 10 / 11 · Requiere ejecutar como Administrador
 
@@ -26,61 +26,83 @@ WinBoost incluye un trial de 14 dias con todas las funciones Pro habilitadas.
 
 ## Caracteristicas principales
 
-### Optimizacion
-- Limpieza de archivos temporales, cache de exploradores, logs de eventos y WER
-- Tweaks de registro: GPU priority, telemetria, Cortana, GameDVR, aceleracion del mouse,
-  scheduler de CPU (Win32PrioritySeparation), HAGS (Hardware-Accelerated GPU Scheduling),
-  politica termica via powercfg
-- Red: desactivar algoritmo de Nagle, TCP autotuning, flush DNS, preferir IPv4
-- Servicios: deshabilitar Xbox, diagnosticos, WER, Maps, Fax, Windows Search (solo en SSD)
-- Plan de energia de alto rendimiento, HPET, FastStartup, PageFile optimizado, TRIM async
-- Modal de confirmacion pre-ejecucion con lista de acciones por impacto (alto/medio/bajo)
-- Boton Detener para cancelar la optimizacion en curso entre fases
-- Resumen post-optimizacion: cambios aplicados vs. condiciones no cumplidas
+### Home
+- Pantalla de entrada de la app: medidores en vivo de CPU / RAM / GPU (uso %), malla de
+  salud y contador de tweaks activos
+- Overlay System Info: hardware del equipo y detalle de componentes — CPU (nucleos/hilos/
+  cache), RAM (velocidad/slots), GPU (VRAM real, driver) y estado de HAGS
+- Accesos rapidos: crear punto de restauracion, abrir System Info, ir a Tweaks
+
+### Tweaks
+- 24 tweaks de sistema con toggle individual: activarlo aplica al instante, desactivarlo
+  revierte — cada tweak captura el valor original de la maquina antes del primer cambio y
+  restaura ese valor exacto (no un default asumido) al desactivarse
+- Registro: GPU priority, telemetria, Cortana, Game DVR, aceleracion del mouse, efectos
+  visuales, scheduler de CPU (Win32PrioritySeparation), HAGS (Hardware-Accelerated GPU
+  Scheduling), Power Throttling
+- Servicios: Xbox, DiagTrack, Windows Error Reporting, Maps, Fax, y SysMain / Windows
+  Search (estos dos ultimos solo se ofrecen en equipos con SSD)
+- Sistema: plan de energia segun tipo de equipo (laptop/desktop), HPET, Fast Startup,
+  PageFile, politica termica
+- "Restablecer a default de Windows": para los tweaks seguros que ya estaban activos sin
+  que WinBoost tenga un original capturado (config externa, o una version vieja de la
+  app), escribe el valor de fabrica de Windows
+- El estado de cada tweak se lee en vivo del sistema; los que no aplican a la maquina se
+  marcan como tal con el motivo
+
+### Red
+- Nagle, TCP autotuning y preferencia de IPv4 sobre IPv6 como toggles reversibles
+- Selector de DNS con 4 proveedores (Cloudflare, Google, Quad9, AdGuard), con captura y
+  restauracion del valor original por adaptador
+- Flush de la cache DNS como accion de un click
+
+### Limpieza
+- Limpieza de archivos: 8 items seleccionables con checkbox (temporales de usuario y
+  sistema, Prefetch, cache de Windows Update, cache de navegadores, papelera, logs de
+  eventos, cache profunda) ejecutados juntos, con modal de confirmacion que marca los de
+  impacto alto. "Cache profunda" detiene el Explorador para vaciar icon/thumbnail cache,
+  WER, logs CBS/DISM y shader cache. Sin revert (borrar temporales no es reversible)
+- Mantenimiento automatico: tarea programada configurable (diario/semanal/al inicio),
+  ciclo standalone (temp, papelera, flush DNS, TRIM) y log JSON de los ultimos 30 runs
+- Limpieza del Driver Store: detecta paquetes de driver duplicados obsoletos, exige
+  exportar un backup antes de eliminar
 
 ### Seguridad y backup
-- Punto de restauracion de Windows creado automaticamente antes de cada optimizacion
-- Backup automatico por sesion: claves de registro (.reg), servicios, red, PageFile, netsh
-- Motor de restauracion completo: revertir cualquier sesion desde el tab Historial
+- Revert por tweak: cada toggle guarda el valor original de la maquina en su propio
+  almacen (`tweak_state.json`) y lo restaura al desactivarse, independiente del resto
+- Punto de restauracion de Windows a un click desde Home, con aviso honesto cuando
+  Windows no deja crear otro dentro de la ventana de 24 h
+- Backup por sesion en las corridas completas (modo `-Silent` y quita de bloatware):
+  claves de registro (.reg), servicios, red, PageFile, netsh
+- El tab Historial revierte las sesiones de optimizacion; las de bloatware quedan como
+  registro informativo (WinBoost no reinstala apps)
 - Soporte de Delayed Start en servicios (flag `AutoDelayed` en registro)
 
 ### Score de salud
-- 19 checks en 4 categorias: Rendimiento, Privacidad, Red, Servicios
-- Score 0-100 con delta antes/despues, barras por categoria y animacion de contador
-- Analisis de sistema: detecta que opciones mejorarian el score y permite aplicarlas con un click
-- Snapshot antes/despues con comparativa en modal (7 metricas: CPU, RAM, disco, procesos, arranque)
+- 17 checks en 4 categorias: Rendimiento, Privacidad, Red, Servicios
+- Score 0-100 con animacion de contador, recalculable a demanda
+- Malla de salud en Home: una card por categoria con la fraccion de checks cumplidos y un
+  insight derivado del estado real del sistema
 
 ### Detector de bloatware
 - Base de datos de 55 apps en 5 categorias: Juegos, Comunicacion, Telemetria, OEM, Utilidades
-- Desinstalacion via AppX y winget con backup de lo eliminado
+- Desinstalacion via AppX y winget, con registro de lo desinstalado (sin reinstalacion
+  automatica: varias apps no tienen un camino de vuelta fiable)
 - Filtro por categoria, badges de riesgo (seguro/precaucion)
 
 ### Herramientas
-- Monitor en tiempo real: CPU, RAM, disco, temperatura CPU/GPU (barras verticales)
+- Liberador de RAM: comprime los working sets accesibles y purga la Standby List del
+  kernel via `NtSetSystemInformation`
 - Procesos pesados: CPU% real (sin Sleep), RAM, botones Terminar con triple validacion de seguridad
-- Espacio en disco: vista de discos del equipo con barra usado/libre por unidad, estilo Windows
 - Dispositivos con problemas (Win32_PnPEntity con error de configuracion)
-- Limpieza profunda: Explorer cache, WER, logs CBS/DISM, shader cache (NVIDIA/AMD)
-- Limpieza del Driver Store: detecta duplicados obsoletos, exporta backup antes de eliminar
-- Liberador de RAM con purga de Standby List via `NtSetSystemInformation`
-- Informacion detallada de componentes: CPU (nucleos/hilos/cache), RAM (velocidad/slots),
-  GPU (VRAM real, driver) y estado de HAGS
-
-### Mantenimiento automatico
-- Tarea programada configurable (diario/semanal/al inicio)
-- Ciclo standalone: temp, recycle, DNS flush, TRIM
-- Log JSON con historial de los ultimos 30 runs
-
-### Reporte HTML
-- Reporte standalone con CSS inline: score antes/despues, metricas medibles, acciones aplicadas
-- Seccion hero con 4 cards (score, RAM, procesos, arranque) screenshot-friendly
-- Se guarda en Documentos y abre en el navegador automaticamente
+- TRIM / desfragmentacion: en SSD re-habilita TRIM y corre `Optimize-Volume -ReTrim`; en
+  HDD activa la desfragmentacion semanal automatica de Windows
 
 ### Sistema de licencias
 - **Free:** limpieza y diagnostico basico
 - **Pro:** todos los tweaks, backups, bloatware, mantenimiento automatico
 - **Tecnico:** Pro + modo CLI + multi-PC
-- Trial de 14 dias con banner de estado en el footer
+- Trial de 14 dias con banner de estado en Home
 - Activacion por clave con firma RSA-2048 (Pro atada a hardware, Tecnico multi-PC)
 
 ### Modo CLI / silencioso

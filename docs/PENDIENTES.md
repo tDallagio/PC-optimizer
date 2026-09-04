@@ -39,13 +39,17 @@ Checklist en orden de ejecución:
 - [x] **1. Sidebar de navegación vertical** (icono + label) en reemplazo de las tabs superiores.
       Escala mejor con las 8 secciones actuales y se lee como "producto", no "herramienta".
       Agrupación tentativa: Optimizar / Sistema / Avanzado / Ajustes. *(Cambio estructural #1.)*
-      **HECHO (corte 25, ajustado en 26/27/30)**: sidebar full-height a la izquierda con bloque de
-      marca (logo + versión + badge de licencia) arriba. Agrupación real (distinta a la tentativa
-      original): grupo **PRINCIPAL** (Optimizar, Herramientas, Tuning Avanzado, Bloatware) y grupo
-      **SISTEMA** (Arranque, Historial); **Home** (corte 30) como item propio arriba de ambos grupos,
-      es la entrada de la app. Item activo con pill de fondo cyan (corte 26). Consola/Ajustes/
-      Licencia bajaron a una fila de íconos al fondo del sidebar (corte 27); Consola abre un overlay
-      modal en vez de navegar a una pestaña. Ver CHANGELOG (cortes 25, 26, 27, 30).
+      **HECHO (corte 25, ajustado en 26/27/30/56/66/78)**: sidebar full-height a la izquierda con
+      bloque de marca (logo + versión + badge de licencia) arriba. Estructura real de HOY: grupo
+      **PRINCIPAL** (Tweaks, Network, Limpieza, Bloatware) y grupo **SISTEMA** (Herramientas, Arranque,
+      Historial); **Home** (corte 30) como item propio arriba de ambos grupos, es la entrada de la
+      app. Item activo con pill de fondo cyan (corte 26). Consola/Ajustes/Licencia en una fila de
+      íconos al fondo del sidebar (corte 27); Consola abre un overlay modal en vez de navegar a una
+      pestaña. Historia de la agrupación: al corte 30 era PRINCIPAL (Optimizar, Herramientas, Tuning
+      Avanzado, Bloatware) / SISTEMA (Arranque, Historial); Tuning Avanzado se retiró en el corte 56
+      (migrado a Tweaks), Optimizar clásico en el corte 66, y en el corte 78 se colapsaron los
+      sub-headers sueltos de Tweaks/Network/Limpieza dentro de PRINCIPAL y Herramientas pasó a
+      SISTEMA. Ver CHANGELOG (cortes 25, 26, 27, 30, 56, 66, 78).
 - [x] **2. Dashboard de entrada** con estado del sistema arriba (CPU/GPU/RAM detectados + score +
       CTA principal), en vez de abrir con una grilla fría de checkboxes. WinBoost ya tiene el score
       y la info de sistema: promover esa data a pantalla de entrada.
@@ -57,28 +61,34 @@ Checklist en orden de ejecución:
       componentes). Ver CHANGELOG.
 - [ ] **3. Componente toggle estilizado reutilizable** que reemplace los checkboxes de sistema en
       todas las secciones. Detalle chico, gran impacto en percepción de calidad.
-      **Parcial**: los 3 controles de Tuning Avanzado (Scheduler CPU, HAGS, Política Térmica) ya
-      usan `ui:ToggleSwitch` de WPF-UI (corte 16B, "16B_tuning_toggleswitch.txt") — pero es solo esos
-      3 controles. Los checkboxes de Optimizar/Bloatware (los que este ítem apunta a reemplazar)
-      recibieron únicamente un restyle visual (vidrio translúcido + borde acento, corte
-      "15_adopcion_paso1_checkbox.txt"), siguen siendo `CheckBox`, no un componente toggle. El ítem
-      sigue pendiente en su alcance completo. Nota de dirección (2026-08-20, feedback directo del
-      usuario, no negociable): la pestaña Optimizar en particular necesita una remodelación mayor de
-      arquitectura/diseño (tarjetas por tweak con toggle propio, categorías/tabs, buscador, sin
-      checkboxes, ítems de limpieza de archivos separados a una sección "Limpieza" aparte) — este
-      ítem probablemente se quede chico frente a ese alcance; evaluar expandirlo o reemplazarlo
-      cuando se planifique esa remodelación.
+      **Parcial (estado a corte ~16B)**: los 3 controles de Tuning Avanzado (Scheduler CPU, HAGS,
+      Política Térmica) pasaron a `ui:ToggleSwitch` de WPF-UI (corte 16B, "16B_tuning_toggleswitch.txt")
+      — pero solo esos 3 (y esa pestaña se retiró en el corte 56; los 3 controles viven ahora en
+      Tweaks). Los checkboxes de Optimizar y de Bloatware (los que este ítem apuntaba a reemplazar)
+      recibieron en su momento únicamente un restyle visual (vidrio translúcido + borde acento, corte
+      "15_adopcion_paso1_checkbox.txt"): los de Optimizar se fueron con el tab clásico al retirarse en
+      el corte 66; los de Bloatware siguen siendo `CheckBox`, no un componente toggle. El ítem sigue
+      pendiente para las secciones que todavía usan `CheckBox`. Nota de dirección (2026-08-20,
+      feedback directo del usuario, no negociable): la pestaña Optimizar (retirada después, corte 66)
+      necesitaba una remodelación mayor de arquitectura/diseño (tarjetas por tweak con toggle propio,
+      categorías/tabs, buscador, sin checkboxes, ítems de limpieza de archivos separados a una sección
+      "Limpieza" aparte) — ver la ACTUALIZACIÓN de abajo: esa remodelación se construyó como
+      arquitectura nueva y el tab clásico terminó retirándose.
       **ACTUALIZACIÓN (2026-08-24, Fases A/B/C completas; 2026-08-25, Power migrado — universo
       completo)**: la remodelación de arquitectura que pedía la nota de dirección de arriba ya se
-      construyó y quedó validada con evidencia real, en paralelo al tab Optimizar clásico (que no se
-      tocó ni se retiró). Arquitectura nueva: `TweakDefinition`/`TweakState` (On/Off/NoAplicable)/
+      construyó y quedó validada con evidencia real, en paralelo al tab Optimizar clásico (a esa
+      fecha todavía activo; **retirado completo en el corte 66** — ver el sub-ítem de abajo y
+      `ARQUITECTURA_TWEAKS.md` 7.9). Arquitectura nueva: `TweakDefinition`/`TweakState` (On/Off/NoAplicable)/
       `TweakRegistry`/`TweakStateStore` (registro de tweaks individuales con revert real por tweak,
       persistencia propia en `tweak_state.json`, separada de `BackupService`). Secciones nuevas en
       el sidebar: **Tweaks** (Fase A/B + Power, 21 tweaks con toggle propio) y **Network** (Fase C —
       Nagle/TCP relocados sin cambio de lógica + DisableIPv6 nuevo + DNS con selector y revert real
       por adaptador + DNSFlush) y **Limpieza** (Fase C — 1 card con los 8 ítems de limpieza clásicos
       como checkboxes + botón ejecutar, sin revert — no aplica, borrar temporales nunca fue
-      reversible ni en el tab clásico). TRIM/Desfrag se migró íntegro a **Herramientas** (reusa
+      reversible ni en el tab clásico. **Corte 75**: la sección Limpieza sumó el checkbox "Caché
+      profunda" —reemplazó al de "Thumbnails", que quedó subsumido, sin cambiar la cantidad neta de 8
+      checkboxes— y dos bloques propios movidos desde Herramientas: **Mantenimiento automático** y
+      **Limpieza del Driver Store**). TRIM/Desfrag se migró íntegro a **Herramientas** (reusa
       `App.Worker`/cancelación ya existente, no se forzó al patrón simple de acción rápida). Punto
       de restauración se agregó como card en **Home** (patrón `QuickActionDefinition`, con manejo
       honesto del límite de Windows de 1 punto cada 24hs). **Power** (plan de energía) se agregó
@@ -130,9 +140,9 @@ Checklist en orden de ejecución:
             del corte 16B) **ya no depende de `BackupService`** — migrado completo a
             `TweakRegistry`/`TweakStateStore` en el corte 56, pestaña retirada del sidebar
             (`SetWin32PrioritySep`/`SetHagsState`/`EnsureBackupSession` se eliminaron de
-            `TuningService.cs`, sin caller). El mapa de dependencias de `BackupService` queda: (a) el
-            tab Optimizar clásico, (b) el modo `-Silent` de CLI, (c) Bloatware. Detalle en
-            `ARQUITECTURA_TWEAKS.md` sección 7.6.
+            `TuningService.cs`, sin caller). El mapa de dependencias de `BackupService`, **tras el
+            retiro del tab Optimizar clásico en el corte 66**, queda: (a) el modo `-Silent` de CLI,
+            (b) Bloatware. Detalle en `ARQUITECTURA_TWEAKS.md` sección 7.6.
       - [x] Bloatware: el botón "Revertir" de Historial sobre una sesión de desinstalación no
             reinstalaba nada — y **peor**, reportaba éxito falso (el diálogo prometía restaurar
             registro/servicios/red y, tras no hacer nada, la app decía "Sesión revertida
@@ -166,7 +176,7 @@ Checklist en orden de ejecución:
       - [x] Bug real (card "Última optimización" del Home sin filtrar `HasMeta`) — **resuelto en los
             cortes 62/63, no con un parche de filtro**: Tomy notó que el problema de fondo no era el
             filtro sino que los 4 datos de esa card (MB liberados, acciones, score, fecha) pertenecían
-            por completo al mecanismo de sesión del tab clásico que se viene retirando. Se reemplazó la
+            por completo al mecanismo de sesión del tab clásico (retirado después en el corte 66). Se reemplazó la
             card entera (`UpdateLastOptCardAsync` y sus 4 campos ya no existen) por un contador en vivo
             de "Tweaks activos" (`TweakRegistry.All` + `LeerEstadoAsync`, cache en memoria con ajuste
             incremental), desacoplado por completo de `BackupService`/`BackupSessionInfo` — sin nada
@@ -195,8 +205,8 @@ Checklist en orden de ejecución:
             evaluar más adelante, según uso real, si hace falta selección múltiple + aplicar en
             bloque para Tweaks/Network (mismo patrón que ya tiene Limpieza). Prioridad baja, sin
             fecha. Detalle en `ARQUITECTURA_TWEAKS.md` sección 7.9.
-      - [ ] Mapeo de "defaults seguros de Windows" para una futura acción "Restablecer a un valor
-            predeterminado" (prompt 57, diagnóstico puro, nada implementado): de los 27
+      - [x] Mapeo de "defaults seguros de Windows" para una acción "Restablecer a un valor
+            predeterminado" (prompt 57 diagnóstico; **implementado en el corte 71**): de los 27
             `TweakDefinition` reales de `TweakRegistry.All`, 20 tienen un default de Windows confiable
             para ofrecer (Telemetry, SvcDiag, Tasks, PageFile, PowerThrot, MouseAccel, GameMode,
             Cortana, Notif, Nagle, Visual, SvcXbox, SvcWER, SvcMaps, HPET, FastStartup, SvcSysMain,
@@ -208,12 +218,19 @@ Checklist en orden de ejecución:
             incierto de los 27, ni "restablecer a Equilibrado" resuelve nada porque el propio
             Equilibrado varía por OEM—). Motivo real del hallazgo: si un tweak ya está On desde antes
             de tocar el toggle (config externa del usuario, o una sesión vieja de WinBoost)
-            `TweakStateStore` nunca capturó un original, y hoy no hay forma de apagarlo desde la app
-            salvo editando el registro a mano — "Revertir" queda como no-op honesto, no es un bug.
+            `TweakStateStore` nunca capturó un original, y no había forma de apagarlo desde la app
+            salvo editando el registro a mano ("Revertir" queda como no-op honesto, no es un bug) —
+            que es exactamente lo que la acción nueva resuelve para los 20 Seguro.
             Detalle completo (tabla de los 27 + las 4 opciones de alcance evaluadas) en
-            `ARQUITECTURA_TWEAKS.md` sección 7.7. **Decisión de alcance sin tomar** — depende de que
-            Tomy elija entre: (A) solo los 20 Seguro, (B) sumar el Grupo A con advertencia explícita de
-            incertidumbre, (C) los 27 completos incluido el Grupo B, o (D) no construir la feature.
+            `ARQUITECTURA_TWEAKS.md` sección 7.7. **Alcance decidido (corte 71): opción A — solo los
+            20 Seguro.** Se construyó "Restablecer a default de Windows" como acción separada de
+            "Revertir", rotulada honestamente como valor de fábrica (no el original de esta máquina),
+            visible solo cuando el tweak es uno de los 20 + está On + no hay `Original` capturado
+            (reusa el mismo `HasEntry` que bloquea "Revertir"). Los 7 Riesgoso quedan sin la acción,
+            con el bloqueo honesto sin cambios. Durante la implementación se corrigió el mapeo de
+            GameMode (`AllowAutoGameMode` no es un default de fábrica → se borra, no se escribe un
+            valor). Detalle de la implementación en `ARQUITECTURA_TWEAKS.md` sección 7.11; mecanismo
+            por tweak en `CHANGELOG.md` (corte 71). Probado por Tomy sobre el .exe publicado.
 - [ ] **4. Subir padding/espaciado global** (usar los escalones altos de la escala 4px). La UI
       actual aprieta; el rediseño pide más aire en pantallas de entrada/decisión.
 - [ ] **5. Reforzar jerarquía tipográfica** (Segoe UI en varios pesos): títulos claramente más
@@ -259,9 +276,11 @@ vs. esfuerzo, tal como está clasificado en el benchmark competitivo.
 
 ## Infraestructura transversal (habilita varios items)
 
-- [ ] **Proxy backend.** Protege la API key del explicador IA **y** ancla la integridad del trial
-      (ver Módulo 3, licencias). Se construye una vez y desbloquea dos frentes; embeber la key en
-      el .NET es inseguro (decompilación IL trivial).
+- [ ] **Proxy backend.** Protege la API key del explicador IA — embeber la key en el .NET es
+      inseguro (decompilación IL trivial). *(Antes este ítem también se justificaba como ancla de
+      integridad del trial; el trial se eliminó en el corte 82, ver Módulo 3 → "Modelo de licencias".
+      Si el rediseño de licencias suma validación/revocación server-side, ese pasaría a ser el
+      segundo frente que lo justifica.)*
 
 ## Prioridad 1 — Feature #1 del segmento
 
@@ -368,21 +387,47 @@ vs. esfuerzo, tal como está clasificado en el benchmark competitivo.
 ## Modelo de licencias — rediseño (prerequisito para vender)
 
 No se puede lanzar comercialmente con el modelo actual. Cripto validada OK (RSA-2048, Pro atado a
-HWID, rechazo de claves inválidas/HWID ajeno, persistencia). Dos debilidades de **diseño** a resolver
-en el rediseño:
+HWID, rechazo de claves inválidas/HWID ajeno, persistencia). Puntos de **diseño** a resolver en el
+rediseño — **van juntos**: qué se gatea para Free y qué tiers existen son una sola decisión, no dos
+aisladas. (La tercera pata —qué hacer con el trial— ya se resolvió por separado: se eliminó, corte 82.)
 
-- [ ] **Trial sin integridad** (client-side burlable): fecha futura → cientos de días; borrar
-      `settings.json` → trial nuevo repetible; resetear la fecha a hoy → trial eterno; atrasar el
-      reloj → no avanza. Objetivo: anclar al **proxy backend**; mitigación intermedia sin server =
-      HMAC del estado + anclaje redundante (registro/archivo) + anti-rollback de reloj.
+- [x] **Trial sin integridad** (client-side burlable) — **RESUELTO eliminando el trial por completo
+      (corte 82)**, no mitigándolo. El problema: el estado vivía solo en
+      `%USERPROFILE%\.OptimizarPC\settings.json` (`TrialStartDate` + `TrialExpired`), sin ancla de
+      máquina ni server — fecha futura → cientos de días; borrar `settings.json` (o basura en
+      `TrialStartDate`, que caía en un `catch` que regalaba 14 días nuevos) → trial repetible; resetear
+      la fecha a hoy → trial eterno; atrasar el reloj → no avanzaba. Las mitigaciones que este ítem
+      tenía planteadas (HMAC del estado, anclaje redundante registro/archivo, anti-rollback de reloj,
+      proxy backend) **quedaron descartadas** — decisión de Tomy (diagnóstico del mecanismo completo en
+      el prompt 81, implementación en el corte 82): se sacó el trial entero, no se blindó.
+      `EvaluateTrial()` eliminado, `RefreshFromStored()` como único evaluador (`IsPro`/`IsTech` solo
+      con licencia Pro/Tech real), `TrialStartDate`/`TrialExpired` fuera de `AppSettings`,
+      `LockProFeature` con un mensaje único sin mención de trial, banner y badge de trial de Home
+      eliminados sin reemplazo. Detalle en `CHANGELOG.md`, entrada **"Eliminación del trial gratuito
+      de 14 días (82_eliminar_trial_gratuito.txt)"**.
 - [ ] **Clave Tech = llave maestra global** (firma sobre la constante `WINBOOST-TECH`, sin variable →
       `Gen-License.ps1` genera siempre la misma cadena; una clave desbloquea cualquier PC para
       siempre, sin revocación). Regla a adoptar: **toda clave que valga dinero firma sobre algo único**
       (mínimo el HWID). Destino: degradar Tech a testing interno, O reconstruirla como tier de pago
       único (lifetime/ULTRA) firmando `WINBOOST-<TIER>-<HWID>(-<comprador>)`.
-- Dirección tentativa del modelo definitivo: degradar Tech; tier **ULTRA** sobre Pro (pasar el gating
-  booleano `IS_PRO`/`IS_TECH` a **niveles ordenables** + mensaje de firma por tier); bajar el trial de
-  14 a **3–7 días** (evaluar junto con qué otorga el trial, hoy da Pro completo).
+- [ ] **Gate de Pro perdido para casi toda la app** (efecto colateral no advertido del corte 66). El
+      único gate que cubría los tweaks/servicios era el botón "Ejecutar" del tab Optimizar clásico
+      (`OnRunOptimizationAsync`, gateado con `LockProFeature` desde la fase 5.1); los toggles por
+      tweak nunca estuvieron gateados (desde el piloto de la Fase A, corte 38). Al retirar el tab
+      clásico en el corte 66 no quedó **ningún** gate sobre la aplicación de tweaks, y el CHANGELOG
+      del 66 no registra que se haya considerado. Hoy un usuario Free usa sin restricción: todos los
+      tweaks (Tweaks + Network), "Restablecer a default de Windows", Limpieza
+      de archivos, TRIM/Desfrag, selector de DNS + DNSFlush, liberador de RAM, punto de restauración
+      y el score. Lo único que sigue con gate `LockProFeature` es **Desinstalar bloatware**,
+      **Mantenimiento automático** (toggle + "Ejecutar ahora") y **Revertir sesión** de Historial
+      (por fila y "Revertir última sesión"). **Decisión de Tomy (prompt 81): NO se restaura el gate
+      todavía** — qué bloquear para Free se decide en conjunto con la eliminación del trial y el
+      rediseño de tiers, no aislado. Sin cambio de código en el prompt 81.
+- Dirección del rediseño (sin fecha): degradar Tech; planes **Free / Pro / Ultra** (se saca Tech, se
+  agrega **Ultra** sobre Pro) — pasar el gating booleano `IS_PRO`/`IS_TECH` a **niveles ordenables** +
+  mensaje de firma por tier. **El trial de 14 días ya se eliminó por completo (corte 82)** — decisión
+  de Tomy (prompt 81), reemplazó a la idea previa de acortarlo a 3–7 días; ver el ítem "Trial sin
+  integridad" arriba.
 
 ## Pre-lanzamiento
 
@@ -424,8 +469,11 @@ en el rediseño:
       — quedan como mejor estimación documentada, pendiente de validación en un Windows en
       portugués real** cuando haya oportunidad de probar. **Nuevo hallazgo (2026-08-24, detectado
       durante la Fase A/piloto, prompt 39):** el mecanismo viejo `BackupService.RestoreNetshFromSession()`
-      (usado por el revert del tab Optimizar clásico) tenía el mismo tipo de bug de idioma que ya se
-      encontró y se corrigió en el revert nuevo de TCP del registro de tweaks (`TweakRegistry.cs`) —
+      (paso de red dentro de `RestoreSession`; su caller principal era el revert del tab Optimizar
+      clásico hasta que se retiró en el corte 66 — hoy `RestoreSession` lo alcanzan el revert por
+      fila de Historial sobre sesiones `-Silent` y el path de Bloatware, ya guardado) tenía el mismo
+      tipo de bug de idioma que ya se encontró y se corrigió en el revert nuevo de TCP del registro
+      de tweaks (`TweakRegistry.cs`) —
       pero el fix se aplicó solo ahí; `RestoreNetshFromSession()` en sí **no se tocó** y queda como
       sospechoso sin confirmar/corregir. Agregar a este barrido cuando se llegue a esta tarea (detalle
       en `ARQUITECTURA_TWEAKS.md` sección 7.4). Revisar también cualquier otro `RunCapture`/parseo de

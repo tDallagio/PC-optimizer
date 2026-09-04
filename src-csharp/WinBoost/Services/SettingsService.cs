@@ -30,8 +30,6 @@ internal sealed class SettingsService
             Current.RunAtStartup        = loaded.RunAtStartup;
             if (!string.IsNullOrEmpty(loaded.BackupRoot))  Current.BackupRoot        = loaded.BackupRoot;
             Current.BackupRetainDays    = loaded.BackupRetainDays > 0 ? loaded.BackupRetainDays : 30;
-            Current.TrialStartDate      = loaded.TrialStartDate  ?? "";
-            Current.TrialExpired        = loaded.TrialExpired;
             Current.TechnicianName      = loaded.TechnicianName  ?? "";
             Current.FirstRunCompleted   = loaded.FirstRunCompleted;
         }

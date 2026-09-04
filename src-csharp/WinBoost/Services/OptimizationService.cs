@@ -280,6 +280,21 @@ public sealed class OptimizationService
             Log("Logs de eventos limpiados (Security excluido)", "ok");
             _applied++;
         }
+        // Prompt 75: "Cache profunda" (ex-card de Herramientas). Reusa
+        // MaintenanceService.DeepCleanAsync tal cual -- reinicia el Explorador + limpia
+        // icon/thumb cache, WER, logs CBS/DISM y shaders D3D. Se espera bloqueante porque
+        // CleanupTweaks ya corre dentro de un Task.Run (RunLimpiezaAsync y el -Silent de CLI),
+        // sin SynchronizationContext -- no hay deadlock. Solo el checkbox de Limpieza lo pone en
+        // `sel`; los presets de -Silent no tienen la clave "DeepClean", asi que ahi nunca corre.
+        if (G(sel, "DeepClean"))
+        {
+            Prog(20, "Cache profunda (reinicia el Explorador)...");
+            var dc = App.Maintenance.DeepCleanAsync(m => Log(m, "info")).GetAwaiter().GetResult();
+            freed += dc.TotalMb;
+            foreach (var e in dc.Errors) Log(e, "err");
+            Log($"Cache profunda - {dc.TotalMb} MB (Explorador {dc.IconMb}, WER {dc.WerMb}, logs {dc.LogMb}, shaders {dc.ShaderMb})", "ok");
+            _applied++;
+        }
 
         double mb = Math.Round(freed, 1);
         Log($"Total liberado: {mb} MB", "ok");

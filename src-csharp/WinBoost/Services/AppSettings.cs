@@ -11,10 +11,12 @@ internal sealed class AppSettings
     public bool   RunAtStartup        { get; set; } = false;
     public string BackupRoot          { get; set; } = DefaultBackupRoot;
     public int    BackupRetainDays    { get; set; } = 30;
-    public string TrialStartDate      { get; set; } = "";
-    public bool   TrialExpired        { get; set; } = false;
     public string TechnicianName      { get; set; } = "";
     public bool   FirstRunCompleted   { get; set; } = false;
+    // TrialStartDate / TrialExpired se removieron en el prompt 82 (trial de 14 dias eliminado).
+    // Sin logica de migracion: no hay usuarios con settings.json existente, y System.Text.Json
+    // ignora campos desconocidos al deserializar, asi que un settings.json viejo con esos
+    // campos no rompe SettingsService.Load().
 
     internal static readonly string DefaultBackupRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

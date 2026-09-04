@@ -68,9 +68,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     // Info de componentes (tab Info): cache de la info extendida (WMI) leida una vez
     private ExtendedSystemInfo? _extendedInfo;
 
-    // Estado del Driver Store (Herramientas). _tuningLoaded/_tuningSyncing (6.1, los 3 toggles
-    // de la ex pestana Tuning Avanzado) se eliminaron en el prompt 56 -- migraron a la seccion
-    // Tweaks, que ya tiene su propio _tweaksSyncing generico (ver abajo).
+    // Estado del Driver Store (seccion Limpieza desde el prompt 75; antes en Herramientas).
+    // _tuningLoaded/_tuningSyncing (6.1, los 3 toggles de la ex pestana Tuning Avanzado) se
+    // eliminaron en el prompt 56 -- migraron a la seccion Tweaks (ver _tweaksSyncing abajo).
     private IReadOnlyList<DriverPackage> _driverPackages = [];
     private readonly List<CheckBox> _driverChecks = [];
     private bool _driverBackupDone = false;
@@ -118,12 +118,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     private static readonly SolidColorBrush BrushBlue   = FreezeBrush(Color.FromRgb(0x00, 0xC8, 0xFF));
     private static readonly SolidColorBrush BrushGray   = FreezeBrush(Color.FromRgb(0x55, 0x55, 0x55));
 
-    // Licencias (5.1): brushes congelados del modulo 12C (brLicFree + fondos del banner trial)
+    // Licencias (5.1): gris del estado Free (reusado por varias cards). Los brushes del
+    // banner de trial (BrushTrialBg/Bd, BrushExpBg/Bd) se eliminaron con el trial (prompt 82).
     private static readonly SolidColorBrush BrushLicFree = FreezeBrush(Color.FromRgb(0x88, 0x88, 0x88));
-    private static readonly SolidColorBrush BrushTrialBg = FreezeBrush(Color.FromRgb(0x1A, 0x12, 0x00));
-    private static readonly SolidColorBrush BrushTrialBd = FreezeBrush(Color.FromRgb(0x3A, 0x28, 0x00));
-    private static readonly SolidColorBrush BrushExpBg   = FreezeBrush(Color.FromRgb(0x1A, 0x0A, 0x0A));
-    private static readonly SolidColorBrush BrushExpBd   = FreezeBrush(Color.FromRgb(0x3A, 0x15, 0x15));
 
     // Tuning (6.1): colores de las filas del Driver Store
     private static readonly SolidColorBrush BrushRowBg     = FreezeBrush(Color.FromRgb(0x11, 0x11, 0x11));
@@ -175,6 +172,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Tweaks/Network/Limpieza corrieron un indice hacia abajo (9/10/11 -> 8/9/10).
         // Prompt 66: navOptimizar se elimino (tab Optimizar clasico retirado) -- TODOS los indices
         // corrieron un lugar hacia abajo (era 0-10 con Optimizar=0/Home=2, ahora 0-9 con Home=1).
+        // Prompt 78: el sidebar se reordeno VISUALMENTE (Tweaks/Network/Limpieza pasaron a PRINCIPAL,
+        // Herramientas a SISTEMA, se sacaron los headers de segmento) -- este array y el orden de las
+        // TabItem NO cambiaron, solo el orden de los <Button> en el StackPanel del sidebar.
         _navButtons =
         [
             navHerramientas, // 0  (era 1)
@@ -338,7 +338,8 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // Startup manager (4.2)
         btnRefreshStartup.Click += async (_, _) => await RefreshStartupAsync();
 
-        // Mantenimiento (4.3)
+        // Mantenimiento automatico (4.3) -- prompt 75: la seccion vive ahora en Limpieza (el
+        // cableado no cambia, los controles son los mismos x:Name movidos en el arbol XAML).
         for (int h = 0; h <= 23; h++)
             cboMaintHour.Items.Add(new ComboBoxItem { Content = $"{h:D2}:00" });
         cboMaintHour.SelectedIndex = 10;
@@ -347,9 +348,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         tglMaintenance.Click   += async (_, _) => await ToggleMaintenanceAsync();
         btnRunMaintNow.Click   += async (_, _) => await RunMaintenanceNowAsync();
         _ = UpdateMaintUIAsync();
-
-        // Limpieza profunda de cache (Herramientas)
-        btnDeepClean.Click += async (_, _) => await DeepCleanAsync();
 
         // Liberador de RAM (4.5) — los labels RAM los mantiene el monitor (1s);
         // solo cableamos el boton de purga.
@@ -366,11 +364,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         // (Visibility="Collapsed") en vez de exportar datos vacios para siempre; sin caller,
         // ExportHtmlReportAsync se elimino del code-behind.
 
-        // Licencias + trial (5.1, modulo 12C)
+        // Licencias (5.1, modulo 12C). El banner de trial de Home y su boton "Activar Pro"
+        // (btnTrialUpgrade) se eliminaron en el prompt 82 junto con el trial; la pestaña
+        // Licencia sigue accesible desde el icono navLicencia del sidebar.
         btnCopyHWID.Click        += (_, _) => CopyHardwareId();
         btnActivateLicense.Click += (_, _) => ActivateLicense();
         btnGetLicense.Click      += (_, _) => GetLicense();
-        btnTrialUpgrade.Click    += (_, _) => SetActiveNav(6); // Licencia (era 7, prompt 66)
         _ = InitLicenseAsync();
 
         // Auto-updater (5.3, modulo 14)
@@ -381,9 +380,9 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         btnCheckUpdatesSettings.Click += async (_, _) => await CheckForUpdatesAsync(manual: true);
         _ = CheckForUpdatesAsync(manual: false);
 
-        // Prompt 56: pestana Tuning Avanzado retirada (3 ui:ToggleSwitch 16B — Scheduler CPU,
-        // HAGS, Politica termica). Migraron a la seccion Tweaks (TweakRegistry.cs), cableados
-        // via BuildTweakCard/_tweaksSyncing como el resto del registro.
+        // Limpieza del Driver Store -- prompt 75: la seccion se movio de Herramientas a Limpieza
+        // (el cableado y los handlers no cambian; TuningService sigue siendo el servicio). Los 3
+        // ui:ToggleSwitch 16B de la ex pestana Tuning Avanzado migraron a Tweaks en el prompt 56.
         btnScanDrvStore.Click += async (_, _) => await ScanObsoleteDriversAsync();
         btnDriverBackup.Click += async (_, _) => await ExportDriverBackupAsync();
         btnDriverDelete.Click += async (_, _) => await DeleteSelectedDriversAsync();
@@ -933,43 +932,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (wasOn != isOn) _activeTweaksCount = count + (isOn ? 1 : -1);
     }
 
-    // ── Limpieza profunda de cache (Herramientas) ────────────────────────────
-    // Mirror del btnDeepClean del PS1. La logica vive en MaintenanceService;
-    // aca solo va la confirmacion, el reporte al log y el estado en el label.
-    private async Task DeepCleanAsync()
-    {
-        var r = System.Windows.MessageBox.Show(
-            "Se limpiaran caches del sistema, reportes WER y logs no esenciales.\n" +
-            "El Explorador se reiniciara brevemente.\n\nContinuar?",
-            $"WinBoost v{App.Version}",
-            MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (r != MessageBoxResult.Yes) return;
-
-        btnDeepClean.IsEnabled = false;
-        try
-        {
-            var res = await App.Maintenance.DeepCleanAsync(msg =>
-                Dispatcher.Invoke(() => lblDeepCleanStatus.Text = msg));
-
-            App.Logger.Log($"Cache Explorer: {res.IconMb} MB liberados", "ok");
-            App.Logger.Log($"WER reports: {res.WerMb} MB liberados", "ok");
-            App.Logger.Log($"Logs CBS/DISM: {res.LogMb} MB liberados", "ok");
-            App.Logger.Log($"Shader cache: {res.ShaderMb} MB liberados", "ok");
-            foreach (var err in res.Errors) App.Logger.Log(err, "err");
-            App.Logger.Log($"LIMPIEZA PROFUNDA: {res.TotalMb} MB totales liberados", "head");
-
-            lblDeepCleanStatus.Text = $"Listo  {res.TotalMb} MB liberados";
-        }
-        catch (Exception ex)
-        {
-            App.Logger.Log($"Limpieza profunda: {ex.Message}", "err");
-            lblDeepCleanStatus.Text = "Error";
-        }
-        finally
-        {
-            btnDeepClean.IsEnabled = true;
-        }
-    }
+    // Prompt 75: "Limpieza profunda de cache" dejo de ser una card propia en Herramientas.
+    // Ahora es el checkbox "Cache profunda" de la seccion Limpieza -- lo dispara
+    // OptimizationService.CleanupTweaks -> MaintenanceService.DeepCleanAsync, con el aviso de
+    // impacto alto (reinicio del Explorador) en ConfirmOptimizationDialog. El handler
+    // DeepCleanAsync() de MainWindow se elimino (sin otro caller).
 
     private static SolidColorBrush BrushFromHex(string hex)
     {
@@ -1573,7 +1540,12 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    // ── Mantenimiento (4.3) ──────────────────────────────────────────────────
+    // ── Mantenimiento automatico (4.3; seccion Limpieza desde el prompt 75) ──────────────────
+    // El XAML de esta seccion se movio de Herramientas a Limpieza en el prompt 75. Estos metodos
+    // no cambiaron: operan sobre los mismos controles x:Name (tglMaintenance, cboMaintFreq/Hour,
+    // chkMaint*, lblLastMaint/NextMaint/MaintStatus, btnRunMaintNow), solo que ahora viven en otra
+    // parte del arbol visual. UpdateMaintUIAsync se sigue llamando al arrancar la app (constructor),
+    // no atado a visitar ningun tab.
 
     private static readonly SolidColorBrush BrushMaintOnBg  = FreezeBrush(Color.FromRgb(0x12, 0x2A, 0x12));
     private static readonly SolidColorBrush BrushMaintOffBg = FreezeBrush(Color.FromRgb(0x1E, 0x1E, 0x1E));
@@ -2103,46 +2075,42 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
     }
 
-    // ── Licencias + trial (5.1, modulos 12B/12C) ─────────────────────────────
+    // ── Licencias (5.1, modulos 12B/12C) ─────────────────────────────────────
+    // El trial gratuito de 14 dias se elimino en el prompt 82. IsPro solo es true con
+    // una licencia Pro/Tech real; sin licencia -> Free. Los features protegidos por
+    // LockProFeature no cambiaron (Desinstalar bloatware, Mantenimiento automatico,
+    // Revertir sesion) -- que MAS gatear para Free queda pendiente (ver PENDIENTES.md).
 
-    // Init en background: HWID + estado de licencia + trial fuera del hilo UI.
+    // Init en background: HWID + estado de licencia fuera del hilo UI.
     private async Task InitLicenseAsync()
     {
-        await Task.Run(() =>
-        {
-            App.License.RefreshFromStored();
-            App.License.EvaluateTrial();
-        });
-        lblHardwareID.Text = App.License.GetHardwareId(); // cacheado por EvaluateTrial
+        await Task.Run(() => App.License.RefreshFromStored());
+        lblHardwareID.Text = App.License.GetHardwareId();
         UpdateLicenseBadge();
-        UpdateTrialBanner();
     }
 
-    // Mirror de Lock-ProFeature: bloquea (true) si no hay Pro ni trial activo.
+    // Mirror de Lock-ProFeature: bloquea (true) si no hay licencia Pro/Tech.
     private bool LockProFeature(string featureName = "")
     {
         if (App.License.IsPro) return false;
 
         string baseName = string.IsNullOrEmpty(featureName) ? "Esta funcion" : featureName;
-        string msg = App.Settings.Current.TrialExpired
-            ? $"{baseName} requiere licencia Pro.\n\nTu periodo de prueba ha vencido. Activa tu licencia en el tab Licencia."
-            : $"{baseName} requiere licencia Pro.\n\nActiva tu licencia para desbloquear todas las funciones de WinBoost.";
-
         System.Windows.MessageBox.Show(
-            msg, "WinBoost - Funcion Pro",
+            $"{baseName} es exclusiva de las licencias Pro y Tecnico.\n\n" +
+            "Activa tu licencia en la pestaña Licencia para usarla.",
+            "WinBoost - Funcion Pro",
             MessageBoxButton.OK, MessageBoxImage.Information);
         return true;
     }
 
-    // Mirror de Update-LicenseBadge: badge Free/Pro/Tecnico/Prueba + texto de estado segun tier/trial.
-    // La deteccion de tier (IsTech/IsPro/IsTrial) no cambia; solo la variante visual por rama.
+    // Badge de licencia junto al wordmark del sidebar + texto de estado en la pestaña
+    // Licencia. Tres estados: Tecnico / Pro / Free (el trial se elimino en el prompt 82).
     private void UpdateLicenseBadge()
     {
         var lic = App.License;
-        badgeLicenseFree.Visibility  = Visibility.Collapsed;
-        badgeLicensePro.Visibility   = Visibility.Collapsed;
-        badgeLicenseTech.Visibility  = Visibility.Collapsed;
-        badgeLicenseTrial.Visibility = Visibility.Collapsed;
+        badgeLicenseFree.Visibility = Visibility.Collapsed;
+        badgeLicensePro.Visibility  = Visibility.Collapsed;
+        badgeLicenseTech.Visibility = Visibility.Collapsed;
 
         if (lic.IsTech)
         {
@@ -2150,65 +2118,17 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             lblLicenseStatus.Text       = "WinBoost TECNICO activado - multi-PC";
             lblLicenseStatus.Foreground = BrushGreen;
         }
-        else if (lic.IsPro && !lic.IsTrial)
+        else if (lic.IsPro)
         {
             badgeLicensePro.Visibility = Visibility.Visible;
             lblLicenseStatus.Text       = "WinBoost PRO activado";
             lblLicenseStatus.Foreground = BrushYellow;
         }
-        else if (lic.IsPro && lic.IsTrial)
-        {
-            badgeLicenseTrial.Visibility = Visibility.Visible;
-            lblLicenseTrialDays.Text     = $"· {lic.TrialDaysLeft}d";
-            lblLicenseStatus.Text        = $"Periodo de prueba activo ({lic.TrialDaysLeft} dias restantes)";
-            lblLicenseStatus.Foreground  = BrushYellow;
-        }
         else
         {
             badgeLicenseFree.Visibility = Visibility.Visible;
-            if (App.Settings.Current.TrialExpired)
-            {
-                lblLicenseStatus.Text       = "Periodo de prueba vencido";
-                lblLicenseStatus.Foreground = BrushRed;
-            }
-            else
-            {
-                lblLicenseStatus.Text       = "Version gratuita activa";
-                lblLicenseStatus.Foreground = BrushLicFree;
-            }
-        }
-    }
-
-    // Mirror de Update-TrialBanner: banner en el footer durante y post-trial.
-    private void UpdateTrialBanner()
-    {
-        var lic = App.License;
-        if (lic.IsPro && lic.IsTrial)
-        {
-            int d = lic.TrialDaysLeft;
-            lblTrialText.Text = d == 1
-                ? "Periodo de prueba: queda 1 dia. Activa Pro para no perder el acceso."
-                : $"Periodo de prueba activo. Quedan {d} dias.";
-            lblTrialText.Foreground     = BrushYellow;
-            bannerTrial.Background      = BrushTrialBg;
-            bannerTrial.BorderBrush     = BrushTrialBd;
-            btnTrialUpgrade.Foreground  = BrushYellow;
-            btnTrialUpgrade.BorderBrush = BrushYellow;
-            bannerTrial.Visibility      = Visibility.Visible;
-        }
-        else if (!lic.IsPro && App.Settings.Current.TrialExpired)
-        {
-            lblTrialText.Text = "El periodo de prueba vencio. Activa Pro para seguir usando las funciones avanzadas.";
-            lblTrialText.Foreground     = BrushRed;
-            bannerTrial.Background      = BrushExpBg;
-            bannerTrial.BorderBrush     = BrushExpBd;
-            btnTrialUpgrade.Foreground  = BrushRed;
-            btnTrialUpgrade.BorderBrush = BrushRed;
-            bannerTrial.Visibility      = Visibility.Visible;
-        }
-        else
-        {
-            bannerTrial.Visibility = Visibility.Collapsed;
+            lblLicenseStatus.Text       = "Version gratuita activa";
+            lblLicenseStatus.Foreground = BrushLicFree;
         }
     }
 
@@ -2239,7 +2159,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             if (App.License.ActivateTech(key))
             {
                 UpdateLicenseBadge();
-                UpdateTrialBanner();
                 lblActivationResult.Text       = "Licencia Tecnico activada. Valida en cualquier equipo.";
                 lblActivationResult.Foreground = BrushGreen;
             }
@@ -2255,7 +2174,6 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         if (App.License.ActivatePro(key))
         {
             UpdateLicenseBadge();
-            UpdateTrialBanner();
             lblActivationResult.Text       = "Activacion exitosa. Bienvenido a WinBoost PRO.";
             lblActivationResult.Foreground = BrushGreen;
         }
@@ -2605,10 +2523,16 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
             ("Prefetch",  chkCleanPrefetch,  "Prefetch (SSD)",       @"C:\Windows\Prefetch - solo recomendado en SSD",             "low"),
             ("WinUpdate", chkCleanWinUpdate, "Cache Windows Update", @"SoftwareDistribution\Download - paquetes ya instalados",    "low"),
             ("Browsers",  chkCleanBrowsers,  "Cache navegadores",    "Chrome, Edge, Firefox, Brave, Opera - no borra contrasenas", "low"),
-            ("Thumb",     chkCleanThumb,     "Thumbnails",           "Cache de miniaturas del Explorador - se regenera solo",      "low"),
             ("Recycle",   chkCleanRecycle,   "Papelera",             "Vacia la papelera permanentemente",                          "low"),
             ("EventLogs", chkCleanEventLogs, "Logs de eventos",
                 "Borra logs Aplicacion/Sistema/etc. Log de Seguridad NO se toca. Elimina registros forenses.", "high"),
+            // Prompt 75: "Cache profunda" (ex-card de Herramientas). Subsume al viejo checkbox
+            // "Thumbnails" -- el paso 1 de DeepClean cubre la misma carpeta (%LocalAppData%\
+            // Microsoft\Windows\Explorer) mejor, con el Explorador detenido. Impacto "high" por el
+            // reinicio forzado del Explorador. La clave "Thumb" de CleanupTweaks se conserva para
+            // el -Silent de CLI (los presets la usan); solo se saco el checkbox de la UI.
+            ("DeepClean", chkCleanDeep,      "Cache profunda",
+                "Reinicia el Explorador (parpadeo 2-3 s, cierra ventanas). Limpia cache de iconos/miniaturas, WER, logs CBS/DISM y shaders D3D.", "high"),
         };
 
         var sel  = items.ToDictionary(i => i.Id, i => i.Chk.IsChecked == true);
@@ -3021,6 +2945,11 @@ public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
         }
         RenderComponentsInfo(_extendedInfo);
     }
+
+    // ── Limpieza del Driver Store (seccion Limpieza desde el prompt 75; antes en Herramientas) ──
+    // El XAML (btnScanDrvStore/btnDriverBackup/btnDriverDelete/lblDriverStatus/drvListScroll/
+    // icDrvStore) se movio de Herramientas a Limpieza en el prompt 75. Estos handlers y BuildDriverRow
+    // no cambiaron -- TuningService sigue siendo el servicio que hace el trabajo real.
 
     // Mirror del btnScanDrivers (sin Start-Job: ScanObsoleteDriversAsync corre en Task.Run).
     private async Task ScanObsoleteDriversAsync()

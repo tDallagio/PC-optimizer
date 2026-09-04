@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Management;
 using System.Security.Cryptography;
 using System.Text;
@@ -10,9 +9,12 @@ internal enum LicenseTier { Free, Pro, Tech }
 internal sealed record LicenseStatus(bool IsActivated, string HardwareId, LicenseTier Tier);
 
 // ============================================================
-// MODULO 12A/12B - MOTOR DE HARDWARE ID, LICENCIA Y TRIAL
-// Mirror de Get-HardwareID / Test-LicenseKey / Get-LicenseStatus /
-// Test-TrialStatus del PS1. La clave privada la tiene solo el emisor.
+// MODULO 12A/12B - MOTOR DE HARDWARE ID Y LICENCIA
+// Mirror de Get-HardwareID / Test-LicenseKey / Get-LicenseStatus del PS1.
+// La clave privada la tiene solo el emisor.
+// El trial gratuito de 14 dias se elimino (prompt 82): era client-side y
+// burlable editando settings.json. IsPro/IsTech solo se activan con una
+// licencia Pro/Tech real; cualquier otro caso es Free.
 // ============================================================
 internal sealed class LicenseService
 {
@@ -33,11 +35,9 @@ internal sealed class LicenseService
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".OptimizarPC", "tech_license.key");
 
-    // Estado en memoria (reemplaza $script:IS_PRO / IS_TECH / IS_TRIAL / TRIAL_DAYS_LEFT)
-    internal bool IsPro         { get; private set; }
-    internal bool IsTech        { get; private set; }
-    internal bool IsTrial       { get; private set; }
-    internal int  TrialDaysLeft { get; private set; }
+    // Estado en memoria (reemplaza $script:IS_PRO / IS_TECH del PS1)
+    internal bool IsPro  { get; private set; }
+    internal bool IsTech { get; private set; }
 
     private string? _cachedHwid;
 
@@ -141,72 +141,14 @@ internal sealed class LicenseService
         return new LicenseStatus(false, hwid, LicenseTier.Free);
     }
 
-    // Setea IS_PRO / IS_TECH desde la licencia guardada (reemplaza el init del modulo 12B).
+    // Unico evaluador de licencia: setea IsPro/IsTech desde license.key / tech_license.key.
+    // Sin licencia valida -> Free. (El trial de 14 dias se elimino en el prompt 82; ya no
+    // hay un concepto de "activo temporalmente sin licencia".)
     internal void RefreshFromStored()
     {
-        var status    = GetStatus();
-        IsPro         = status.IsActivated;
-        IsTech        = status.Tier == LicenseTier.Tech;
-        IsTrial       = false;
-        TrialDaysLeft = 0;
-    }
-
-    // ── Trial (F0.2) ──────────────────────────────────────────────────────────
-    // Mirror de Test-TrialStatus: evalua el trial de 14 dias y ajusta el estado.
-    // Persiste TrialStartDate / TrialExpired via App.Settings si cambia.
-    internal void EvaluateTrial()
-    {
-        var settings = App.Settings.Current;
-
         var status = GetStatus();
-        if (status.IsActivated)
-        {
-            IsPro         = true;
-            IsTech        = status.Tier == LicenseTier.Tech;
-            IsTrial       = false;
-            TrialDaysLeft = 0;
-            return;
-        }
-
-        var today = DateTime.Now;
-
-        if (string.IsNullOrEmpty(settings.TrialStartDate))
-        {
-            settings.TrialStartDate = today.ToString("yyyy-MM-dd");
-            settings.TrialExpired   = false;
-            App.Settings.Save();
-            IsPro = true; IsTrial = true; TrialDaysLeft = 14;
-            return;
-        }
-
-        try
-        {
-            var start = DateTime.ParseExact(
-                settings.TrialStartDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-            int elapsed  = (int)(today - start).TotalDays;
-            int daysLeft = 14 - elapsed;
-
-            if (elapsed > 14)
-            {
-                IsPro = false; IsTrial = false; TrialDaysLeft = 0;
-                if (!settings.TrialExpired)
-                {
-                    settings.TrialExpired = true;
-                    App.Settings.Save();
-                }
-            }
-            else
-            {
-                IsPro = true; IsTrial = true; TrialDaysLeft = Math.Max(1, daysLeft);
-            }
-        }
-        catch
-        {
-            settings.TrialStartDate = today.ToString("yyyy-MM-dd");
-            settings.TrialExpired   = false;
-            App.Settings.Save();
-            IsPro = true; IsTrial = true; TrialDaysLeft = 14;
-        }
+        IsPro  = status.IsActivated;
+        IsTech = status.Tier == LicenseTier.Tech;
     }
 
     // ── Activacion (modulo 12C) ───────────────────────────────────────────────
@@ -216,7 +158,7 @@ internal sealed class LicenseService
         if (!TestLicenseKey(key)) return false;
         Directory.CreateDirectory(Path.GetDirectoryName(LicensePath)!);
         File.WriteAllText(LicensePath, key);
-        IsPro = true; IsTech = false; IsTrial = false; TrialDaysLeft = 0;
+        IsPro = true; IsTech = false;
         return true;
     }
 
@@ -225,7 +167,7 @@ internal sealed class LicenseService
         if (!TestTechLicenseKey(key)) return false;
         Directory.CreateDirectory(Path.GetDirectoryName(TechLicensePath)!);
         File.WriteAllText(TechLicensePath, key[5..]);
-        IsPro = true; IsTech = true; IsTrial = false; TrialDaysLeft = 0;
+        IsPro = true; IsTech = true;
         return true;
     }
 }
